@@ -54,6 +54,9 @@ namespace DynamicCubemaps
 
 #		if defined(SKYLIGHTING)
 		if (SharedData::InInterior) {
+			float3 specularIrradiance = EnvTexture.SampleLevel(SampColorSampler, R, level).xyz;
+			float specularIrradianceLuminance = Color::RGBToLuminance(EnvTexture.SampleLevel(SampColorSampler, R, 15));
+
 #			if defined(IBL)
 			float3 iblColor = 0;
 			if (SharedData::iblSettings.EnableDiffuseIBL && SharedData::iblSettings.EnableInterior) {
@@ -65,11 +68,17 @@ namespace DynamicCubemaps
 				directionalAmbientColorSpecular += iblColorLuminance;
 			}
 			// Apply interior specular boost for metals
-			directionalAmbientColorSpecular *= ImageBasedLighting::GetInteriorSpecularBoost();
+			float specularBoost = ImageBasedLighting::GetInteriorSpecularBoost();
+			directionalAmbientColorSpecular *= specularBoost;
+			// Ensure metals have minimum visibility even in dark interiors
+			float minSpecular = specularIrradianceLuminance * 0.1 * specularBoost;
+			directionalAmbientColorSpecular = max(directionalAmbientColorSpecular, minSpecular);
+#			else
+			// Fallback boost when IBL is not available
+			directionalAmbientColorSpecular *= 1.5;
+			// Minimum reflection floor
+			directionalAmbientColorSpecular = max(directionalAmbientColorSpecular, specularIrradianceLuminance * 0.15);
 #			endif
-			float3 specularIrradiance = EnvTexture.SampleLevel(SampColorSampler, R, level).xyz;
-
-			float specularIrradianceLuminance = Color::RGBToLuminance(EnvTexture.SampleLevel(SampColorSampler, R, 15));
 
 			specularIrradiance = (specularIrradiance / max(specularIrradianceLuminance, 0.001)) * directionalAmbientColorSpecular;
 			specularIrradiance = Color::IrradianceToLinear(specularIrradiance);
@@ -182,18 +191,30 @@ namespace DynamicCubemaps
 
 #		if defined(SKYLIGHTING)
 		if (SharedData::InInterior) {
+			float3 specularIrradiance = EnvTexture.SampleLevel(SampColorSampler, R, level).xyz;
+			float specularIrradianceLuminance = Color::RGBToLuminance(EnvTexture.SampleLevel(SampColorSampler, R, 15));
+
 #			if defined(IBL)
 			float3 iblColor = 0;
 			if (SharedData::iblSettings.EnableDiffuseIBL && SharedData::iblSettings.EnableInterior) {
-				directionalAmbientColorSpecular *= SharedData::iblSettings.DALCAmount;
-				iblColor += Color::Saturation(ImageBasedLighting::GetIBLColor(-R, 0), SharedData::iblSettings.IBLSaturation) * SharedData::iblSettings.DiffuseIBLScale;
+				directionalAmbientColorSpecular *= ImageBasedLighting::GetEffectiveDALC();
+				iblColor += Color::Saturation(ImageBasedLighting::GetIBLColor(-R, 0), ImageBasedLighting::GetEffectiveSaturation()) * ImageBasedLighting::GetEffectiveScale();
+				iblColor += ImageBasedLighting::GetInteriorLightBounce(N, directionalAmbientColorSpecular);
 				float iblColorLuminance = Color::RGBToLuminance(Color::IrradianceToGamma(iblColor));
 				directionalAmbientColorSpecular += iblColorLuminance;
 			}
+			// Apply interior specular boost for metals
+			float specularBoost = ImageBasedLighting::GetInteriorSpecularBoost();
+			directionalAmbientColorSpecular *= specularBoost;
+			// Ensure metals have minimum visibility even in dark interiors
+			float minSpecular = specularIrradianceLuminance * 0.1 * specularBoost;
+			directionalAmbientColorSpecular = max(directionalAmbientColorSpecular, minSpecular);
+#			else
+			// Fallback boost when IBL is not available
+			directionalAmbientColorSpecular *= 1.5;
+			// Minimum reflection floor
+			directionalAmbientColorSpecular = max(directionalAmbientColorSpecular, specularIrradianceLuminance * 0.15);
 #			endif
-			float3 specularIrradiance = EnvTexture.SampleLevel(SampColorSampler, R, level).xyz;
-
-			float specularIrradianceLuminance = Color::RGBToLuminance(EnvTexture.SampleLevel(SampColorSampler, R, 15));
 
 			specularIrradiance = (specularIrradiance / max(specularIrradianceLuminance, 0.001)) * directionalAmbientColorSpecular;
 			specularIrradiance = Color::IrradianceToLinear(specularIrradiance);

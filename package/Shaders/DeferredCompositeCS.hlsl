@@ -183,12 +183,22 @@ void SampleSSGISpecular(uint2 pixCoord, sh2 lobe, out float ao, out float3 il, i
 		if (SharedData::iblSettings.EnableDiffuseIBL && SharedData::iblSettings.EnableInterior) {
 			directionalAmbientColorSpecular *= ImageBasedLighting::GetEffectiveDALC();
 			iblColor += Color::Saturation(ImageBasedLighting::GetIBLColor(-R), ImageBasedLighting::GetEffectiveSaturation()) * ImageBasedLighting::GetEffectiveScale();
-			iblColor += ImageBasedLighting::GetInteriorLightBounce(N, directionalAmbientColorSpecular);
+			iblColor += ImageBasedLighting::GetInteriorLightBounce(normalWS, directionalAmbientColorSpecular);
 			float iblColorLuminance = Color::RGBToLuminance(Color::IrradianceToGamma(iblColor));
 			directionalAmbientColorSpecular += iblColorLuminance;
 		}
-		// Apply interior specular boost for metals
-		directionalAmbientColorSpecular *= ImageBasedLighting::GetInteriorSpecularBoost();
+		// Apply interior specular boost for metals (always applies in interiors when IBL is available)
+		float specularBoost = ImageBasedLighting::GetInteriorSpecularBoost();
+		directionalAmbientColorSpecular *= specularBoost;
+		// Ensure metals have minimum visibility even in dark interiors
+		// Use a fraction of the cubemap's own luminance as a floor
+		float minSpecular = specularIrradianceLuminance * 0.1 * specularBoost;
+		directionalAmbientColorSpecular = max(directionalAmbientColorSpecular, minSpecular);
+#		else
+		// Fallback boost when IBL is not available - use a reasonable default for interior metals
+		directionalAmbientColorSpecular *= 1.5;
+		// Minimum reflection floor
+		directionalAmbientColorSpecular = max(directionalAmbientColorSpecular, specularIrradianceLuminance * 0.15);
 #		endif
         specularIrradiance = (specularIrradiance / max(specularIrradianceLuminance, 0.001)) * directionalAmbientColorSpecular;
 
