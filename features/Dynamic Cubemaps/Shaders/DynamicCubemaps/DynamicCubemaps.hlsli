@@ -57,11 +57,15 @@ namespace DynamicCubemaps
 #			if defined(IBL)
 			float3 iblColor = 0;
 			if (SharedData::iblSettings.EnableDiffuseIBL && SharedData::iblSettings.EnableInterior) {
-				directionalAmbientColorSpecular *= SharedData::iblSettings.DALCAmount;
-				iblColor += Color::Saturation(ImageBasedLighting::GetIBLColor(-R, 0), SharedData::iblSettings.IBLSaturation) * SharedData::iblSettings.DiffuseIBLScale;
+				directionalAmbientColorSpecular *= ImageBasedLighting::GetEffectiveDALC();
+				iblColor += Color::Saturation(ImageBasedLighting::GetIBLColor(-R, 0), ImageBasedLighting::GetEffectiveSaturation()) * ImageBasedLighting::GetEffectiveScale();
+				// Add interior light bounce for specular
+				iblColor += ImageBasedLighting::GetInteriorLightBounce(N, directionalAmbientColorSpecular);
 				float iblColorLuminance = Color::RGBToLuminance(Color::IrradianceToGamma(iblColor));
 				directionalAmbientColorSpecular += iblColorLuminance;
 			}
+			// Apply interior specular boost for metals
+			directionalAmbientColorSpecular *= ImageBasedLighting::GetInteriorSpecularBoost();
 #			endif
 			float3 specularIrradiance = EnvTexture.SampleLevel(SampColorSampler, R, level).xyz;
 

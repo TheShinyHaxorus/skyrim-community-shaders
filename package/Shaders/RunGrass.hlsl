@@ -756,7 +756,7 @@ PS_OUTPUT main(PS_INPUT input, bool frontFace : SV_IsFrontFace)
 
 #				if defined(IBL)
 	if (SharedData::iblSettings.EnableDiffuseIBL && (!SharedData::InInterior || SharedData::iblSettings.EnableInterior)) {
-		directionalAmbientColor *= SharedData::iblSettings.DALCAmount;
+		directionalAmbientColor *= ImageBasedLighting::GetEffectiveDALC();
 	}
 #				endif  // IBL
 
@@ -782,10 +782,13 @@ PS_OUTPUT main(PS_INPUT input, bool frontFace : SV_IsFrontFace)
 		if (!SharedData::InInterior || SharedData::iblSettings.EnableInterior)
 		{
 #					if defined(SKYLIGHTING)
-			iblColor += Color::Saturation(ImageBasedLighting::GetIBLColor(-normal, skylightingDiffuse), SharedData::iblSettings.IBLSaturation) * SharedData::iblSettings.DiffuseIBLScale;
+			iblColor += Color::Saturation(ImageBasedLighting::GetIBLColor(-normal, skylightingDiffuse), ImageBasedLighting::GetEffectiveSaturation()) * ImageBasedLighting::GetEffectiveScale();
 #					else
-			iblColor += Color::Saturation(ImageBasedLighting::GetIBLColor(-normal), SharedData::iblSettings.IBLSaturation) * SharedData::iblSettings.DiffuseIBLScale;
+			iblColor += Color::Saturation(ImageBasedLighting::GetIBLColor(-normal), ImageBasedLighting::GetEffectiveSaturation()) * ImageBasedLighting::GetEffectiveScale();
 #					endif
+			if (SharedData::InInterior)
+				iblColor += ImageBasedLighting::GetInteriorLightBounce(normal, directionalAmbientColor);
+
 			iblColor = Color::IrradianceToGamma(iblColor);
 			directionalAmbientColor += iblColor;
 		}
@@ -968,7 +971,7 @@ PS_OUTPUT main(PS_INPUT input)
 
 #			if defined(IBL)
 	if (SharedData::iblSettings.EnableDiffuseIBL && (!SharedData::InInterior || SharedData::iblSettings.EnableInterior)) {
-		directionalAmbientColor *= SharedData::iblSettings.DALCAmount;
+		directionalAmbientColor *= ImageBasedLighting::GetEffectiveDALC();
 	}
 #			endif  // IBL
 
@@ -994,10 +997,13 @@ PS_OUTPUT main(PS_INPUT input)
 		if (!SharedData::InInterior || SharedData::iblSettings.EnableInterior)
 		{
 #					if defined(SKYLIGHTING)
-			iblColor += Color::Saturation(ImageBasedLighting::GetIBLColor(-normal, skylightingDiffuse), SharedData::iblSettings.IBLSaturation) * SharedData::iblSettings.DiffuseIBLScale;
+			iblColor += Color::Saturation(ImageBasedLighting::GetIBLColor(-normal, skylightingDiffuse), ImageBasedLighting::GetEffectiveSaturation()) * ImageBasedLighting::GetEffectiveScale();
 #					else
-			iblColor += Color::Saturation(ImageBasedLighting::GetIBLColor(-normal), SharedData::iblSettings.IBLSaturation) * SharedData::iblSettings.DiffuseIBLScale;
+			iblColor += Color::Saturation(ImageBasedLighting::GetIBLColor(-normal), ImageBasedLighting::GetEffectiveSaturation()) * ImageBasedLighting::GetEffectiveScale();
 #					endif
+			if (SharedData::InInterior)
+				iblColor += ImageBasedLighting::GetInteriorLightBounce(normal, directionalAmbientColor);
+
 			iblColor = Color::IrradianceToGamma(iblColor);
 			directionalAmbientColor += iblColor;
 		}

@@ -190,6 +190,13 @@ namespace SharedData
 		float DALCAmount;
 		float IBLSaturation;
 		float FogAmount;
+		// Interior-specific settings
+		float InteriorDiffuseIBLScale;
+		float InteriorDALCAmount;
+		float InteriorIBLSaturation;
+		float InteriorLightBounce;
+		float InteriorSpecularBoost;
+		float3 pad1;
 	};
 
 	struct ExtendedTranslucencySettings

@@ -18,21 +18,64 @@ NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(
 	DiffuseIBLScale,
 	DALCAmount,
 	IBLSaturation,
-	FogAmount)
+	FogAmount,
+	InteriorDiffuseIBLScale,
+	InteriorDALCAmount,
+	InteriorIBLSaturation,
+	InteriorLightBounce,
+	InteriorSpecularBoost)
 
 void IBL::DrawSettings()
 {
 	Util::WeatherUI::Checkbox("Enable Diffuse IBL", this, "EnableDiffuseIBL", (bool*)&settings.EnableDiffuseIBL);
-	Util::WeatherUI::SliderFloat("Diffuse IBL Scale", this, "DiffuseIBLScale", &settings.DiffuseIBLScale, 0.0f, 10.0f, "%.2f");
-	Util::WeatherUI::SliderFloat("Diffuse IBL Saturation", this, "IBLSaturation", &settings.IBLSaturation, 0.0f, 2.0f, "%.2f");
-	Util::WeatherUI::SliderFloat("DALC Amount", this, "DALCAmount", &settings.DALCAmount, 0.0f, 1.0f, "%.2f");
-	ImGui::Checkbox("Enable Interior", (bool*)&settings.EnableInterior);
-	ImGui::Checkbox("Use Static IBL For Out-of-World Objects", (bool*)&settings.UseStaticIBL);
-	if (auto _tt = Util::HoverTooltipWrapper()) {
-		ImGui::Text("Enables the use of static IBL textures for objects that are not in the world (e.g. inventory items).");
+
+	if (ImGui::BeginTabBar("##IBLTabs", ImGuiTabBarFlags_None)) {
+		if (ImGui::BeginTabItem("Exterior")) {
+			Util::WeatherUI::SliderFloat("Diffuse IBL Scale", this, "DiffuseIBLScale", &settings.DiffuseIBLScale, 0.0f, 10.0f, "%.2f");
+			Util::WeatherUI::SliderFloat("Diffuse IBL Saturation", this, "IBLSaturation", &settings.IBLSaturation, 0.0f, 2.0f, "%.2f");
+			Util::WeatherUI::SliderFloat("DALC Amount", this, "DALCAmount", &settings.DALCAmount, 0.0f, 1.0f, "%.2f");
+			Util::WeatherUI::SliderFloat("Fog Mix", this, "FogAmount", &settings.FogAmount, 0.0f, 1.0f, "%.2f");
+			ImGui::Checkbox("Preserve Fog Luminance", (bool*)&settings.PreserveFogLuminance);
+			ImGui::EndTabItem();
+		}
+
+		if (ImGui::BeginTabItem("Interior")) {
+			ImGui::Checkbox("Enable Interior IBL", (bool*)&settings.EnableInterior);
+			if (auto _tt = Util::HoverTooltipWrapper())
+				ImGui::Text("Enables IBL for interior cells with separate tuning options.");
+
+			ImGui::SliderFloat("Interior IBL Scale", &settings.InteriorDiffuseIBLScale, 0.0f, 2.0f, "%.2f");
+			if (auto _tt = Util::HoverTooltipWrapper())
+				ImGui::Text("Controls the intensity of diffuse IBL lighting in interiors.");
+
+			ImGui::SliderFloat("Interior Saturation", &settings.InteriorIBLSaturation, 0.0f, 2.0f, "%.2f");
+			if (auto _tt = Util::HoverTooltipWrapper())
+				ImGui::Text("Controls color saturation of IBL in interiors.");
+
+			ImGui::SliderFloat("Interior DALC Amount", &settings.InteriorDALCAmount, 0.0f, 1.0f, "%.2f");
+			if (auto _tt = Util::HoverTooltipWrapper())
+				ImGui::Text("Amount of Directional Ambient Light Color mixing in interiors.");
+
+			ImGui::SliderFloat("Light Bounce", &settings.InteriorLightBounce, 0.0f, 1.0f, "%.2f");
+			if (auto _tt = Util::HoverTooltipWrapper())
+				ImGui::Text("Simulates indirect light bouncing off surfaces.\nHigher values add more reflected ambient light based on nearby lighting.");
+
+			ImGui::SliderFloat("Specular Boost", &settings.InteriorSpecularBoost, 0.0f, 5.0f, "%.2f");
+			if (auto _tt = Util::HoverTooltipWrapper())
+				ImGui::Text("Boosts specular reflections in interiors.\nHelps metals and shiny surfaces look brighter and more realistic.");
+
+			ImGui::EndTabItem();
+		}
+
+		if (ImGui::BeginTabItem("Advanced")) {
+			ImGui::Checkbox("Use Static IBL For Out-of-World Objects", (bool*)&settings.UseStaticIBL);
+			if (auto _tt = Util::HoverTooltipWrapper())
+				ImGui::Text("Uses static IBL textures for objects not in the world (e.g. inventory items).");
+			ImGui::EndTabItem();
+		}
+
+		ImGui::EndTabBar();
 	}
-	Util::WeatherUI::SliderFloat("Fog Mix", this, "FogAmount", &settings.FogAmount, 0.0f, 1.0f, "%.2f");
-	ImGui::Checkbox("Preserve Fog Luminance", (bool*)&settings.PreserveFogLuminance);
 }
 
 void IBL::LoadSettings(json& o_json)

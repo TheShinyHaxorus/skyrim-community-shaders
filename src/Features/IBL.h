@@ -50,6 +50,13 @@ public:
 		float DALCAmount = 1.0f;
 		float IBLSaturation = 1.0f;
 		float FogAmount = 0.0f;
+		// Interior-specific settings
+		float InteriorDiffuseIBLScale = 0.5f;
+		float InteriorDALCAmount = 0.8f;
+		float InteriorIBLSaturation = 0.7f;
+		float InteriorLightBounce = 0.3f;  // Simulates light bouncing off surfaces in interiors
+		float InteriorSpecularBoost = 1.5f;  // Boosts specular reflections for metals in interiors
+		float pad1[3] = { 0, 0, 0 };
 	} settings;
 
 	eastl::unique_ptr<Texture2D> staticDiffuseIBLTexture = nullptr;
