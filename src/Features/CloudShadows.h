@@ -9,8 +9,9 @@ public:
 	struct alignas(16) Settings
 	{
 		float Opacity = 0.8f;
-		float InnerCloudShadowOpacity = 0.5f;
-		float pad[2];
+		float InnerCloudShadowOpacity = 0.3f;
+		float SunScatterStrength = 0.3f;
+		float VolumetricLightPenetration = 0.3f;
 	};
 
 	Settings settings;

@@ -3,7 +3,9 @@
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(
 	CloudShadows::Settings,
 	Opacity,
-	InnerCloudShadowOpacity)
+	InnerCloudShadowOpacity,
+	SunScatterStrength,
+	VolumetricLightPenetration)
 
 void CloudShadows::DrawSettings()
 {
@@ -12,9 +14,19 @@ void CloudShadows::DrawSettings()
 		ImGui::Text("Controls how dark cloud shadows appear on terrain and objects.");
 	}
 
-	ImGui::SliderFloat("Inner Cloud Shadow Opacity", &settings.InnerCloudShadowOpacity, 0.0f, 1.0f, "%.2f");
+	ImGui::SliderFloat("Inner Cloud Shadow Opacity", &settings.InnerCloudShadowOpacity, 0.0f, 2.0f, "%.2f");
 	if (auto _tt = Util::HoverTooltipWrapper()) {
-		ImGui::Text("Controls shadowing applied within the clouds themselves. Higher values make the underside of clouds darker.");
+		ImGui::Text("Extinction coefficient for cloud self-shadowing. Higher values make cloud undersides darker. Values above 1 give cumulonimbus-style heavy shadows.");
+	}
+
+	ImGui::SliderFloat("Sun Scatter Strength", &settings.SunScatterStrength, 0.0f, 1.0f, "%.2f");
+	if (auto _tt = Util::HoverTooltipWrapper()) {
+		ImGui::Text("Controls how much the sun direction brightens cloud edges facing the sun (silver lining effect) and darkens the opposite side.");
+	}
+
+	ImGui::SliderFloat("Volumetric Light Penetration", &settings.VolumetricLightPenetration, 0.0f, 1.0f, "%.2f");
+	if (auto _tt = Util::HoverTooltipWrapper()) {
+		ImGui::Text("Controls how much volumetric light (god rays) can penetrate through clouds. At 0, clouds fully block god rays. At 1, god rays pass through clouds unaffected.");
 	}
 }
 

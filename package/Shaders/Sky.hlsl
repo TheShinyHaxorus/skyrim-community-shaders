@@ -245,31 +245,42 @@ PS_OUTPUT main(PS_INPUT input)
 
 #	if defined(CLOUD_SHADOWS) && defined(CLOUDS)
 	if (baseColor.w > 0.0) {
+		// viewDir = this cloud fragment's direction in sky-space (not the camera look direction).
+		// For the sky dome, the vertex WorldPosition IS the sky direction, so normalize gives the correct cloud position on the celestial sphere.
 		float3 viewDir = normalize(input.WorldPosition.xyz);
-		float rayStep = 1.0 / 32.0;
-		float rayPos = rayStep * 0.5;
-		float4 rayShadow = 0.0;
 
-		float3 PoissonDisc[] = {
-			float3(0.460921f, 0.615192f, 0.887539f),
-			float3(0.757347f, 0.911008f, 0.189581f),
-			float3(0.548753f, 0.145482f, 0.0548723f),
-			float3(0.90051f, 0.157048f, 0.623493f)
-		};
+		// based self-shadowing using Beer-Lambert transmittance.
+		const int SHADOW_STEPS = 8;
+		float rcpSteps = rcp(float(SHADOW_STEPS));
+		float totalDensity = 0.0;
+
+		// Clamp sunlight direction to the upper hemisphere so the march always finds cloud density.
+		float3 lightDir = normalize(float3(SharedData::DirLightDirection.xy, max(0.05, SharedData::DirLightDirection.z)));
 
 		[unroll]
-		for (int i = 0; i < 4; i++) {
-			float3 raySample = normalize(lerp(viewDir, SharedData::DirLightDirection.xyz, rayPos) + (PoissonDisc[i] * 2.0 - 1.0) * 0.01);
-
-			if (raySample.z < 0.0)
-				rayShadow[i] += -raySample.z;
-			else
-				rayShadow[i] = max(rayShadow[i], CloudShadows::VolumetricCloudShadowsTexture.SampleLevel(SampBaseSampler, raySample, 0).x);
-
-			rayPos += rayStep;
+		for (int i = 0; i < SHADOW_STEPS; i++) {
+			float t = (float(i) + 0.5) * rcpSteps;
+			float3 sampleDir = normalize(lerp(viewDir, lightDir, t));
+			totalDensity += CloudShadows::VolumetricCloudShadowsTexture.SampleLevel(SampBaseSampler, sampleDir, 0).x;
 		}
 
-		psout.Color.xyz *= (1.0 - saturate(dot(rayShadow, 0.25)) * SharedData::cloudShadowsSettings.InnerCloudShadowOpacity);
+		// Beer-Lambert transmittance.
+		float dirLightLum = dot(SharedData::DirLightColor.xyz, float3(0.2126, 0.7152, 0.0722));
+		float transmittance = exp(-totalDensity * rcpSteps * SharedData::cloudShadowsSettings.InnerCloudShadowOpacity * saturate(dirLightLum));
+
+		// Multi-scattering approximation
+		transmittance = lerp(transmittance, 1.0, 0.25 * baseColor.w * (1.0 - transmittance));
+
+		psout.Color.xyz *= transmittance;
+
+		// Sun/moon scatter: Henyey-Greenstein phase function
+		float sunCos = dot(viewDir, lightDir);
+		static const float g = 0.8;
+		static const float g2 = g * g;
+		float forwardScatter = (1.0 - g2) / (4.0 * 3.14159265 * pow(1.0 + g2 - 2.0 * g * sunCos, 1.5));
+		float shadowSide = saturate(-sunCos) * 0.25;
+		float scatter = SharedData::cloudShadowsSettings.SunScatterStrength * baseColor.w * transmittance;
+		psout.Color.xyz = max(0, psout.Color.xyz * (1.0 - shadowSide * scatter) + SharedData::DirLightColor.xyz * forwardScatter * scatter);
 	}
 #	endif
 

@@ -115,7 +115,17 @@ cbuffer PerTechnique : register(b0)
 	float shadowContribution = noShadow;
 
 #	if defined(TERRAIN_SHADOWS) || defined(CLOUD_SHADOWS)
-	shadowContribution *= sqrt(ShadowSampling::GetWorldShadow(positionWS.xyz, PosAdjust[eyeIndex], eyeIndex));
+	if (!SharedData::InInterior && !SharedData::HideSky && !SharedData::InMapMenu) {
+		float worldShadow = 1.0;
+#		if defined(TERRAIN_SHADOWS)
+		worldShadow *= TerrainShadows::GetTerrainShadow(positionWS.xyz + PosAdjust[eyeIndex], LinearSampler);
+#		endif
+#		if defined(CLOUD_SHADOWS)
+		float cloudMult = CloudShadows::GetCloudShadowMult(positionWS.xyz, LinearSampler);
+		worldShadow *= lerp(cloudMult, 1.0, SharedData::cloudShadowsSettings.VolumetricLightPenetration);
+#		endif
+		shadowContribution *= sqrt(worldShadow);
+	}
 #	endif
 
 	float vl = shadowContribution * densityContribution * phaseContribution;
