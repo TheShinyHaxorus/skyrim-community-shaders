@@ -277,7 +277,7 @@ PS_OUTPUT main(PS_INPUT input)
 		float sunCos = dot(viewDir, lightDir);
 		static const float g = 0.8;
 		static const float g2 = g * g;
-		float forwardScatter = (1.0 - g2) / (4.0 * 3.14159265 * pow(1.0 + g2 - 2.0 * g * sunCos, 1.5));
+		float forwardScatter = min((1.0 - g2) / (4.0 * Math::PI * pow(1.0 + g2 - 2.0 * g * sunCos, 1.5)), 10.0);
 		float shadowSide = saturate(-sunCos) * 0.25;
 		float scatter = SharedData::cloudShadowsSettings.SunScatterStrength * baseColor.w * transmittance;
 		psout.Color.xyz = max(0, psout.Color.xyz * (1.0 - shadowSide * scatter) + SharedData::DirLightColor.xyz * forwardScatter * scatter);

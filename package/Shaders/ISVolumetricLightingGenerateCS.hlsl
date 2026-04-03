@@ -120,11 +120,11 @@ cbuffer PerTechnique : register(b0)
 #		if defined(TERRAIN_SHADOWS)
 		worldShadow *= TerrainShadows::GetTerrainShadow(positionWS.xyz + PosAdjust[eyeIndex], LinearSampler);
 #		endif
-#		if defined(CLOUD_SHADOWS)
-		float cloudMult = CloudShadows::GetCloudShadowMult(positionWS.xyz, LinearSampler);
-		worldShadow *= lerp(cloudMult, 1.0, SharedData::cloudShadowsSettings.VolumetricLightPenetration);
-#		endif
 		shadowContribution *= sqrt(worldShadow);
+#		if defined(CLOUD_SHADOWS)
+		float cloudMult = sqrt(CloudShadows::GetCloudShadowMult(positionWS.xyz, LinearSampler));
+		shadowContribution *= lerp(cloudMult, 1.0, SharedData::cloudShadowsSettings.VolumetricLightPenetration);
+#		endif
 	}
 #	endif
 
