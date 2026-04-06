@@ -262,6 +262,18 @@ namespace SharedData
 		float3 pad;
 	};
 
+	struct CloudRelightSettings
+	{
+		uint enabled;
+		float cloudRelightMix;
+		float cloudOriginalMix;
+		float silverLiningMix;
+		//
+		float silverLiningSpread;
+		float nightBrightness;
+		float2 pad;
+	};
+
 	cbuffer FeatureData : register(b6)
 	{
 		GrassLightingSettings grassLightingSettings;
@@ -280,6 +292,7 @@ namespace SharedData
 		LinearLightingSettings linearLightingSettings;
 		TerrainBlendingSettings terrainBlendingSettings;
 		ExponentialHeightFogSettings exponentialHeightFogSettings;
+		CloudRelightSettings cloudRelightSettings;
 	};
 
 	Texture2D<float4> DepthTexture : register(t17);
