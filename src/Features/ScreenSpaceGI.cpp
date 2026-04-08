@@ -344,6 +344,49 @@ void ScreenSpaceGI::DrawSettings()
 	}
 }
 
+void ScreenSpaceGI::DrawBasicSettings()
+{
+	auto select = [](auto flatVal, auto vrVal) { return globals::game::isVR ? vrVal : flatVal; };
+
+	// Quality presets
+	if (ImGui::BeginTable("##BasicPresets", 3)) {
+		ImGui::TableNextColumn();
+		if (ImGui::Button("Low", { -1, 0 })) {
+			settings.NumSlices = 10;
+			settings.NumSteps = 12;
+			settings.ResolutionMode = 2;
+			settings.EnableBlur = true;
+			settings.EnableGI = true;
+			recompileFlag = true;
+		}
+		ImGui::TableNextColumn();
+		if (ImGui::Button("Standard", { -1, 0 })) {
+			settings.NumSlices = 4;
+			settings.NumSteps = 8;
+			settings.ResolutionMode = 1;
+			settings.EnableBlur = true;
+			settings.EnableGI = true;
+			recompileFlag = true;
+		}
+		ImGui::TableNextColumn();
+		if (ImGui::Button("Extreme", { -1, 0 })) {
+			settings.NumSlices = 4;
+			settings.NumSteps = 8;
+			settings.ResolutionMode = 0;
+			settings.EnableBlur = true;
+			settings.EnableGI = true;
+			recompileFlag = true;
+		}
+		ImGui::EndTable();
+	}
+
+	ImGui::SliderFloat("AO Power", &settings.AOPower, 0.f, 6.f, "%.2f");
+	{
+		auto ilGuard = Util::DisableGuard(!settings.EnableGI);
+		ImGui::SliderFloat("IL Brightness", &settings.GIStrength, 0.f, 6.f, "%.2f");
+	}
+}
+
 void ScreenSpaceGI::LoadSettings(json& o_json)
 {
 	settings = o_json;

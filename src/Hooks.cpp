@@ -2,6 +2,7 @@
 
 #include "ShaderTools/BSShaderHooks.h"
 
+#include "BasicMenu/BasicMenu.h"
 #include "Feature.h"
 #include "Globals.h"
 #include "Menu.h"
@@ -494,7 +495,12 @@ struct BSInputDeviceManager_PollInputDevices
 			}
 		}
 
-		if (blockedDevice && menu->ShouldSwallowInput()) {  //the menu is open, eat all keypresses
+		// Block ALL input (including gamepad) when BasicMenu is active so the
+		// game doesn't process d-pad/stick input while navigating the UI.
+		if (globals::basicMenu->IsActive())
+			blockedDevice = true;
+
+		if (blockedDevice && (menu->ShouldSwallowInput() || globals::basicMenu->IsActive())) {
 			// During active flying preview, let input reach the game for movement/camera
 			if (menu->IsPreviewFlying()) {
 				func(a_dispatcher, a_events);

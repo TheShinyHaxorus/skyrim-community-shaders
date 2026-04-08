@@ -85,6 +85,8 @@ public:
 	virtual void SetupResources() {}
 	virtual void Reset() {}
 	virtual void DrawSettings() {}
+	virtual void DrawBasicSettings() {}       // Simplified settings for the basic in-game menu
+	virtual bool HasBasicSettings() const { return false; }  // Whether DrawBasicSettings has content
 	virtual void DrawUnloadedUI();
 
 	virtual void ReflectionsPrepass() {};

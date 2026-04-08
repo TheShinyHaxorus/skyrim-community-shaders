@@ -1,3 +1,4 @@
+#include "BasicMenu/BasicMenu.h"
 #include "Deferred.h"
 #include "Features/Upscaling.h"
 #include "FrameAnnotations.h"
@@ -134,6 +135,8 @@ void MessageHandler(SKSE::MessagingInterface::Message* message)
 
 				globals::truePBR->DataLoaded();
 				Feature::ForEachLoadedFeature("DataLoaded", [](Feature* feature) { feature->DataLoaded(); });
+
+				globals::basicMenu->Register();
 			}
 
 			break;

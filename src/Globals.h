@@ -41,6 +41,7 @@ class Deferred;
 struct TruePBR;
 class RenderDoc;
 class Menu;
+class BasicMenu;
 
 namespace SIE
 {
@@ -259,6 +260,7 @@ namespace globals
 	extern Deferred* deferred;
 	extern TruePBR* truePBR;
 	extern Menu* menu;
+	extern BasicMenu* basicMenu;
 	extern SIE::ShaderCache* shaderCache;
 
 	void OnInit();

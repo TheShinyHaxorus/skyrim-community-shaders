@@ -34,6 +34,22 @@ void VolumetricLighting::DrawSettings()
 		DrawVolumetricLightingSettings(settings.InteriorQuality, settings.InteriorCustomSize, true, inInterior);
 }
 
+void VolumetricLighting::DrawBasicSettings()
+{
+	if (ImGui::Checkbox("Exterior", &settings.ExteriorEnabled))
+		SetupVL();
+	if (settings.ExteriorEnabled) {
+		if (ImGui::SliderInt("Exterior Quality", &settings.ExteriorQuality, 0, 2, QualityNames[settings.ExteriorQuality]))
+			SetupVL();
+	}
+	if (ImGui::Checkbox("Interior", &settings.InteriorEnabled))
+		SetupVL();
+	if (settings.InteriorEnabled) {
+		if (ImGui::SliderInt("Interior Quality", &settings.InteriorQuality, 0, 2, QualityNames[settings.InteriorQuality]))
+			SetupVL();
+	}
+}
+
 void VolumetricLighting::DrawVolumetricLightingSettings(int32_t& quality, TextureSize& customSize, const bool isInterior, const bool inLocationType)
 {
 	auto& [Width, Height, Depth] = FetchCurrentSizeInUnits(isInterior);

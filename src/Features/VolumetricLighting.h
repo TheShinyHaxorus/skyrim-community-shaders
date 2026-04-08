@@ -45,6 +45,8 @@ public:
 	virtual void LoadSettings(json&) override;
 	virtual void RestoreDefaultSettings() override;
 	virtual void DrawSettings() override;
+	virtual void DrawBasicSettings() override;
+	virtual bool HasBasicSettings() const override { return true; }
 	virtual void DataLoaded() override;
 	virtual void PostPostLoad() override;
 	virtual void SetupResources() override;

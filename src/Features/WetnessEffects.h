@@ -113,6 +113,8 @@ public:
 	virtual void PostPostLoad() override;
 
 	virtual void DrawSettings() override;
+	virtual void DrawBasicSettings() override;
+	virtual bool HasBasicSettings() const override { return true; }
 
 	virtual void LoadSettings(json& o_json) override;
 	virtual void SaveSettings(json& o_json) override;

@@ -513,6 +513,18 @@ void WetnessEffects::DrawSettings()
 	}
 }
 
+void WetnessEffects::DrawBasicSettings()
+{
+	ImGui::Checkbox("Wetness Effects", (bool*)&settings.EnableWetnessEffects);
+	{
+		auto guard = Util::DisableGuard(!settings.EnableWetnessEffects);
+		ImGui::SliderFloat("Rain Wetness", &settings.MaxRainWetness, 0.0f, 2.5f, "%.1f");
+		ImGui::SliderFloat("Puddle Wetness", &settings.MaxPuddleWetness, 0.0f, 6.0f, "%.1f");
+		ImGui::SliderFloat("Weather Transition", &settings.WeatherTransitionSpeed, 0.2f, 8.0f, "%.1f");
+		ImGui::Checkbox("Raindrop Effects", (bool*)&settings.EnableRaindropFx);
+	}
+}
+
 // =====================
 // UI/ImGui Helper Functions
 // =====================

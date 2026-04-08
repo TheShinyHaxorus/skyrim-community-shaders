@@ -35,6 +35,7 @@
 #include "Features/WaterEffects.h"
 #include "Features/WeatherEditor.h"
 #include "Features/WetnessEffects.h"
+#include "BasicMenu/BasicMenu.h"
 #include "Menu.h"
 #include "ShaderCache.h"
 #include "State.h"
@@ -146,6 +147,7 @@ namespace globals
 	Deferred* deferred = nullptr;
 	TruePBR* truePBR = nullptr;
 	Menu* menu = nullptr;
+	BasicMenu* basicMenu = nullptr;
 	SIE::ShaderCache* shaderCache = nullptr;
 
 	void OnInit()
@@ -153,6 +155,7 @@ namespace globals
 		shaderCache = &SIE::ShaderCache::Instance();
 		state = State::GetSingleton();
 		menu = Menu::GetSingleton();
+		basicMenu = BasicMenu::GetSingleton();
 		deferred = Deferred::GetSingleton();
 		truePBR = TruePBR::GetSingleton();
 	}
