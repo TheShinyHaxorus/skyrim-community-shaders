@@ -7,6 +7,7 @@
 #include "Deferred.h"
 #include "FeatureIssues.h"
 #include "Features/CloudShadows.h"
+#include "Features/HDRDisplay.h"
 #include "Features/PerformanceOverlay.h"
 #include "Features/TerrainBlending.h"
 #include "Features/TerrainHelper.h"
@@ -23,6 +24,20 @@
 #include "Utils/SphericalHarmonics.h"
 #include "WeatherManager.h"
 #include "WeatherVariableRegistry.h"
+
+void State::UpdateSkyShaderPermutation(RE::BSRenderPass* a_pass)
+{
+	permutationData.ExtraShaderDescriptor &= ~static_cast<uint32_t>(State::ExtraShaderDescriptors::IsSun);
+
+	if (!a_pass || !a_pass->shaderProperty)
+		return;
+
+	auto* skyProperty = static_cast<const RE::BSSkyShaderProperty*>(a_pass->shaderProperty);
+	if (skyProperty->uiSkyObjectType == RE::BSSkyShaderProperty::SkyObject::SO_SUN ||
+		skyProperty->uiSkyObjectType == RE::BSSkyShaderProperty::SkyObject::SO_SUN_GLARE) {
+		permutationData.ExtraShaderDescriptor |= static_cast<uint32_t>(State::ExtraShaderDescriptors::IsSun);
+	}
+}
 
 void State::Draw()
 {
@@ -841,6 +856,24 @@ void State::UpdateSharedData([[maybe_unused]] bool a_inWorld, [[maybe_unused]] b
 			}
 		}
 
+		// Fallback water height for the VR analytical mask when tile 12 returns the sentinel.
+		// Uses player->GetWaterHeight() (reads relevantWaterHeight from LOADED_REF_DATA) gated by
+		// underwaterCount > 0 so it is only set when the player is actually in a water body.
+		// Covers both interior water (where TES::GetWaterHeight returns -NI_INFINITY) and exterior
+		// partial submersion.  Stored as eye-0 camera-relative Z to match WaterData[].w.
+		data.WaterSystemHeight = -RE::NI_INFINITY;
+		if (globals::game::isVR) {
+			if (auto player = globals::game::player) {
+				if (player->loadedData && player->loadedData->underwaterCount > 0) {
+					float worldHeight = player->GetWaterHeight();
+					if (worldHeight > -RE::NI_INFINITY) {
+						auto eye0Pos = Util::GetEyePosition(0);
+						data.WaterSystemHeight = worldHeight - eye0Pos.z;
+					}
+				}
+			}
+		}
+
 		data.InInterior = Util::IsInterior();
 
 		if (globals::game::sky)
@@ -879,6 +912,8 @@ void State::UpdateSharedData([[maybe_unused]] bool a_inWorld, [[maybe_unused]] b
 		data.AmbientSHR = { dalcSH.r.c0, dalcSH.r.c1[0], dalcSH.r.c1[1], dalcSH.r.c1[2] };
 		data.AmbientSHG = { dalcSH.g.c0, dalcSH.g.c1[0], dalcSH.g.c1[1], dalcSH.g.c1[2] };
 		data.AmbientSHB = { dalcSH.b.c0, dalcSH.b.c1[0], dalcSH.b.c1[1], dalcSH.b.c1[2] };
+
+		data.HDRData = globals::features::hdrDisplay.GetSharedDataHDR();
 
 		sharedDataCB->Update(data);
 	}
