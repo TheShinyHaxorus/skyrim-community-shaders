@@ -9,9 +9,24 @@
 #include "State.h"
 
 #include <algorithm>
+#include <imgui_internal.h>
 #include <ranges>
 #include <unordered_map>
 #include <unordered_set>
+
+// Windows PlaySound macro conflicts with RE::PlaySound
+#ifdef PlaySound
+#	undef PlaySound
+#endif
+
+namespace
+{
+	// Helper to call RE::PlaySound without Windows macro interference
+	void PlayGameSound(const char* a_editorID)
+	{
+		RE::PlaySound(a_editorID);
+	}
+}
 
 // Window flags — no title bar for a cleaner, game-like panel
 static constexpr ImGuiWindowFlags kWindowFlags =
@@ -34,12 +49,7 @@ void BasicMenu::Register()
 }
 
 // --- GFx wrapper for SystemPage.onCategoryButtonPress ---
-// Flash dispatches by event.index (hardcoded switch).  We insert our entry
-// into the visual list and wrap the Flash handler so that:
-//   - Clicks on our entry activate BasicMenu (index == csEntryIndex)
-//   - Clicks on entries AFTER ours get index-1 before forwarding to the
-//     original handler, undoing the insertion shift
-//   - Clicks on entries BEFORE ours forwarded unchanged
+// Flash dispatches by event.index (hardcoded switch).
 
 void CSItemPressHandler::Call(Params& a_params)
 {
@@ -55,7 +65,7 @@ void CSItemPressHandler::Call(Params& a_params)
 	auto index = static_cast<std::int32_t>(indexVal.GetNumber());
 
 	if (index == csIndex) {
-		// Our entry was clicked — close journal, activate BasicMenu
+		// entry was clicked — close journal, activate BasicMenu
 		auto* queue = RE::UIMessageQueue::GetSingleton();
 		queue->AddMessage(RE::JournalMenu::MENU_NAME, RE::UI_MESSAGE_TYPE::kHide, nullptr);
 		BasicMenu::GetSingleton()->Activate();
@@ -109,10 +119,8 @@ bool BasicMenu::SetupJournalMenu()
 	}
 
 	// Already present (shouldn't happen since journal is recreated, but guard)
-	if (auto it = std::ranges::find(elements, csLabel); it != elements.end()) {
-		csEntryIndex = static_cast<std::int32_t>(std::distance(elements.begin(), it));
+	if (auto it = std::ranges::find(elements, csLabel); it != elements.end())
 		return true;
-	}
 
 	// Find insertion point — before the bottom cluster (CONTROLS/HELP/QUIT).
 	// Try both "$"-prefixed keys and bare text to cover vanilla/SkyUI/DD.
@@ -127,7 +135,7 @@ bool BasicMenu::SetupJournalMenu()
 		insertPos = static_cast<ptrdiff_t>(elements.size());
 
 	elements.insert(elements.begin() + insertPos, csLabel);
-	csEntryIndex = static_cast<std::int32_t>(insertPos);
+	const auto csEntryIndex = static_cast<std::int32_t>(insertPos);
 
 	// Rebuild the GFx entry list
 	entryList.ClearElements();
@@ -139,8 +147,7 @@ bool BasicMenu::SetupJournalMenu()
 	}
 	categoryList.Invoke("InvalidateData");
 
-	// Wrap the Flash item-press handler so we can intercept our entry
-	// and adjust shifted indices for all others.
+	// Wrap the Flash item-press handler so we can intercept
 	RE::GFxValue origHandler;
 	if (page.GetMember("onCategoryButtonPress", &origHandler) && origHandler.IsObject()) {
 		page.SetMember("_csOrigItemPress", origHandler);
@@ -161,7 +168,8 @@ RE::BSEventNotifyControl BasicMenu::ProcessEvent(
 		return RE::BSEventNotifyControl::kContinue;
 
 	if (a_evn->opening && a_evn->menuName == RE::JournalMenu::MENU_NAME) {
-		journalHooked = SetupJournalMenu();
+		if (!SetupJournalMenu())
+			logger::warn("BasicMenu: failed to inject entry into journal system page");
 	}
 
 	return RE::BSEventNotifyControl::kContinue;
@@ -282,23 +290,29 @@ void BasicMenu::RebuildFeatureList()
 
 // --- Drawing ---
 
-// Style — lower alpha for transparency so the game world is visible
-static constexpr float kBgAlpha = 0.35f;
-static constexpr float kBorderSize = 2.0f;
+// Vanilla Skyrim-inspired color palette (ported from FUCK, MIT License)
+static constexpr float kBgAlpha = 0.68f;
+static constexpr float kBorderSize = 4.0f;
 
 static constexpr ImVec4 kColorBg{ 0.0f, 0.0f, 0.0f, kBgAlpha };
-static constexpr ImVec4 kColorBorder{ 0.5f, 0.5f, 0.5f, 0.4f };
-static constexpr ImVec4 kColorText{ 1.0f, 1.0f, 1.0f, 1.0f };
-static constexpr ImVec4 kColorTextDim{ 0.7f, 0.7f, 0.7f, 0.8f };
-static constexpr ImVec4 kColorFrameBg{ 0.15f, 0.15f, 0.15f, 0.5f };
-static constexpr ImVec4 kColorFrameBgHovered{ 0.25f, 0.25f, 0.25f, 0.6f };
-static constexpr ImVec4 kColorCheckMark{ 1.0f, 1.0f, 1.0f, 1.0f };
-static constexpr ImVec4 kColorSliderGrab{ 1.0f, 1.0f, 1.0f, 0.3f };
-static constexpr ImVec4 kColorSliderGrabActive{ 1.0f, 1.0f, 1.0f, 0.6f };
-static constexpr ImVec4 kColorButton{ 0.15f, 0.15f, 0.15f, 0.5f };
-static constexpr ImVec4 kColorButtonHovered{ 0.3f, 0.3f, 0.3f, 0.7f };
-static constexpr ImVec4 kColorButtonActive{ 0.4f, 0.4f, 0.4f, 0.8f };
-static constexpr ImVec4 kColorNavHighlight{ 1.0f, 1.0f, 1.0f, 0.4f };
+static constexpr ImVec4 kColorBorder{ 0.25f, 0.25f, 0.25f, 1.0f };
+static constexpr ImVec4 kColorText{ 0.733f, 0.741f, 0.749f, 1.0f };
+static constexpr ImVec4 kColorTextDim{ 0.733f, 0.741f, 0.749f, 0.30f };
+static constexpr ImVec4 kColorFrameBg{ 1.0f, 1.0f, 1.0f, 0.063f };
+static constexpr ImVec4 kColorFrameBgHovered{ 1.0f, 1.0f, 1.0f, 0.2f };
+static constexpr ImVec4 kColorButton{ 0.0f, 0.0f, 0.0f, 1.0f };
+static constexpr ImVec4 kColorButtonHovered{ 1.0f, 1.0f, 1.0f, 0.2f };
+static constexpr ImVec4 kColorButtonActive{ 0.60f, 0.60f, 0.60f, 1.0f };
+static constexpr ImVec4 kColorNavHighlight{ 1.0f, 1.0f, 1.0f, 1.0f };
+static constexpr ImVec4 kColorSeparator{ 0.25f, 0.25f, 0.25f, 1.0f };
+static constexpr ImVec4 kColorScrollbarBg{ 0.0f, 0.0f, 0.0f, 0.0f };
+static constexpr ImVec4 kColorScrollbarGrab{ 0.31f, 0.31f, 0.31f, 1.0f };
+
+// Toggle switch colors (ported from FUCK)
+static constexpr ImVec4 kColorToggleRail{ 0.0f, 0.0f, 0.0f, 1.0f };
+static constexpr ImVec4 kColorToggleBorder{ 0.25f, 0.25f, 0.25f, 1.0f };
+static constexpr ImVec4 kColorToggleBorderActive{ 0.60f, 0.60f, 0.60f, 1.0f };
+static constexpr ImVec4 kColorToggleKnob{ 0.0f, 0.0f, 0.0f, 1.0f };
 
 // Performance badge colors
 static constexpr ImVec4 kColorPerfHeavy{ 1.0f, 0.35f, 0.35f, 1.0f };
@@ -310,7 +324,7 @@ static constexpr ImVec4 kColorVRAMOk{ 0.3f, 0.8f, 0.3f, 1.0f };
 static constexpr ImVec4 kColorVRAMWarn{ 1.0f, 0.8f, 0.2f, 1.0f };
 static constexpr ImVec4 kColorVRAMCrit{ 1.0f, 0.3f, 0.3f, 1.0f };
 
-static constexpr int kStyleColorCount = 17;
+static constexpr int kStyleColorCount = 15;
 static constexpr int kStyleVarCount = 3;
 
 static void PushPanelStyle()
@@ -323,19 +337,17 @@ static void PushPanelStyle()
 	ImGui::PushStyleColor(ImGuiCol_FrameBg, kColorFrameBg);
 	ImGui::PushStyleColor(ImGuiCol_FrameBgHovered, kColorFrameBgHovered);
 	ImGui::PushStyleColor(ImGuiCol_FrameBgActive, kColorFrameBgHovered);
-	ImGui::PushStyleColor(ImGuiCol_CheckMark, kColorCheckMark);
-	ImGui::PushStyleColor(ImGuiCol_SliderGrab, kColorSliderGrab);
-	ImGui::PushStyleColor(ImGuiCol_SliderGrabActive, kColorSliderGrabActive);
 	ImGui::PushStyleColor(ImGuiCol_Button, kColorButton);
 	ImGui::PushStyleColor(ImGuiCol_ButtonHovered, kColorButtonHovered);
 	ImGui::PushStyleColor(ImGuiCol_ButtonActive, kColorButtonActive);
-	ImGui::PushStyleColor(ImGuiCol_Header, ImVec4(0.15f, 0.15f, 0.15f, 0.4f));
-	ImGui::PushStyleColor(ImGuiCol_HeaderHovered, ImVec4(0.25f, 0.25f, 0.25f, 0.5f));
 	ImGui::PushStyleColor(ImGuiCol_NavCursor, kColorNavHighlight);
+	ImGui::PushStyleColor(ImGuiCol_Separator, kColorSeparator);
+	ImGui::PushStyleColor(ImGuiCol_ScrollbarBg, kColorScrollbarBg);
+	ImGui::PushStyleColor(ImGuiCol_ScrollbarGrab, kColorScrollbarGrab);
 
 	ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, kBorderSize);
-	ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 3.0f);
-	ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(12.0f, 10.0f));
+	ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 0.0f);
+	ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(8.0f, 8.0f));
 }
 
 static void PopPanelStyle()
@@ -354,6 +366,7 @@ void BasicMenu::Draw()
 
 	// ESC / gamepad B → close
 	if (ImGui::IsKeyPressed(ImGuiKey_Escape) || ImGui::IsKeyPressed(ImGuiKey_GamepadFaceRight)) {
+		PlayGameSound("UIMenuCancel");
 		Deactivate();
 		return;
 	}
@@ -376,7 +389,7 @@ void BasicMenu::Draw()
 	}
 
 	// Title
-	ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 1.0f, 1.0f, 0.9f));
+	ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 1.0f, 1.0f, 1.0f));
 	ImGui::Text("COMMUNITY SHADERS");
 	ImGui::PopStyleColor();
 	ImGui::Separator();
@@ -392,12 +405,11 @@ void BasicMenu::Draw()
 			ImGui::SetKeyboardFocusHere();
 
 		static constexpr const char* presetLabels[] = { "Low", "Medium", "High" };
-		const float btnWidth = (ImGui::GetContentRegionAvail().x - ImGui::GetStyle().ItemSpacing.x * 2.0f) / 3.0f;
 
 		for (int i = 0; i < 3; ++i) {
 			if (i > 0)
 				ImGui::SameLine();
-			if (ImGui::Button(presetLabels[i], ImVec2(btnWidth, 0))) {
+			if (DrawButton(presetLabels[i])) {
 				// Apply to SSGI
 				auto& ssgi = globals::features::screenSpaceGI;
 				if (ssgi.loaded) {
@@ -475,7 +487,7 @@ void BasicMenu::DrawFeatureToggle(const FeatureEntry& a_entry)
 	// Runtime toggle — directly controls whether the feature is active
 	bool enabled = a_entry.feature->loaded;
 
-	if (ImGui::Checkbox(a_entry.feature->GetName().c_str(), &enabled)) {
+	if (DrawToggle(a_entry.feature->GetName().c_str(), &enabled)) {
 		a_entry.feature->loaded = enabled;
 		if (!enabled)
 			userToggledOff.insert(a_entry.feature->GetShortName());
@@ -483,7 +495,7 @@ void BasicMenu::DrawFeatureToggle(const FeatureEntry& a_entry)
 			userToggledOff.erase(a_entry.feature->GetShortName());
 	}
 
-	// Color-coded resource badge on the same line, right-aligned
+	// Description with color-coded resource badge on the right
 	{
 		ImVec4 badgeColor;
 		switch (a_entry.perfLevel) {
@@ -498,21 +510,187 @@ void BasicMenu::DrawFeatureToggle(const FeatureEntry& a_entry)
 			break;
 		}
 
+		ImGui::PushStyleColor(ImGuiCol_Text, kColorTextDim);
+		ImGui::TextWrapped("  %s", a_entry.description);
+		ImGui::PopStyleColor();
+
 		ImGui::SameLine();
-		float textWidth = ImGui::CalcTextSize(a_entry.badge).x;
-		ImGui::SetCursorPosX(ImGui::GetContentRegionMax().x - textWidth);
+		float badgeWidth = ImGui::CalcTextSize(a_entry.badge).x;
+		ImGui::SetCursorPosX(ImGui::GetContentRegionMax().x - badgeWidth);
 		ImGui::PushStyleColor(ImGuiCol_Text, badgeColor);
 		ImGui::TextUnformatted(a_entry.badge);
 		ImGui::PopStyleColor();
 	}
 
-	// One-line description
-	ImGui::PushStyleColor(ImGuiCol_Text, kColorTextDim);
-	ImGui::TextWrapped("  %s", a_entry.description);
-	ImGui::PopStyleColor();
-
 	ImGui::Spacing();
 	ImGui::PopID();
+}
+
+// =====================================================================
+// Custom widgets (ported from FUCK by Fuzzlesz, MIT License)
+// Simplified to remove FUCK-specific dependencies (IconFont manager,
+// FUCKMan scale, Input manager).
+// =====================================================================
+
+bool BasicMenu::DrawToggle(const char* a_label, bool* a_value)
+{
+	ImGuiWindow* window = ImGui::GetCurrentWindow();
+	if (window->SkipItems)
+		return false;
+
+	ImGuiContext& g = *GImGui;
+	const ImGuiID id = window->GetID(a_label);
+
+	const float frameH = ImGui::GetFrameHeight();
+	const float width = frameH * 1.25f;
+
+	// Build label text (strip ## hidden ID parts)
+	std::string_view labelView(a_label);
+	auto doubleHash = labelView.find("##");
+	if (doubleHash != std::string_view::npos)
+		labelView = labelView.substr(0, doubleHash);
+
+	const ImVec2 labelSize = ImGui::CalcTextSize(labelView.data(), labelView.data() + labelView.size());
+
+	// Layout: label on left, toggle on right
+	const ImVec2 pos = window->DC.CursorPos;
+	const float availWidth = ImGui::GetContentRegionAvail().x;
+	const ImRect bb(pos, ImVec2(pos.x + availWidth, pos.y + frameH));
+
+	ImGui::ItemSize(bb);
+	if (!ImGui::ItemAdd(bb, id))
+		return false;
+
+	bool hovered, held;
+	bool pressed = ImGui::ButtonBehavior(bb, id, &hovered, &held);
+	if (pressed) {
+		*a_value = !*a_value;
+		ImGui::MarkItemEdited(id);
+		PlayGameSound("UIMenuFocus");
+	}
+
+	// Smooth animation (ported from FUCK)
+	float* t_anim = window->DC.StateStorage->GetFloatRef(id, *a_value ? 1.0f : 0.0f);
+	const float target = *a_value ? 1.0f : 0.0f;
+	const float animSpeed = 12.0f;
+	const float dt = g.IO.DeltaTime;
+	if (*t_anim < target)
+		*t_anim = ImMin(*t_anim + dt * animSpeed, target);
+	else if (*t_anim > target)
+		*t_anim = ImMax(*t_anim - dt * animSpeed, target);
+	const float t = *t_anim;
+
+	ImDrawList* drawList = window->DrawList;
+
+	// Draw label on left, vertically centered
+	const float textY = pos.y + (frameH - labelSize.y) * 0.5f;
+	drawList->AddText({ pos.x, textY }, ImGui::GetColorU32(ImGuiCol_Text), labelView.data(), labelView.data() + labelView.size());
+
+	// Draw toggle switch on right side
+	const float toggleX = pos.x + availWidth - width;
+
+	// Rail
+	const float railH = frameH * 0.25f;
+	const float railY = pos.y + (frameH - railH) * 0.5f;
+	const ImVec2 railMin = { toggleX + 8.0f, railY };
+	const ImVec2 railMax = { toggleX + width - 8.0f, railY + railH };
+
+	drawList->AddRectFilled(railMin, railMax, ImGui::GetColorU32(kColorToggleRail), g.Style.FrameRounding);
+
+	// Rail border
+	const ImU32 borderCol = (hovered || ImGui::IsItemFocused())
+	                             ? ImGui::GetColorU32(kColorToggleBorderActive)
+	                             : ImGui::GetColorU32(kColorToggleBorder);
+	if (g.Style.FrameBorderSize > 0.0f)
+		drawList->AddRect(railMin, railMax, borderCol, g.Style.FrameRounding, 0, g.Style.FrameBorderSize);
+
+	// Knob
+	const float knobRadius = frameH * 0.32f;
+	const float knobStart = railMin.x - (knobRadius * 0.1f);
+	const float knobEnd = railMax.x + (knobRadius * 0.1f);
+	const float knobX = knobStart + (t * (knobEnd - knobStart));
+	const ImVec2 knobCenter = { knobX, pos.y + (frameH * 0.5f) };
+
+	drawList->AddCircleFilled(knobCenter, knobRadius, ImGui::GetColorU32(kColorToggleKnob));
+
+	// Knob ring
+	const float ringThick = 2.0f;
+	const float ringRadius = knobRadius - 4.0f;
+	const ImU32 knobRingCol = *a_value
+	                              ? ImGui::GetColorU32(ImGuiCol_Text)
+	                              : borderCol;
+	if (ringRadius > 0.5f)
+		drawList->AddCircle(knobCenter, ringRadius, knobRingCol, 0, ringThick);
+
+	// Nav highlight frame for gamepad
+	if (ImGui::IsItemFocused() && (g.IO.ConfigFlags & ImGuiConfigFlags_NavEnableGamepad)) {
+		drawList->AddRect(bb.Min, bb.Max, ImGui::GetColorU32(ImGuiCol_NavCursor), 0.0f, 0, 2.0f);
+	}
+
+	return pressed;
+}
+
+bool BasicMenu::DrawButton(const char* a_label)
+{
+	ImGuiWindow* window = ImGui::GetCurrentWindow();
+	if (window->SkipItems)
+		return false;
+
+	ImGuiContext& g = *GImGui;
+	const ImGuiID id = window->GetID(a_label);
+
+	const ImVec2 textSize = ImGui::CalcTextSize(a_label);
+	const ImVec2 textPad = ImVec2(5.0f, 4.0f);
+	const float borderSize = g.Style.FrameBorderSize > 0.0f ? g.Style.FrameBorderSize : kBorderSize;
+	const float rounding = 6.0f;
+
+	// Button outline needs extra space for the border
+	const float outlining = borderSize + 2.5f;
+	const float outlineInset = outlining * 0.5f;
+
+	const ImVec2 contentSize = ImVec2(textSize.x, ImGui::GetTextLineHeight());
+	ImVec2 sz = ImVec2(
+		contentSize.x + textPad.x * 2.0f + outlineInset * 2.0f,
+		contentSize.y + textPad.y * 2.0f + outlineInset * 2.0f);
+	sz.x = ImMax(sz.x, sz.y);
+
+	// Use available width divided equally (for preset buttons)
+	const float btnWidth = (ImGui::GetContentRegionAvail().x - g.Style.ItemSpacing.x * 2.0f) / 3.0f;
+	sz.x = btnWidth;
+
+	const ImVec2 curPos = window->DC.CursorPos;
+	const ImRect bb(curPos, ImVec2(curPos.x + sz.x, curPos.y + sz.y));
+	ImGui::ItemSize(sz);
+	if (!ImGui::ItemAdd(bb, id))
+		return false;
+
+	const ImRect drawBb = {
+		ImVec2(bb.Min.x + outlineInset, bb.Min.y + outlineInset),
+		ImVec2(bb.Max.x - outlineInset, bb.Max.y - outlineInset)
+	};
+
+	bool hovered, held;
+	bool pressed = ImGui::ButtonBehavior(bb, id, &hovered, &held);
+
+	// Background fill
+	ImGui::RenderFrame(drawBb.Min, drawBb.Max, ImGui::GetColorU32(ImGuiCol_Button), true, rounding);
+
+	// Black outline
+	window->DrawList->AddRect(drawBb.Min, drawBb.Max, IM_COL32(0, 0, 0, 255), rounding, 0, outlining);
+
+	// Themed border
+	const ImU32 borderCol = (hovered || held || ImGui::IsItemFocused())
+	                             ? ImGui::GetColorU32(kColorToggleBorderActive)
+	                             : ImGui::GetColorU32(kColorToggleBorder);
+	window->DrawList->AddRect(drawBb.Min, drawBb.Max, borderCol, rounding, 0, borderSize);
+
+	// Centered text
+	ImGui::RenderTextClipped(bb.Min, bb.Max, a_label, nullptr, &contentSize, { 0.5f, 0.5f });
+
+	if (pressed)
+		PlayGameSound("UIMenuOK");
+
+	return pressed;
 }
 
 void BasicMenu::DrawVRAM()

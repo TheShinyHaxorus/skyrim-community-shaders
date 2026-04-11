@@ -8,9 +8,6 @@
 struct Feature;
 
 // GFxFunctionHandler that wraps the Flash SystemPage.onCategoryButtonPress.
-// Intercepts clicks on the "COMMUNITY SHADERS" entry and adjusts event.index
-// for all entries that shifted due to our insertion, then forwards to the
-// original handler so all other menu entries keep working.
 class CSItemPressHandler : public RE::GFxFunctionHandler
 {
 public:
@@ -23,8 +20,6 @@ private:
 };
 
 // Transparent right-side panel for toggling graphics features.
-// Designed so the player can see effect changes in real-time.
-// Injects a "COMMUNITY SHADERS" entry into the journal system page.
 class BasicMenu : public RE::BSTEventSink<RE::MenuOpenCloseEvent>
 {
 public:
@@ -57,11 +52,14 @@ private:
 	void DrawFeatureToggle(const FeatureEntry& a_entry);
 	void DrawVRAM();
 
+	// Custom toggle switch widget (ported from FUCK, MIT License)
+	static bool DrawToggle(const char* a_label, bool* a_value);
+	// Custom outlined button widget (ported from FUCK, MIT License)
+	static bool DrawButton(const char* a_label);
+
 	// State
 	bool active = false;
 	bool firstFrame = false;
-	bool journalHooked = false;
-	std::int32_t csEntryIndex = -1;
 	std::vector<FeatureEntry> featureList;
 	std::unordered_set<std::string> userToggledOff;  // features disabled by user this session
 };
