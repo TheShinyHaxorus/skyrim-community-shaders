@@ -6,6 +6,7 @@
 #include "Features/VolumetricLighting.h"
 #include "Globals.h"
 #include "Menu.h"
+#include "Utils/UI.h"
 #include "State.h"
 
 #include <algorithm>
@@ -347,7 +348,7 @@ static void PushPanelStyle()
 
 	ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, kBorderSize);
 	ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 0.0f);
-	ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(8.0f, 8.0f));
+	ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(20.0f, 16.0f));
 }
 
 static void PopPanelStyle()
@@ -473,7 +474,11 @@ void BasicMenu::Draw()
 
 	// Hint
 	ImGui::PushStyleColor(ImGuiCol_Text, kColorTextDim);
-	ImGui::Text("Press END for advanced settings");
+	{
+		auto* menu = Menu::GetSingleton();
+		std::string keyName = menu ? Util::Input::KeyIdToString(menu->GetSettings().ToggleKey) : "END";
+		ImGui::Text("Press %s for advanced settings", keyName.c_str());
+	}
 	ImGui::PopStyleColor();
 
 	ImGui::End();
@@ -584,10 +589,10 @@ bool BasicMenu::DrawToggle(const char* a_label, bool* a_value)
 
 	// Draw label on left, vertically centered
 	const float textY = pos.y + (frameH - labelSize.y) * 0.5f;
-	drawList->AddText({ pos.x, textY }, ImGui::GetColorU32(ImGuiCol_Text), labelView.data(), labelView.data() + labelView.size());
+	drawList->AddText({ pos.x + 4.0f, textY }, ImGui::GetColorU32(ImGuiCol_Text), labelView.data(), labelView.data() + labelView.size());
 
 	// Draw toggle switch on right side
-	const float toggleX = pos.x + availWidth - width;
+	const float toggleX = pos.x + availWidth - width - 4.0f;
 
 	// Rail
 	const float railH = frameH * 0.25f;
