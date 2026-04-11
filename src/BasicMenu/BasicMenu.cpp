@@ -606,8 +606,7 @@ bool BasicMenu::DrawToggle(const char* a_label, bool* a_value)
 	const ImU32 borderCol = (hovered || ImGui::IsItemFocused())
 	                             ? ImGui::GetColorU32(kColorToggleBorderActive)
 	                             : ImGui::GetColorU32(kColorToggleBorder);
-	if (g.Style.FrameBorderSize > 0.0f)
-		drawList->AddRect(railMin, railMax, borderCol, g.Style.FrameRounding, 0, g.Style.FrameBorderSize);
+	drawList->AddRect(railMin, railMax, borderCol, g.Style.FrameRounding, 0, 1.0f);
 
 	// Knob
 	const float knobRadius = frameH * 0.32f;
@@ -627,8 +626,8 @@ bool BasicMenu::DrawToggle(const char* a_label, bool* a_value)
 	if (ringRadius > 0.5f)
 		drawList->AddCircle(knobCenter, ringRadius, knobRingCol, 0, ringThick);
 
-	// Nav highlight frame for gamepad
-	if (ImGui::IsItemFocused() && (g.IO.ConfigFlags & ImGuiConfigFlags_NavEnableGamepad)) {
+	// Nav highlight frame for keyboard/gamepad navigation
+	if (ImGui::IsItemFocused()) {
 		drawList->AddRect(bb.Min, bb.Max, ImGui::GetColorU32(ImGuiCol_NavCursor), 0.0f, 0, 2.0f);
 	}
 
@@ -691,6 +690,11 @@ bool BasicMenu::DrawButton(const char* a_label)
 
 	// Centered text
 	ImGui::RenderTextClipped(bb.Min, bb.Max, a_label, nullptr, &contentSize, { 0.5f, 0.5f });
+
+	// Nav highlight frame for keyboard/gamepad navigation
+	if (ImGui::IsItemFocused()) {
+		window->DrawList->AddRect(bb.Min, bb.Max, ImGui::GetColorU32(ImGuiCol_NavCursor), rounding, 0, 2.0f);
+	}
 
 	if (pressed)
 		PlayGameSound("UIMenuOK");
