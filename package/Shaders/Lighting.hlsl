@@ -1812,7 +1812,7 @@ PS_OUTPUT main(PS_INPUT input, bool frontFace : SV_IsFrontFace)
 
 #	if defined(LOD_BLENDING)
 #		if defined(LODOBJECTS) || defined(LODOBJECTSHD)
-	baseColor.xyz = pow(abs(baseColor.xyz), SharedData::lodBlendingSettings.LODObjectGamma) * SharedData::lodBlendingSettings.LODObjectBrightness;
+	baseColor.xyz = pow(abs(baseColor.xyz), SharedData::lodBlendingSettings.LODTreeGamma) * SharedData::lodBlendingSettings.LODTreeBrightness;
 #		elif defined(LODLANDSCAPE)
 // First apply terrain variation if enabled
 #			if defined(TERRAIN_VARIATION)

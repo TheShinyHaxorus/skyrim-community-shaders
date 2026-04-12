@@ -28,7 +28,10 @@ struct LODBlending : Feature
 		float LODTerrainGamma = 1;
 		float LODObjectGamma = 1;
 		float LODObjectSnowGamma = 1;
-		float pad;
+		float pad0 = 0;
+		float LODTreeBrightness = 1;
+		float LODTreeGamma = 1;
+		float2 pad1;
 	};
 
 	Settings settings;

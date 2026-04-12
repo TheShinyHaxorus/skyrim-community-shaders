@@ -8,21 +8,40 @@ NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(
 	DisableTerrainVertexColors,
 	LODTerrainGamma,
 	LODObjectGamma,
-	LODObjectSnowGamma)
+	LODObjectSnowGamma,
+	LODTreeBrightness,
+	LODTreeGamma)
 
 void LODBlending::DrawSettings()
 {
-	ImGui::SliderFloat("LOD Terrain Brightness", &settings.LODTerrainBrightness, 0.01f, 5.f, "%.2f");
-	ImGui::SliderFloat("LOD Object Brightness", &settings.LODObjectBrightness, 0.01f, 5.f, "%.2f");
-	ImGui::SliderFloat("LOD Object Snow Brightness", &settings.LODObjectSnowBrightness, 0.01f, 5.f, "%.2f");
-	ImGui::SliderFloat("LOD Terrain Gamma", &settings.LODTerrainGamma, 0.1f, 3.f, "%.2f");
-	ImGui::SliderFloat("LOD Object Gamma", &settings.LODObjectGamma, 0.1f, 3.f, "%.2f");
-	ImGui::SliderFloat("LOD Object Snow Gamma", &settings.LODObjectSnowGamma, 0.1f, 3.f, "%.2f");
-	ImGui::Checkbox("Disable Terrain Vertex Colors", (bool*)&settings.DisableTerrainVertexColors);
-	if (auto _tt = Util::HoverTooltipWrapper()) {
-		ImGui::Text(
-			"Disables vertex coloring on nearby terrain. "
-			"Best combined with terrain LOD generated in xLODGen with Vertex Color Intensity set to 0. ");
+	if (ImGui::TreeNodeEx("Terrain", ImGuiTreeNodeFlags_DefaultOpen)) {
+		ImGui::SliderFloat("Brightness##Terrain", &settings.LODTerrainBrightness, 0.01f, 5.f, "%.2f");
+		ImGui::SliderFloat("Gamma##Terrain", &settings.LODTerrainGamma, 0.1f, 3.f, "%.2f");
+		ImGui::Checkbox("Disable Vertex Colors", (bool*)&settings.DisableTerrainVertexColors);
+		if (auto _tt = Util::HoverTooltipWrapper()) {
+			ImGui::Text(
+				"Disables vertex coloring on nearby terrain. "
+				"Best combined with terrain LOD generated in xLODGen with Vertex Color Intensity set to 0.");
+		}
+		ImGui::TreePop();
+	}
+
+	if (ImGui::TreeNodeEx("Trees (Billboards & Object LOD)", ImGuiTreeNodeFlags_DefaultOpen)) {
+		ImGui::SliderFloat("Brightness##Tree", &settings.LODTreeBrightness, 0.01f, 5.f, "%.2f");
+		ImGui::SliderFloat("Gamma##Tree", &settings.LODTreeGamma, 0.1f, 3.f, "%.2f");
+		ImGui::TreePop();
+	}
+
+	if (ImGui::TreeNodeEx("Other LOD Objects", ImGuiTreeNodeFlags_DefaultOpen)) {
+		ImGui::SliderFloat("Brightness##Object", &settings.LODObjectBrightness, 0.01f, 5.f, "%.2f");
+		ImGui::SliderFloat("Gamma##Object", &settings.LODObjectGamma, 0.1f, 3.f, "%.2f");
+		ImGui::TreePop();
+	}
+
+	if (ImGui::TreeNodeEx("Snow on LOD Objects", ImGuiTreeNodeFlags_DefaultOpen)) {
+		ImGui::SliderFloat("Brightness##Snow", &settings.LODObjectSnowBrightness, 0.01f, 5.f, "%.2f");
+		ImGui::SliderFloat("Gamma##Snow", &settings.LODObjectSnowGamma, 0.1f, 3.f, "%.2f");
+		ImGui::TreePop();
 	}
 }
 

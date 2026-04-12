@@ -155,6 +155,9 @@ namespace SharedData
 		float LODObjectGamma;
 		float LODObjectSnowGamma;
 		float pad0;
+		float LODTreeBrightness;
+		float LODTreeGamma;
+		float2 pad1;
 	};
 
 	struct HairSpecularSettings
