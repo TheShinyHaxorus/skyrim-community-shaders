@@ -182,6 +182,7 @@ void BasicMenu::Activate()
 {
 	RebuildFeatureList();
 	firstFrame = true;
+	selectedFeatureIdx = -1;
 	active = true;
 }
 
@@ -191,9 +192,15 @@ void BasicMenu::Deactivate()
 		return;
 
 	active = false;
+	selectedFeatureIdx = -1;
 
 	// Persist changes
 	globals::state->Save();
+}
+
+BasicMenu::InputMode BasicMenu::GetInputMode() const
+{
+	return inputMode;
 }
 
 // --- Feature list building ---
@@ -363,10 +370,47 @@ void BasicMenu::Draw()
 		return;
 
 	auto& io = ImGui::GetIO();
-	io.MouseDrawCursor = true;
 
-	// ESC / gamepad B → close
+	// Auto-detect input mode from last event.
+	// Check mouse/keyboard first, then gamepad — so gamepad wins if both
+	// fire in the same frame (common when mouse has residual delta).
+	bool sawMouseKB = false;
+	bool sawGamepad = false;
+
+	if (ImGui::IsKeyPressed(ImGuiKey_MouseLeft) || ImGui::IsKeyPressed(ImGuiKey_MouseRight) ||
+		(io.MouseDelta.x * io.MouseDelta.x + io.MouseDelta.y * io.MouseDelta.y) > 1.0f) {
+		sawMouseKB = true;
+	}
+	for (int key = ImGuiKey_Tab; key <= ImGuiKey_KeypadEqual; ++key) {
+		if (ImGui::IsKeyPressed(static_cast<ImGuiKey>(key))) {
+			sawMouseKB = true;
+			break;
+		}
+	}
+	for (int key = ImGuiKey_GamepadStart; key <= ImGuiKey_GamepadRStickRight; ++key) {
+		if (ImGui::IsKeyPressed(static_cast<ImGuiKey>(key))) {
+			sawGamepad = true;
+			break;
+		}
+	}
+
+	// Gamepad takes priority to avoid cursor popping up from residual mouse delta
+	if (sawGamepad)
+		inputMode = InputMode::kGamepad;
+	else if (sawMouseKB)
+		inputMode = InputMode::kMouseKeyboard;
+
+	io.MouseDrawCursor = (inputMode == InputMode::kMouseKeyboard);
+
+	// ESC / gamepad B handling
 	if (ImGui::IsKeyPressed(ImGuiKey_Escape) || ImGui::IsKeyPressed(ImGuiKey_GamepadFaceRight)) {
+		if (selectedFeatureIdx >= 0) {
+			// Back to list view
+			PlayGameSound("UIMenuCancel");
+			selectedFeatureIdx = -1;
+			firstFrame = true;  // re-seed focus
+			return;
+		}
 		PlayGameSound("UIMenuCancel");
 		Deactivate();
 		return;
@@ -375,8 +419,8 @@ void BasicMenu::Draw()
 	PushPanelStyle();
 
 	const ImVec2 vpSize = ImGui::GetMainViewport()->Size;
-	const float panelWidth = vpSize.x * 0.28f;
-	const float panelHeight = vpSize.y * 0.80f;
+	const float panelWidth = vpSize.x * 0.32f;
+	const float panelHeight = vpSize.y * 0.85f;
 	const float margin = vpSize.x * 0.02f;
 
 	ImGui::SetNextWindowPos(ImVec2(vpSize.x - panelWidth - margin, vpSize.y * 0.5f), ImGuiCond_Always, ImVec2(0.0f, 0.5f));
@@ -396,6 +440,26 @@ void BasicMenu::Draw()
 	ImGui::Separator();
 	ImGui::Spacing();
 
+	if (selectedFeatureIdx >= 0 && selectedFeatureIdx < static_cast<int>(featureList.size())) {
+		DrawFeatureDetail(featureList[selectedFeatureIdx]);
+	} else {
+		DrawListView();
+	}
+
+	// Bottom bar: VRAM + hints
+	ImGui::Separator();
+	DrawVRAM();
+	DrawInputHints();
+
+	ImGui::End();
+	PopPanelStyle();
+
+	if (firstFrame)
+		firstFrame = false;
+}
+
+void BasicMenu::DrawListView()
+{
 	// Quality preset bar
 	{
 		ImGui::Text("Quality Preset");
@@ -406,16 +470,16 @@ void BasicMenu::Draw()
 			ImGui::SetKeyboardFocusHere();
 
 		static constexpr const char* presetLabels[] = { "Low", "Medium", "High" };
+		const float presetBtnWidth = (ImGui::GetContentRegionAvail().x - ImGui::GetStyle().ItemSpacing.x * 2.0f) / 3.0f;
 
 		for (int i = 0; i < 3; ++i) {
 			if (i > 0)
 				ImGui::SameLine();
-			if (DrawButton(presetLabels[i])) {
-				// Apply to SSGI
+			if (DrawButton(presetLabels[i], presetBtnWidth)) {
 				auto& ssgi = globals::features::screenSpaceGI;
 				if (ssgi.loaded) {
 					switch (i) {
-					case 0:  // Low
+					case 0:
 						ssgi.settings.NumSlices = 10;
 						ssgi.settings.NumSteps = 12;
 						ssgi.settings.ResolutionMode = 2;
@@ -423,7 +487,7 @@ void BasicMenu::Draw()
 						ssgi.settings.EnableGI = true;
 						ssgi.recompileFlag = true;
 						break;
-					case 1:  // Medium
+					case 1:
 						ssgi.settings.NumSlices = 4;
 						ssgi.settings.NumSteps = 8;
 						ssgi.settings.ResolutionMode = 1;
@@ -431,7 +495,7 @@ void BasicMenu::Draw()
 						ssgi.settings.EnableGI = true;
 						ssgi.recompileFlag = true;
 						break;
-					case 2:  // High
+					case 2:
 						ssgi.settings.NumSlices = 4;
 						ssgi.settings.NumSteps = 8;
 						ssgi.settings.ResolutionMode = 0;
@@ -441,8 +505,6 @@ void BasicMenu::Draw()
 						break;
 					}
 				}
-
-				// Apply to Volumetric Lighting
 				auto& vl = globals::features::volumetricLighting;
 				if (vl.loaded) {
 					vl.settings.ExteriorQuality = i;
@@ -456,33 +518,33 @@ void BasicMenu::Draw()
 		ImGui::Spacing();
 	}
 
-	// Scrollable feature toggle list
-	const float vramBarHeight = ImGui::GetFrameHeightWithSpacing() * 3.0f;
-	ImGui::BeginChild("##FeatureList", ImVec2(0, -vramBarHeight), ImGuiChildFlags_NavFlattened);
+	// Scrollable feature list
+	const float bottomBarHeight = ImGui::GetFrameHeightWithSpacing() * 3.5f;
+	ImGui::BeginChild("##FeatureList", ImVec2(0, -bottomBarHeight), ImGuiChildFlags_NavFlattened);
 
-	for (auto& entry : featureList)
-		DrawFeatureToggle(entry);
+	for (int i = 0; i < static_cast<int>(featureList.size()); ++i) {
+		ImGui::PushID(i);
+		DrawFeatureToggle(featureList[i]);
+
+		// A / Enter on a focused feature → open detail view
+		if (ImGui::IsItemFocused() &&
+			(ImGui::IsKeyPressed(ImGuiKey_GamepadFaceDown) || ImGui::IsKeyPressed(ImGuiKey_Enter))) {
+			selectedFeatureIdx = i;
+			firstFrame = true;
+			PlayGameSound("UIMenuOK");
+		}
+		ImGui::PopID();
+	}
+
+	// LB/RB page scroll (vanilla Skyrim pattern)
+	if (ImGui::IsKeyPressed(ImGuiKey_GamepadL1)) {
+		ImGui::SetScrollY(ImMax(0.0f, ImGui::GetScrollY() - ImGui::GetWindowHeight() * 0.8f));
+	}
+	if (ImGui::IsKeyPressed(ImGuiKey_GamepadR1)) {
+		ImGui::SetScrollY(ImMin(ImGui::GetScrollMaxY(), ImGui::GetScrollY() + ImGui::GetWindowHeight() * 0.8f));
+	}
 
 	ImGui::EndChild();
-
-	if (firstFrame)
-		firstFrame = false;
-
-	// VRAM bar pinned at bottom
-	ImGui::Separator();
-	DrawVRAM();
-
-	// Hint
-	ImGui::PushStyleColor(ImGuiCol_Text, kColorTextDim);
-	{
-		auto* menu = Menu::GetSingleton();
-		std::string keyName = menu ? Util::Input::KeyIdToString(menu->GetSettings().ToggleKey) : "END";
-		ImGui::Text("Press %s for advanced settings", keyName.c_str());
-	}
-	ImGui::PopStyleColor();
-
-	ImGui::End();
-	PopPanelStyle();
 }
 
 void BasicMenu::DrawFeatureToggle(const FeatureEntry& a_entry)
@@ -500,7 +562,7 @@ void BasicMenu::DrawFeatureToggle(const FeatureEntry& a_entry)
 			userToggledOff.erase(a_entry.feature->GetShortName());
 	}
 
-	// Description with color-coded resource badge on the right
+	// Description line with badge — clickable to open detail view
 	{
 		ImVec4 badgeColor;
 		switch (a_entry.perfLevel) {
@@ -515,16 +577,31 @@ void BasicMenu::DrawFeatureToggle(const FeatureEntry& a_entry)
 			break;
 		}
 
+		// Compose description + badge into a single selectable line
+		// so SameLine positioning issues are avoided
+		float badgeWidth = ImGui::CalcTextSize(a_entry.badge).x;
+
 		ImGui::PushStyleColor(ImGuiCol_Text, kColorTextDim);
-		ImGui::TextWrapped("  %s", a_entry.description);
+		std::string descLine = std::string("  ") + a_entry.description;
+		if (ImGui::Selectable(descLine.c_str(), false, ImGuiSelectableFlags_None)) {
+			// Find this entry's index and open detail
+			for (int i = 0; i < static_cast<int>(featureList.size()); ++i) {
+				if (featureList[i].feature == a_entry.feature) {
+					selectedFeatureIdx = i;
+					firstFrame = true;
+					PlayGameSound("UIMenuOK");
+					break;
+				}
+			}
+		}
 		ImGui::PopStyleColor();
 
-		ImGui::SameLine();
-		float badgeWidth = ImGui::CalcTextSize(a_entry.badge).x;
-		ImGui::SetCursorPosX(ImGui::GetContentRegionMax().x - badgeWidth);
-		ImGui::PushStyleColor(ImGuiCol_Text, badgeColor);
-		ImGui::TextUnformatted(a_entry.badge);
-		ImGui::PopStyleColor();
+		// Draw badge on the same line as the selectable, right-aligned
+		// Use previous line's rect to overlay the badge at the correct Y position
+		ImVec2 badgePos = ImVec2(
+			ImGui::GetWindowPos().x + ImGui::GetContentRegionMax().x - badgeWidth,
+			ImGui::GetItemRectMin().y);
+		ImGui::GetWindowDrawList()->AddText(badgePos, ImGui::GetColorU32(badgeColor), a_entry.badge);
 	}
 
 	ImGui::Spacing();
@@ -571,7 +648,7 @@ bool BasicMenu::DrawToggle(const char* a_label, bool* a_value)
 	if (pressed) {
 		*a_value = !*a_value;
 		ImGui::MarkItemEdited(id);
-		PlayGameSound("UIMenuFocus");
+		PlayGameSound("UIMenuOK");
 	}
 
 	// Smooth animation (ported from FUCK)
@@ -634,7 +711,7 @@ bool BasicMenu::DrawToggle(const char* a_label, bool* a_value)
 	return pressed;
 }
 
-bool BasicMenu::DrawButton(const char* a_label)
+bool BasicMenu::DrawButton(const char* a_label, float a_width)
 {
 	ImGuiWindow* window = ImGui::GetCurrentWindow();
 	if (window->SkipItems)
@@ -658,9 +735,11 @@ bool BasicMenu::DrawButton(const char* a_label)
 		contentSize.y + textPad.y * 2.0f + outlineInset * 2.0f);
 	sz.x = ImMax(sz.x, sz.y);
 
-	// Use available width divided equally (for preset buttons)
-	const float btnWidth = (ImGui::GetContentRegionAvail().x - g.Style.ItemSpacing.x * 2.0f) / 3.0f;
-	sz.x = btnWidth;
+	// Use explicit width if provided, otherwise auto-size with minimum
+	if (a_width > 0.0f)
+		sz.x = a_width;
+	else
+		sz.x = ImMax(sz.x, sz.y * 2.5f);
 
 	const ImVec2 curPos = window->DC.CursorPos;
 	const ImRect bb(curPos, ImVec2(curPos.x + sz.x, curPos.y + sz.y));
@@ -700,6 +779,120 @@ bool BasicMenu::DrawButton(const char* a_label)
 		PlayGameSound("UIMenuOK");
 
 	return pressed;
+}
+
+void BasicMenu::DrawFeatureDetail(const FeatureEntry& a_entry)
+{
+	// Header: feature name + toggle
+	bool enabled = a_entry.feature->loaded;
+
+	// Back button
+	if (firstFrame)
+		ImGui::SetKeyboardFocusHere();
+
+	if (DrawButton("Back")) {
+		selectedFeatureIdx = -1;
+		firstFrame = true;
+		PlayGameSound("UIMenuCancel");
+		return;
+	}
+
+	ImGui::Spacing();
+
+	// Feature name
+	ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 1.0f, 1.0f, 1.0f));
+	ImGui::Text("%s", a_entry.feature->GetName().c_str());
+	ImGui::PopStyleColor();
+
+	ImGui::Spacing();
+
+	// Description
+	ImGui::PushStyleColor(ImGuiCol_Text, kColorTextDim);
+	ImGui::TextWrapped("%s", a_entry.description);
+	ImGui::PopStyleColor();
+
+	ImGui::Spacing();
+
+	// Performance badge
+	{
+		ImVec4 badgeColor;
+		const char* perfLabel;
+		switch (a_entry.perfLevel) {
+		case 2:
+			badgeColor = kColorPerfHeavy;
+			perfLabel = "Heavy";
+			break;
+		case 1:
+			badgeColor = kColorPerfMedium;
+			perfLabel = "Medium";
+			break;
+		default:
+			badgeColor = kColorPerfLight;
+			perfLabel = "Light";
+			break;
+		}
+		ImGui::PushStyleColor(ImGuiCol_Text, badgeColor);
+		ImGui::Text("Performance: %s %s", perfLabel, a_entry.badge);
+		ImGui::PopStyleColor();
+	}
+
+	ImGui::Spacing();
+	ImGui::Separator();
+	ImGui::Spacing();
+
+	// Enable/disable toggle
+	if (DrawToggle("Enabled", &enabled)) {
+		a_entry.feature->loaded = enabled;
+		if (!enabled)
+			userToggledOff.insert(a_entry.feature->GetShortName());
+		else
+			userToggledOff.erase(a_entry.feature->GetShortName());
+	}
+
+	ImGui::Spacing();
+	ImGui::Separator();
+	ImGui::Spacing();
+
+	// Per-feature settings (scrollable)
+	const float bottomBarHeight = ImGui::GetFrameHeightWithSpacing() * 3.5f;
+	ImGui::BeginChild("##FeatureSettings", ImVec2(0, -bottomBarHeight), ImGuiChildFlags_NavFlattened);
+
+	if (enabled) {
+		ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 1.0f, 1.0f, 0.85f));
+		ImGui::Text("Settings");
+		ImGui::PopStyleColor();
+		ImGui::Spacing();
+		a_entry.feature->DrawSettings();
+	} else {
+		ImGui::PushStyleColor(ImGuiCol_Text, kColorTextDim);
+		ImGui::TextWrapped("Enable this feature to access its settings.");
+		ImGui::PopStyleColor();
+	}
+
+	ImGui::EndChild();
+}
+
+void BasicMenu::DrawInputHints()
+{
+	ImGui::PushStyleColor(ImGuiCol_Text, kColorTextDim);
+
+	if (inputMode == InputMode::kGamepad) {
+		if (selectedFeatureIdx >= 0) {
+			ImGui::Text("[B] Back    [A] Toggle    [LB/RB] Adjust");
+		} else {
+			ImGui::Text("[A] Select    [B] Close    [LB/RB] Page Scroll");
+		}
+	} else {
+		auto* menu = Menu::GetSingleton();
+		std::string keyName = menu ? Util::Input::KeyIdToString(menu->GetSettings().ToggleKey) : "END";
+		if (selectedFeatureIdx >= 0) {
+			ImGui::Text("Press %s for advanced settings", keyName.c_str());
+		} else {
+			ImGui::Text("Click feature for details | %s for advanced settings", keyName.c_str());
+		}
+	}
+
+	ImGui::PopStyleColor();
 }
 
 void BasicMenu::DrawVRAM()

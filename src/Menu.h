@@ -454,7 +454,7 @@ public:
 			thumbstickY(0.0f) {}
 
 		explicit KeyEvent(const RE::ThumbstickEvent* a_event) :
-			keyCode(0),  // For thumbstick events, keyCode/value are replaced by x/y floats
+			keyCode(a_event->GetIDCode()),  // 0x0B = left stick, 0x0C = right stick
 			device(a_event->GetDevice()),
 			eventType(a_event->GetEventType()),
 			value(0),

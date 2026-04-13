@@ -1089,6 +1089,51 @@ void Menu::ProcessInputEventQueue()
 					io.AddKeyEvent(ImGuiMod_Alt, pressed);
 			}
 		}
+
+		if (event.device == RE::INPUT_DEVICE::kGamepad) {
+			if (event.eventType == RE::INPUT_EVENT_TYPE::kThumbstick) {
+				// Map thumbstick axes to ImGui analog stick keys
+				constexpr float kDeadzone = 0.15f;
+				if (event.keyCode == 0x0B) {  // Left stick
+					io.AddKeyAnalogEvent(ImGuiKey_GamepadLStickLeft, event.thumbstickX < -kDeadzone, event.thumbstickX < -kDeadzone ? -event.thumbstickX : 0.0f);
+					io.AddKeyAnalogEvent(ImGuiKey_GamepadLStickRight, event.thumbstickX > kDeadzone, event.thumbstickX > kDeadzone ? event.thumbstickX : 0.0f);
+					io.AddKeyAnalogEvent(ImGuiKey_GamepadLStickUp, event.thumbstickY > kDeadzone, event.thumbstickY > kDeadzone ? event.thumbstickY : 0.0f);
+					io.AddKeyAnalogEvent(ImGuiKey_GamepadLStickDown, event.thumbstickY < -kDeadzone, event.thumbstickY < -kDeadzone ? -event.thumbstickY : 0.0f);
+				} else if (event.keyCode == 0x0C) {  // Right stick
+					io.AddKeyAnalogEvent(ImGuiKey_GamepadRStickLeft, event.thumbstickX < -kDeadzone, event.thumbstickX < -kDeadzone ? -event.thumbstickX : 0.0f);
+					io.AddKeyAnalogEvent(ImGuiKey_GamepadRStickRight, event.thumbstickX > kDeadzone, event.thumbstickX > kDeadzone ? event.thumbstickX : 0.0f);
+					io.AddKeyAnalogEvent(ImGuiKey_GamepadRStickUp, event.thumbstickY > kDeadzone, event.thumbstickY > kDeadzone ? event.thumbstickY : 0.0f);
+					io.AddKeyAnalogEvent(ImGuiKey_GamepadRStickDown, event.thumbstickY < -kDeadzone, event.thumbstickY < -kDeadzone ? -event.thumbstickY : 0.0f);
+				}
+			} else {
+				// Map XInput button masks to ImGui gamepad keys
+				ImGuiKey imKey = ImGuiKey_None;
+				switch (event.keyCode) {
+				case 0x1000: imKey = ImGuiKey_GamepadFaceDown; break;   // A
+				case 0x2000: imKey = ImGuiKey_GamepadFaceRight; break;  // B
+				case 0x4000: imKey = ImGuiKey_GamepadFaceLeft; break;   // X
+				case 0x8000: imKey = ImGuiKey_GamepadFaceUp; break;     // Y
+				case 0x0001: imKey = ImGuiKey_GamepadDpadUp; break;
+				case 0x0002: imKey = ImGuiKey_GamepadDpadDown; break;
+				case 0x0004: imKey = ImGuiKey_GamepadDpadLeft; break;
+				case 0x0008: imKey = ImGuiKey_GamepadDpadRight; break;
+				case 0x0010: imKey = ImGuiKey_GamepadStart; break;
+				case 0x0020: imKey = ImGuiKey_GamepadBack; break;
+				case 0x0100: imKey = ImGuiKey_GamepadL1; break;  // LB
+				case 0x0200: imKey = ImGuiKey_GamepadR1; break;  // RB
+				case 0x0040: imKey = ImGuiKey_GamepadL3; break;  // LS click
+				case 0x0080: imKey = ImGuiKey_GamepadR3; break;  // RS click
+				case 0x0009: imKey = ImGuiKey_GamepadL2; break;  // LT
+				case 0x000A: imKey = ImGuiKey_GamepadR2; break;  // RT
+				}
+				if (imKey != ImGuiKey_None) {
+					if (imKey == ImGuiKey_GamepadL2 || imKey == ImGuiKey_GamepadR2)
+						io.AddKeyAnalogEvent(imKey, event.IsPressed(), event.IsPressed() ? event.value : 0.0f);
+					else
+						io.AddKeyEvent(imKey, event.IsPressed());
+				}
+			}
+		}
 	}
 
 	_keyEventQueue.clear();

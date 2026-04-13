@@ -49,17 +49,33 @@ private:
 	};
 
 	void RebuildFeatureList();
+	void DrawListView();
 	void DrawFeatureToggle(const FeatureEntry& a_entry);
+	void DrawFeatureDetail(const FeatureEntry& a_entry);
 	void DrawVRAM();
+	void DrawInputHints();
 
 	// Custom toggle switch widget (ported from FUCK, MIT License)
 	static bool DrawToggle(const char* a_label, bool* a_value);
 	// Custom outlined button widget (ported from FUCK, MIT License)
-	static bool DrawButton(const char* a_label);
+	// a_width: explicit button width, or 0 for auto-sizing
+	static bool DrawButton(const char* a_label, float a_width = 0.0f);
+
+	// Input mode: auto-switches based on last device used
+	enum class InputMode
+	{
+		kMouseKeyboard,
+		kGamepad
+	};
+	InputMode GetInputMode() const;
 
 	// State
 	bool active = false;
 	bool firstFrame = false;
+	InputMode inputMode = InputMode::kMouseKeyboard;
 	std::vector<FeatureEntry> featureList;
 	std::unordered_set<std::string> userToggledOff;  // features disabled by user this session
+
+	// Detail view
+	int selectedFeatureIdx = -1;  // -1 = list view, >= 0 = detail view for that feature
 };
