@@ -10,7 +10,6 @@ NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(
 	UnifiedWater::Settings,
 	UseOptimisedMeshes)
 
-
 static bool IsChildWorldSpace(const RE::TESWorldSpace* ws)
 {
 	return ws && ws->parentWorld &&
@@ -28,10 +27,10 @@ static constexpr uint64_t MakeCellKey(int32_t x, int32_t y)
 }
 
 // Returns true if the given world cell is part of the player's loaded grid
-static bool IsCellLoaded(const RE::TES* tes, int32_t cellX, int32_t cellY, bool* outInGrid = nullptr)
+static bool IsCellLoaded(const RE::TES* tes, int32_t cellX, int32_t cellY, bool* isInGrid = nullptr)
 {
-	if (outInGrid)
-		*outInGrid = false;
+	if (isInGrid)
+		*isInGrid = false;
 	if (!tes || !tes->gridCells)
 		return false;
 
@@ -45,11 +44,12 @@ static bool IsCellLoaded(const RE::TES* tes, int32_t cellX, int32_t cellY, bool*
 	if (x < 0 || y < 0 || x >= length || y >= length)
 		return false;
 
-	if (outInGrid)
-		*outInGrid = true;
+	if (isInGrid)
+		*isInGrid = true;
 
-	if (const auto cell = gridCells->GetCell(x, y))
+	if (const auto cell = gridCells->GetCell(x, y)) {
 		return cell->cellState.any(RE::TESObjectCELL::CellState::kAttached, kTransitionAttachedCellState);
+	}
 
 	return false;
 }
@@ -98,7 +98,6 @@ static HidePassResult HideLODTilesInWaterParent(
 	for (const auto& child : waterParent->GetChildren()) {
 		if (!child)
 			continue;
-
 		int32_t x, y;
 		Util::WorldToCell(child->world.translate, x, y);
 
@@ -124,24 +123,26 @@ static HidePassResult HideLODTilesInWaterParent(
 
 // Hide tiles across every terrain-block water parent under `*gWaterLOD`.
 static bool HideAllLODTilesUnderRoot(
-	RE::NiNode* waterLODRoot,
+	RE::NiNode* waterLOD,
 	const RE::TES* loadedCellsTes,
 	const std::unordered_set<uint64_t>* engineWaterCells)
 {
-	if (!waterLODRoot)
+	if (!waterLOD)
 		return false;
 
 	HidePassResult aggregate;
-	for (const auto& parentPtr : waterLODRoot->GetChildren()) {
-		if (!parentPtr)
+
+	for (const auto& waterParentPtr : waterLOD->GetChildren()) {
+		if (!waterParentPtr)
 			continue;
-		const auto waterParent = parentPtr->AsNode();
+		const auto waterParent = waterParentPtr->AsNode();
 		if (!waterParent)
 			continue;
 		const auto pass = HideLODTilesInWaterParent(waterParent, loadedCellsTes, engineWaterCells);
 		aggregate.hidAtLeastOneTile = aggregate.hidAtLeastOneTile || pass.hidAtLeastOneTile;
 		aggregate.hasUnresolvedTileInGrid = aggregate.hasUnresolvedTileInGrid || pass.hasUnresolvedTileInGrid;
 	}
+
 	return aggregate.IsConverged();
 }
 
