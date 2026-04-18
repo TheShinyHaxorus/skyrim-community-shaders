@@ -114,11 +114,19 @@ private:
 	RE::NiPoint2* gDisplacementMeshFlowCellOffset = nullptr;
 
 	std::atomic<RE::TESWorldSpace*> currentPlayerWorldSpace{ nullptr };
-	std::atomic<bool> pendingChildWsCull{ false };
-	// Game-thread TES snapshot used by deferred child-worldspace cull fallbacks.
+	std::atomic<bool> childWorldspaceLODHidePending{ false };
+	// Game-thread TES snapshot used by deferred LOD-hide fallbacks.
 	std::atomic<RE::TES*> cachedTes{ nullptr };
 
-	void TryCompleteDeferredChildWorldspaceCull(RE::TES* tes = nullptr);
+	// Reusable buffer for HideLODTilesOverlappingEngineWater so the per-frame
+	// pass avoids reallocating. Only touched on the game thread.
+	std::unordered_set<uint64_t> engineWaterCellsBuffer;
+
+	// Re-run LOD tile hiding after a child-worldspace transition.
+	void RetryChildWorldspaceLODHide(RE::TES* tes = nullptr);
+
+	// Hide LOD tiles in cells where the engine has registered its own water object.
+	void HideLODTilesOverlappingEngineWater();
 
 	void SetFlowmapTex() const;
 	static bool LoadOrderChanged();

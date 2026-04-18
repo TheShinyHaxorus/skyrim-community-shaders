@@ -10,6 +10,7 @@ NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(
 	UnifiedWater::Settings,
 	UseOptimisedMeshes)
 
+
 static bool IsChildWorldSpace(const RE::TESWorldSpace* ws)
 {
 	return ws && ws->parentWorld &&
@@ -19,10 +20,18 @@ static bool IsChildWorldSpace(const RE::TESWorldSpace* ws)
 // Engine behavior: CellState value 6 is the transition/attached state.
 static constexpr auto kTransitionAttachedCellState = static_cast<RE::TESObjectCELL::CellState>(6);
 
-static bool ShouldCullAtCell(const RE::TES* tes, int32_t cellX, int32_t cellY, bool* isInGrid = nullptr)
+// Pack a cell coordinate into a single 64-bit key for fast set lookup.
+static constexpr uint64_t MakeCellKey(int32_t x, int32_t y)
 {
-	if (isInGrid)
-		*isInGrid = false;
+	return (static_cast<uint64_t>(static_cast<uint32_t>(x)) << 32) |
+	       static_cast<uint64_t>(static_cast<uint32_t>(y));
+}
+
+// Returns true if the given world cell is part of the player's loaded grid
+static bool IsCellLoaded(const RE::TES* tes, int32_t cellX, int32_t cellY, bool* outInGrid = nullptr)
+{
+	if (outInGrid)
+		*outInGrid = false;
 	if (!tes || !tes->gridCells)
 		return false;
 
@@ -36,80 +45,109 @@ static bool ShouldCullAtCell(const RE::TES* tes, int32_t cellX, int32_t cellY, b
 	if (x < 0 || y < 0 || x >= length || y >= length)
 		return false;
 
-	if (isInGrid)
-		*isInGrid = true;
+	if (outInGrid)
+		*outInGrid = true;
 
-	if (const auto cell = gridCells->GetCell(x, y)) {
+	if (const auto cell = gridCells->GetCell(x, y))
 		return cell->cellState.any(RE::TESObjectCELL::CellState::kAttached, kTransitionAttachedCellState);
-	}
 
 	return false;
 }
 
-struct CullCompletionState
+// Build a set of (cellX,cellY) where the engine has registered a water object.
+// Fills the caller-provided buffer to avoid per-frame allocation.
+static void CollectEngineWaterCells(const RE::TESWaterSystem* waterSystem, std::unordered_set<uint64_t>& outCells)
 {
-	bool foundAttachedCell = false;
-	bool hasPotentiallyAttachableChild = false;
+	outCells.clear();
+	if (!waterSystem)
+		return;
 
-	bool IsComplete() const
+	outCells.reserve(waterSystem->waterObjects.size());
+	for (const auto& obj : waterSystem->waterObjects) {
+		const auto shape = obj ? obj->shape.get() : nullptr;
+		if (!shape)
+			continue;
+		int32_t x, y;
+		Util::WorldToCell(shape->world.translate, x, y);
+		outCells.insert(MakeCellKey(x, y));
+	}
+}
+
+// Result of a hide pass over one or more LOD tile parents.
+struct HidePassResult
+{
+	bool hidAtLeastOneTile = false;       // observed at least one tile to hide
+	bool hasUnresolvedTileInGrid = false;  // a tile sits in the grid but its cell was not yet attached
+
+	bool IsConverged() const
 	{
-		return foundAttachedCell && !hasPotentiallyAttachableChild;
+		return hidAtLeastOneTile && !hasUnresolvedTileInGrid;
 	}
 };
 
-// Cull waterParent children using tes->gridCells attachment state.
-// Pass tes explicitly when globals::game::tes is not ready (e.g., TES_SetWorldSpace).
-static CullCompletionState CullWaterParentByGridCells(RE::NiNode* waterParent, RE::TES* tes = nullptr)
+// Hide tiles under a single terrain-block water parent.
+static HidePassResult HideLODTilesInWaterParent(
+	RE::NiNode* waterParent,
+	const RE::TES* loadedCellsTes,
+	const std::unordered_set<uint64_t>* engineWaterCells)
 {
-	if (!tes)
-		tes = globals::game::tes;
-	if (!tes || !waterParent)
-		return {};
-
-	CullCompletionState state;
+	HidePassResult result;
+	if (!waterParent)
+		return result;
 
 	for (const auto& child : waterParent->GetChildren()) {
 		if (!child)
 			continue;
+
 		int32_t x, y;
 		Util::WorldToCell(child->world.translate, x, y);
-		bool isInGrid = false;
-		const bool cull = ShouldCullAtCell(tes, x, y, &isInGrid);
-		if (cull)
-			state.foundAttachedCell = true;
-		else if (isInGrid)
-			state.hasPotentiallyAttachableChild = true;
-		child->SetAppCulled(cull);
+
+		bool inGrid = false;
+		bool hide = false;
+
+		if (loadedCellsTes) {
+			hide = IsCellLoaded(loadedCellsTes, x, y, &inGrid);
+		}
+		if (!hide && engineWaterCells && engineWaterCells->contains(MakeCellKey(x, y)))
+			hide = true;
+
+		if (hide)
+			result.hidAtLeastOneTile = true;
+		else if (inGrid)
+			result.hasUnresolvedTileInGrid = true;
+
+		child->SetAppCulled(hide);
 	}
 
-	return state;
+	return result;
 }
 
-// Cull all tiles under every water LOD parent.
-static bool CullAllWaterLODParents(RE::NiNode* waterLOD, RE::TES* tes = nullptr)
+// Hide tiles across every terrain-block water parent under `*gWaterLOD`.
+static bool HideAllLODTilesUnderRoot(
+	RE::NiNode* waterLODRoot,
+	const RE::TES* loadedCellsTes,
+	const std::unordered_set<uint64_t>* engineWaterCells)
 {
-	if (!waterLOD)
+	if (!waterLODRoot)
 		return false;
 
-	CullCompletionState aggregate;
-
-	for (const auto& waterParentPtr : waterLOD->GetChildren()) {
-		if (!waterParentPtr)
+	HidePassResult aggregate;
+	for (const auto& parentPtr : waterLODRoot->GetChildren()) {
+		if (!parentPtr)
 			continue;
-		const auto waterParent = waterParentPtr->AsNode();
+		const auto waterParent = parentPtr->AsNode();
 		if (!waterParent)
 			continue;
-		const auto state = CullWaterParentByGridCells(waterParent, tes);
-		aggregate.foundAttachedCell = aggregate.foundAttachedCell || state.foundAttachedCell;
-		aggregate.hasPotentiallyAttachableChild = aggregate.hasPotentiallyAttachableChild || state.hasPotentiallyAttachableChild;
+		const auto pass = HideLODTilesInWaterParent(waterParent, loadedCellsTes, engineWaterCells);
+		aggregate.hidAtLeastOneTile = aggregate.hidAtLeastOneTile || pass.hidAtLeastOneTile;
+		aggregate.hasUnresolvedTileInGrid = aggregate.hasUnresolvedTileInGrid || pass.hasUnresolvedTileInGrid;
 	}
-
-	return aggregate.IsComplete();
+	return aggregate.IsConverged();
 }
 
-void UnifiedWater::TryCompleteDeferredChildWorldspaceCull(RE::TES* tes)
+void UnifiedWater::RetryChildWorldspaceLODHide(RE::TES* tes)
 {
-	if (!pendingChildWsCull.load(std::memory_order_acquire) ||
+	if (!childWorldspaceLODHidePending.load(std::memory_order_acquire) ||
 		!IsChildWorldSpace(currentPlayerWorldSpace.load(std::memory_order_acquire)) ||
 		!gWaterLOD || !*gWaterLOD)
 		return;
@@ -119,8 +157,29 @@ void UnifiedWater::TryCompleteDeferredChildWorldspaceCull(RE::TES* tes)
 	if (!tes || !tes->gridCells)
 		return;
 
-	if (CullAllWaterLODParents(*gWaterLOD, tes))
-		pendingChildWsCull.store(false, std::memory_order_release);
+	if (HideAllLODTilesUnderRoot(*gWaterLOD, tes, nullptr))
+		childWorldspaceLODHidePending.store(false, std::memory_order_release);
+}
+
+// Hide any LOD tile that sits in a cell where the engine has its own water object.
+void UnifiedWater::HideLODTilesOverlappingEngineWater()
+{
+	if (!gWaterLOD || !*gWaterLOD)
+		return;
+
+	// LOD water is only rendered in exteriors; skip the walk entirely otherwise.
+	if (Util::IsInterior())
+		return;
+
+	const auto waterSystem = globals::game::waterSystem;
+	if (!waterSystem)
+		return;
+
+	CollectEngineWaterCells(waterSystem, engineWaterCellsBuffer);
+	if (engineWaterCellsBuffer.empty())
+		return;
+
+	HideAllLODTilesUnderRoot(*gWaterLOD, nullptr, &engineWaterCellsBuffer);
 }
 
 void UnifiedWater::LoadSettings(json& o_json)
@@ -436,12 +495,12 @@ void UnifiedWater::TES_SetWorldSpace::thunk(RE::TES* tes, RE::TESWorldSpace* wor
 	uw.currentPlayerWorldSpace.store(worldSpace, std::memory_order_release);
 	uw.cachedTes.store(tes, std::memory_order_release);
 	if (!enteringChild)
-		uw.pendingChildWsCull.store(false, std::memory_order_release);  // leaving child WS: discard any stale pending cull
+		uw.childWorldspaceLODHidePending.store(false, std::memory_order_release);  // leaving child WS: discard any stale pending hide
 
 	func(tes, worldSpace, isExterior);
 
 	if (!uw.waterCache) {
-		uw.pendingChildWsCull.store(false, std::memory_order_release);
+		uw.childWorldspaceLODHidePending.store(false, std::memory_order_release);
 		return;
 	}
 
@@ -453,13 +512,13 @@ void UnifiedWater::TES_SetWorldSpace::thunk(RE::TES* tes, RE::TESWorldSpace* wor
 		if (const auto waterSystem = globals::game::waterSystem)
 			waterSystem->Enable();
 
-		// Try an immediate cull with tes (globals::game::tes may still be null).
+		// Try an immediate hide pass with tes (globals::game::tes may still be null).
 		// Newly transitioned cells are often not attached yet, so deferred retries are still needed.
 		if (uw.gWaterLOD && *uw.gWaterLOD && tes && tes->gridCells)
-			CullAllWaterLODParents(*uw.gWaterLOD, tes);
+			HideAllLODTilesUnderRoot(*uw.gWaterLOD, tes, nullptr);
 
-		// Keep deferred retries enabled until attached cells are observed and culled.
-		uw.pendingChildWsCull.store(true, std::memory_order_release);
+		// Keep deferred retries enabled until attached cells are observed and hidden.
+		uw.childWorldspaceLODHidePending.store(true, std::memory_order_release);
 	}
 }
 
@@ -469,7 +528,7 @@ void UnifiedWater::TES_DestroySkyCell::thunk(RE::TES* tes)
 
 	auto& uw = globals::features::unifiedWater;
 	uw.currentPlayerWorldSpace.store(nullptr, std::memory_order_release);
-	uw.pendingChildWsCull.store(false, std::memory_order_release);
+	uw.childWorldspaceLODHidePending.store(false, std::memory_order_release);
 	uw.cachedTes.store(nullptr, std::memory_order_release);
 	if (!uw.waterCache)
 		return;
@@ -485,7 +544,7 @@ void UnifiedWater::BGSTerrainNode_UpdateWaterMeshSubVisibility::thunk(const RE::
 	if (node->GetLODLevel() != 4)
 		return;
 
-	CullWaterParentByGridCells(waterParent);
+	HideLODTilesInWaterParent(waterParent, globals::game::tes, nullptr);
 }
 
 void UnifiedWater::BGSTerrainBlock_Attach::thunk(RE::BGSTerrainBlock* block)
@@ -498,8 +557,8 @@ void UnifiedWater::BGSTerrainBlock_Attach::thunk(RE::BGSTerrainBlock* block)
 		return;
 	}
 
-	// Additional game-thread retry path for deferred child-WS cull completion.
-	uw.TryCompleteDeferredChildWorldspaceCull(uw.cachedTes.load(std::memory_order_acquire));
+	// Additional game-thread retry path for deferred child-WS hide completion.
+	uw.RetryChildWorldspaceLODHide(uw.cachedTes.load(std::memory_order_acquire));
 
 	std::vector<std::pair<RE::BSTriShape*, const WaterCache::Instruction*>> built;
 	bool attaching = false;
@@ -583,14 +642,14 @@ void UnifiedWater::BGSTerrainBlock_Attach::thunk(RE::BGSTerrainBlock* block)
 	waterSystem->Enable();
 
 	// BGSTerrainNode_UpdateWaterMeshSubVisibility never fires in child worldspaces.
-	// Cull newly built tiles here; full deferred retries are handled by
-	// TryCompleteDeferredChildWorldspaceCull().
+	// Hide newly built tiles here; full deferred retries are handled by
+	// RetryChildWorldspaceLODHide().
 	if (IsChildWorldSpace(uw.currentPlayerWorldSpace.load(std::memory_order_acquire))) {
 		const auto tes = uw.cachedTes.load(std::memory_order_acquire);
 		if (tes && tes->gridCells) {
 			for (const auto& [shape, instruction] : built) {
-				const bool cull = ShouldCullAtCell(tes, instruction->x, instruction->y);
-				shape->SetAppCulled(cull);
+				const bool hide = IsCellLoaded(tes, instruction->x, instruction->y);
+				shape->SetAppCulled(hide);
 			}
 		}
 	}
@@ -676,10 +735,16 @@ void UnifiedWater::TESWaterSystem_UpdateDisplacementMeshPosition::thunk(RE::TESW
 
 	auto& uw = globals::features::unifiedWater;
 
-	// Game-thread fallback for deferred child-worldspace cull completion.
+	// Game-thread fallback for deferred child-worldspace LOD-hide completion.
 	// Needed when entering child worldspaces with already-attached LOD blocks,
 	// where BGSTerrainBlock_Attach/UpdateWaterMeshSubVisibility may not run.
-	uw.TryCompleteDeferredChildWorldspaceCull(uw.cachedTes.load(std::memory_order_acquire));
+	uw.RetryChildWorldspaceLODHide(uw.cachedTes.load(std::memory_order_acquire));
+
+	// Hide any LOD tile that overlaps an engine-managed water object. This is
+	// what catches the duplicate-draw case observed in RenderDoc where our LOD
+	// tile and a `DefaultProceduralWater` shape share a cell and render the
+	// same shader from two different `BSWaterShaderMaterial` instances.
+	uw.HideLODTilesOverlappingEngineWater();
 
 	if (!uw.flowmap)
 		return;
