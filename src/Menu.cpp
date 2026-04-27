@@ -1629,14 +1629,11 @@ void BasicMenu::Draw()
 
 	auto& io = ImGui::GetIO();
 
-	// Auto-detect input mode from last event.
-	// Check mouse/keyboard first, then gamepad — so gamepad wins if both
-	// fire in the same frame (common when mouse has residual delta).
+	// Auto-detect input mode from deliberate input only (clicks/key presses).
 	bool sawMouseKB = false;
 	bool sawGamepad = false;
 
-	if (ImGui::IsKeyPressed(ImGuiKey_MouseLeft) || ImGui::IsKeyPressed(ImGuiKey_MouseRight) ||
-		(io.MouseDelta.x * io.MouseDelta.x + io.MouseDelta.y * io.MouseDelta.y) > 1.0f) {
+	if (ImGui::IsKeyPressed(ImGuiKey_MouseLeft) || ImGui::IsKeyPressed(ImGuiKey_MouseRight)) {
 		sawMouseKB = true;
 	}
 	for (int key = ImGuiKey_Tab; key <= ImGuiKey_KeypadEqual; ++key) {
