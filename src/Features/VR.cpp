@@ -6,6 +6,7 @@
 #include "VR/OpenVRDetection.h"
 
 #include "State.h"
+#include "Utils/D3D.h"
 #include "Utils/VRUtils.h"
 
 #include <d3d11.h>
@@ -111,18 +112,23 @@ void VR::SetupResources()
 	mainTex.texture->GetDesc(&mainDesc);
 	mainDesc.BindFlags = D3D11_BIND_SHADER_RESOURCE;
 	mainDesc.MiscFlags = 0;
-	stereoBlendCopyTex = eastl::make_unique<Texture2D>(mainDesc);
+	stereoBlendCopyTex = eastl::make_unique<Texture2D>(mainDesc, "VR::StereoBlendCopyTex");
 	D3D11_SHADER_RESOURCE_VIEW_DESC srvDesc = {
 		.Format = mainDesc.Format,
 		.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D,
 		.Texture2D = { .MostDetailedMip = 0, .MipLevels = 1 }
 	};
 	stereoBlendCopyTex->CreateSRV(srvDesc);
-	stereoBlendCB = eastl::make_unique<ConstantBuffer>(ConstantBufferDesc<StereoBlendCB>());
+	stereoBlendCB = eastl::make_unique<ConstantBuffer>(ConstantBufferDesc<StereoBlendCB>(), "VR::StereoBlendCB");
 
-	if (REL::Module::IsVR()) {
+	if (globals::game::isVR && stereoOpt.settings.stereoMode != VRStereoOptimizations::StereoMode::Off) {
 		stereoOpt.SetupResources();
-		stereoOpt.loaded = stereoOpt.GetModeTextureSRV() != nullptr;
+		stereoOpt.loaded =
+			stereoOpt.GetModeTextureSRV() != nullptr &&
+			stereoOpt.GetPomOffsetSRV() != nullptr &&
+			stereoOpt.GetPomOffsetUAV() != nullptr;
+	} else {
+		stereoOpt.loaded = false;
 	}
 
 	DetectOpenVRInfo();
@@ -216,6 +222,15 @@ void VR::RecreateOverlayTexturesIfNeeded()
 	Util::CreateOverlayTextureAndRTV(globals::d3d::device, Config::kOverlayWidth, Config::kOverlayHeight, menuTexture.put(), menuRTV.put());
 }
 
+bool VR::IsWelcomeOverlayVisible() const
+{
+	return settings.kAutoHideSeconds > 0 &&
+	       globals::game::ui &&
+	       globals::game::ui->IsMenuOpen(RE::MainMenu::MENU_NAME) &&
+	       globals::menu &&
+	       !globals::menu->IsEnabled;
+}
+
 void VR::SubmitOverlayFrame()
 {
 	InstallSubmitHook();
@@ -228,7 +243,7 @@ void VR::SubmitOverlayFrame()
 	auto& enabled = globals::menu->IsEnabled;
 	auto& overlayVisible = globals::menu->overlayVisible;
 
-	if ((enabled || overlayVisible || settings.kAutoHideSeconds > 0) && menuTexture.get() && menuRTV.get()) {
+	if ((enabled || overlayVisible || IsWelcomeOverlayVisible()) && menuTexture.get() && menuRTV.get()) {
 		UpdateFixedWorldPositioning();
 		UpdateOverlayDrag();
 
