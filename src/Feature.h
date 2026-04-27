@@ -3,6 +3,7 @@
 #include "FeatureCategories.h"
 #include "FeatureConstraints.h"
 #include "FeatureVersions.h"
+#include <span>
 #ifdef TRACY_ENABLE
 #	include <Tracy/Tracy.hpp>
 #	include <Tracy/TracyD3D11.hpp>
@@ -10,6 +11,58 @@
 
 struct Feature
 {
+	// Generic named-preset entry. The enum type E is feature-specific; the surrounding
+	// shape is shared so different features can route through one ApplyPreset dispatch.
+	template <typename E>
+	struct Preset
+	{
+		E id;
+		std::string_view label;
+		std::string_view description;
+		// apply receives the preset id so one shared thunk can dispatch all entries
+		// of an enum. nullptr apply is a no-op (e.g. a "Custom" sentinel).
+		void (*apply)(Feature*, E) = nullptr;
+		// Optional VR variant; falls back to apply when null.
+		void (*vrApply)(Feature*, E) = nullptr;
+	};
+
+	// Quality tiers for the in-game basic menu. Authors declare a sparse subset;
+	// missing tiers are silently skipped.
+	enum class QualityLevel : uint8_t
+	{
+		Low,
+		Medium,
+		High,
+		Ultra
+	};
+	using QualityPreset = Preset<QualityLevel>;
+
+	// Apply a preset, picking vrApply on VR when available.
+	template <typename E>
+	static void ApplyPreset(Feature* feature, const Preset<E>& preset)
+	{
+		if (preset.vrApply && REL::Module::IsVR())
+			preset.vrApply(feature, preset.id);
+		else if (preset.apply)
+			preset.apply(feature, preset.id);
+	}
+
+	// Apply a quality tier without going through ImGui (basic menu, scripts).
+	// Returns false if the feature does not expose that tier.
+	bool ApplyQualityPreset(QualityLevel level)
+	{
+		auto presets = GetQualityPresets();
+		for (const auto& p : presets) {
+			if (p.id == level) {
+				ApplyPreset(this, p);
+				if (auto* en = GetEnabledFlag())
+					*en = true;
+				return true;
+			}
+		}
+		return false;
+	}
+
 	// For global settings search
 	struct SettingSearchEntry
 	{
@@ -86,9 +139,21 @@ public:
 	virtual void SetupResources() {}
 	virtual void Reset() {}
 	virtual void DrawSettings() {}
-	virtual void DrawBasicSettings() {}       // Simplified settings for the basic in-game menu
-	virtual bool HasBasicSettings() const { return false; }  // Whether DrawBasicSettings has content
 	virtual void DrawUnloadedUI();
+
+	/**
+	 * Quality preset list for the in-game basic menu.
+	 * Default: empty — feature isn't affected by Low/Medium/High preset buttons.
+	 * Override to return a span over a `static constexpr std::array<QualityPreset, N>`.
+	 */
+	virtual std::span<const QualityPreset> GetQualityPresets() const { return {}; }
+
+	/**
+	 * Pointer to the feature's runtime "Enabled" bool, used by the basic menu's
+	 * per-feature toggle. Return nullptr if the feature has no single enable flag;
+	 * the basic menu falls back to the boot-disable flag (`feature->loaded`).
+	 */
+	virtual bool* GetEnabledFlag() { return nullptr; }
 
 	virtual void ReflectionsPrepass() {};
 	virtual void Prepass() {}

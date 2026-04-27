@@ -16,11 +16,6 @@ void CloudShadows::DrawSettings()
 	}
 }
 
-void CloudShadows::DrawBasicSettings()
-{
-	ImGui::SliderFloat("Opacity", &settings.Opacity, 0.0f, 1.0f, "%.1f");
-}
-
 void CloudShadows::LoadSettings(json& o_json)
 {
 	settings = o_json;

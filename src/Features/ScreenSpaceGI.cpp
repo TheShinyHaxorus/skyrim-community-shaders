@@ -40,6 +40,48 @@ void ScreenSpaceGI::RestoreDefaultSettings()
 	recompileFlag = true;
 }
 
+namespace
+{
+	struct SSGITier
+	{
+		uint numSlices;
+		uint numSteps;
+		int resolutionMode;
+		bool enableGI;
+	};
+
+	void ApplySSGITier(Feature* f, const SSGITier& q)
+	{
+		auto* ssgi = static_cast<ScreenSpaceGI*>(f);
+		ssgi->settings.Enabled = true;
+		ssgi->settings.NumSlices = q.numSlices;
+		ssgi->settings.NumSteps = q.numSteps;
+		ssgi->settings.ResolutionMode = q.resolutionMode;
+		ssgi->settings.EnableBlur = true;
+		ssgi->settings.EnableGI = q.enableGI;
+		ssgi->recompileFlag = true;
+	}
+
+	// VR variants force AO-only (EnableGI=false) for performance; vrApply is null where
+	// the SE/AE tuning is acceptable on VR and ApplyPreset falls back to apply.
+	static constexpr std::array<Feature::QualityPreset, 3> kSSGIPresets = { {
+		{ Feature::QualityLevel::Low, "Low", "Quarter resolution, blurred. AO + basic GI.",
+			[](Feature* f, Feature::QualityLevel) { ApplySSGITier(f, { 10, 12, 2, true }); },
+			[](Feature* f, Feature::QualityLevel) { ApplySSGITier(f, { 1, 6, 2, false }); } },
+		{ Feature::QualityLevel::Medium, "Medium", "Half resolution, balanced quality and performance.",
+			[](Feature* f, Feature::QualityLevel) { ApplySSGITier(f, { 4, 8, 1, true }); },
+			[](Feature* f, Feature::QualityLevel) { ApplySSGITier(f, { 3, 8, 1, false }); } },
+		{ Feature::QualityLevel::High, "High", "Full resolution, clean output with full GI.",
+			[](Feature* f, Feature::QualityLevel) { ApplySSGITier(f, { 4, 8, 0, true }); },
+			nullptr },
+	} };
+}
+
+std::span<const Feature::QualityPreset> ScreenSpaceGI::GetQualityPresets() const
+{
+	return kSSGIPresets;
+}
+
 void ScreenSpaceGI::DrawSettings()
 {
 	static bool showAdvanced;
@@ -341,49 +383,6 @@ void ScreenSpaceGI::DrawSettings()
 		BUFFER_VIEWER_NODE(texIlCoCg[1], debugRescale)
 
 		ImGui::TreePop();
-	}
-}
-
-void ScreenSpaceGI::DrawBasicSettings()
-{
-	auto select = [](auto flatVal, auto vrVal) { return globals::game::isVR ? vrVal : flatVal; };
-
-	// Quality presets
-	if (ImGui::BeginTable("##BasicPresets", 3)) {
-		ImGui::TableNextColumn();
-		if (ImGui::Button("Low", { -1, 0 })) {
-			settings.NumSlices = 10;
-			settings.NumSteps = 12;
-			settings.ResolutionMode = 2;
-			settings.EnableBlur = true;
-			settings.EnableGI = true;
-			recompileFlag = true;
-		}
-		ImGui::TableNextColumn();
-		if (ImGui::Button("Standard", { -1, 0 })) {
-			settings.NumSlices = 4;
-			settings.NumSteps = 8;
-			settings.ResolutionMode = 1;
-			settings.EnableBlur = true;
-			settings.EnableGI = true;
-			recompileFlag = true;
-		}
-		ImGui::TableNextColumn();
-		if (ImGui::Button("Extreme", { -1, 0 })) {
-			settings.NumSlices = 4;
-			settings.NumSteps = 8;
-			settings.ResolutionMode = 0;
-			settings.EnableBlur = true;
-			settings.EnableGI = true;
-			recompileFlag = true;
-		}
-		ImGui::EndTable();
-	}
-
-	ImGui::SliderFloat("AO Power", &settings.AOPower, 0.f, 6.f, "%.2f");
-	{
-		auto ilGuard = Util::DisableGuard(!settings.EnableGI);
-		ImGui::SliderFloat("IL Brightness", &settings.GIStrength, 0.f, 6.f, "%.2f");
 	}
 }
 

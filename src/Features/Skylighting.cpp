@@ -52,12 +52,6 @@ void Skylighting::DrawSettings()
 		ImGui::Text("Smaller angles creates more focused top-down shadow.");
 }
 
-void Skylighting::DrawBasicSettings()
-{
-	ImGui::SliderFloat("Diffuse Min Visibility", &settings.MinDiffuseVisibility, 0.01f, 1.f, "%.2f");
-	ImGui::SliderFloat("Specular Min Visibility", &settings.MinSpecularVisibility, 0.01f, 1.f, "%.2f");
-}
-
 void Skylighting::SetupResources()
 {
 	auto renderer = globals::game::renderer;
