@@ -456,6 +456,16 @@ public:
 			thumbstickX(0.0f),
 			thumbstickY(0.0f) {}
 
+		explicit KeyEvent(const RE::MouseMoveEvent* a_event) :
+			keyCode(0),
+			device(a_event->GetDevice()),
+			eventType(a_event->GetEventType()),
+			value(0),
+			heldDownSecs(0),
+			thumbstickX(static_cast<float>(a_event->mouseInputX)),
+			thumbstickY(static_cast<float>(a_event->mouseInputY))
+		{}
+
 		explicit KeyEvent(const RE::ThumbstickEvent* a_event) :
 			keyCode(a_event->GetIDCode()),  // 0x0B = left stick, 0x0C = right stick
 			device(a_event->GetDevice()),
@@ -534,6 +544,7 @@ public:
 	bool IsActive() const { return active; }
 	void Activate();
 	void Deactivate();
+	void AddMouseMoveDelta(std::int32_t a_deltaX, std::int32_t a_deltaY);
 
 private:
 	BasicMenu() = default;
@@ -553,8 +564,8 @@ private:
 
 	void RebuildFeatureList();
 	void DrawListView();
+	bool DrawTopControls();
 	void DrawFeatureToggle(const FeatureEntry& a_entry);
-	void DrawFeatureDetail(const FeatureEntry& a_entry);
 	void DrawVRAM();
 	void DrawInputHints();
 
@@ -570,17 +581,17 @@ private:
 		kMouseKeyboard,
 		kGamepad
 	};
-	InputMode GetInputMode() const { return inputMode; }
 
 	// State
 	bool active = false;
 	bool firstFrame = false;
 	InputMode inputMode = InputMode::kMouseKeyboard;
 	std::vector<FeatureEntry> featureList;
+	ImVec2 mousePos = { -FLT_MAX, -FLT_MAX };
+	bool mouseMoved = false;
+	bool openedCursorMenu = false;
+	bool hadNoMouseCursorChange = false;
 	// Tracks features the user toggled off via the boot-disable fallback this session
 	// (only used when GetEnabledFlag() returns nullptr), so they stay visible in the list.
 	std::unordered_set<std::string> userToggledOff;
-
-	// Detail view
-	int selectedFeatureIdx = -1;  // -1 = list view, >= 0 = detail view for that feature
 };

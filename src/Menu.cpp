@@ -4,6 +4,7 @@
 #	define DIRECTINPUT_VERSION 0x0800
 #endif
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <dinput.h>
 #include <filesystem>
@@ -14,6 +15,7 @@
 #include <imgui_internal.h>
 #include <imgui_stdlib.h>
 #include <iomanip>
+#include <mutex>
 #include <ranges>
 #include <string>
 #include <unordered_map>
@@ -24,6 +26,7 @@
 #include "FeatureCategories.h"
 #include "FeatureIssues.h"
 #include "FeatureVersions.h"
+#include "Features/HDRDisplay.h"
 #include "Features/Upscaling.h"
 #include "Menu/AdvancedSettingsRenderer.h"
 #include "Menu/BackgroundBlur.h"
@@ -936,9 +939,16 @@ void Menu::ProcessInputEventQueue()
 			continue;
 		}
 		if (event.device == RE::INPUT_DEVICE::kMouse) {
-			logger::trace("Detect mouse scan code {} value {} pressed: {}", event.keyCode, event.value, event.IsPressed());
 			auto* ew = EditorWindow::GetSingleton();
 			bool flying = ew && ew->IsPreviewFlying();
+			if (event.eventType == RE::INPUT_EVENT_TYPE::kMouseMove) {
+				if (auto* basic = globals::basicMenu; basic && basic->IsActive()) {
+					basic->AddMouseMoveDelta(static_cast<std::int32_t>(event.thumbstickX), static_cast<std::int32_t>(event.thumbstickY));
+				}
+				continue;
+			}
+
+			logger::trace("Detect mouse scan code {} value {} pressed: {}", event.keyCode, event.value, event.IsPressed());
 			if (event.keyCode > 7) {  // middle scroll
 				if (ew && ew->previewMode == EditorWindow::PreviewMode::FreeCamera) {
 					ew->AdjustFlySpeed(event.keyCode == 8 ? 1.0f : -1.0f);
@@ -1187,8 +1197,13 @@ void Menu::OnFocusChanged()
 void Menu::ProcessInputEvents(RE::InputEvent* const* a_events)
 {
 	for (auto it = *a_events; it; it = it->next) {
+		const bool isMouseMove = it->GetEventType() == RE::INPUT_EVENT_TYPE::kMouseMove;
+		if (isMouseMove && (!globals::basicMenu || !globals::basicMenu->IsActive()))
+			continue;
+
 		// Accept button, char, and thumbstick events
 		if (it->GetEventType() != RE::INPUT_EVENT_TYPE::kButton &&
+			it->GetEventType() != RE::INPUT_EVENT_TYPE::kMouseMove &&
 			it->GetEventType() != RE::INPUT_EVENT_TYPE::kChar &&
 
 			it->GetEventType() != RE::INPUT_EVENT_TYPE::kThumbstick
@@ -1198,6 +1213,9 @@ void Menu::ProcessInputEvents(RE::InputEvent* const* a_events)
 
 		if (it->GetEventType() == RE::INPUT_EVENT_TYPE::kButton) {
 			addToEventQueue(KeyEvent(static_cast<RE::ButtonEvent*>(it)));
+		} else if (it->GetEventType() == RE::INPUT_EVENT_TYPE::kMouseMove) {
+			if (auto* mouseMove = it->AsMouseMoveEvent())
+				addToEventQueue(KeyEvent(mouseMove));
 		} else if (it->GetEventType() == RE::INPUT_EVENT_TYPE::kChar) {
 			addToEventQueue(KeyEvent(static_cast<CharEvent*>(it)));
 
@@ -1292,6 +1310,17 @@ namespace
 		ImGuiWindowFlags_NoMove |
 		ImGuiWindowFlags_NoResize |
 		ImGuiWindowFlags_NoTitleBar;
+
+	constexpr float kBasicMouseInputScale = 1.0f;
+	constexpr std::array<const char*, 3> kQualityPresetLabels = { "Low", "Medium", "High" };
+	constexpr std::array<const char*, 5> kUpscaleQualityLabels = { "Native", "Quality", "Balanced", "Perf", "Ultra" };
+	constexpr std::array<std::uint32_t, 5> kUpscaleQualityValues = { 0, 1, 2, 3, 4 };
+	constexpr int kHdrPaperWhiteMin = 80;
+	constexpr int kHdrPaperWhiteMax = 500;
+	constexpr int kHdrPeakNitsMin = 400;
+	constexpr int kHdrPeakNitsMax = 2000;
+	constexpr float kFeatureListMinRows = 6.0f;
+	constexpr float kBottomBarRows = 3.5f;
 }
 
 BasicMenu* BasicMenu::GetSingleton()
@@ -1437,9 +1466,25 @@ RE::BSEventNotifyControl BasicMenu::ProcessEvent(
 
 void BasicMenu::Activate()
 {
+	if (active)
+		return;
+
 	RebuildFeatureList();
 	firstFrame = true;
-	selectedFeatureIdx = -1;
+	auto& io = ImGui::GetIO();
+	hadNoMouseCursorChange = (io.ConfigFlags & ImGuiConfigFlags_NoMouseCursorChange) != 0;
+	io.ConfigFlags |= ImGuiConfigFlags_NoMouseCursorChange;
+	mousePos = io.MousePos.x > -FLT_MAX && io.MousePos.y > -FLT_MAX ?
+	               io.MousePos :
+	               ImVec2(io.DisplaySize.x * 0.5f, io.DisplaySize.y * 0.5f);
+
+	if (auto* queue = RE::UIMessageQueue::GetSingleton()) {
+		queue->AddMessage(RE::CursorMenu::MENU_NAME, RE::UI_MESSAGE_TYPE::kShow, nullptr);
+		openedCursorMenu = true;
+	} else {
+		openedCursorMenu = false;
+	}
+
 	active = true;
 }
 
@@ -1449,10 +1494,33 @@ void BasicMenu::Deactivate()
 		return;
 
 	active = false;
-	selectedFeatureIdx = -1;
+	mousePos = { -FLT_MAX, -FLT_MAX };
+	mouseMoved = false;
+	if (!hadNoMouseCursorChange)
+		ImGui::GetIO().ConfigFlags &= ~ImGuiConfigFlags_NoMouseCursorChange;
+
+	if (openedCursorMenu) {
+		if (auto* queue = RE::UIMessageQueue::GetSingleton())
+			queue->AddMessage(RE::CursorMenu::MENU_NAME, RE::UI_MESSAGE_TYPE::kHide, nullptr);
+		openedCursorMenu = false;
+	}
 
 	// Persist changes
 	globals::state->Save();
+}
+
+void BasicMenu::AddMouseMoveDelta(std::int32_t a_deltaX, std::int32_t a_deltaY)
+{
+	if (a_deltaX == 0 && a_deltaY == 0)
+		return;
+
+	auto& io = ImGui::GetIO();
+	if (mousePos.x <= -FLT_MAX || mousePos.y <= -FLT_MAX)
+		mousePos = ImVec2(io.DisplaySize.x * 0.5f, io.DisplaySize.y * 0.5f);
+
+	mousePos.x = std::clamp(mousePos.x + static_cast<float>(a_deltaX) * kBasicMouseInputScale, 0.0f, io.DisplaySize.x);
+	mousePos.y = std::clamp(mousePos.y + static_cast<float>(a_deltaY) * kBasicMouseInputScale, 0.0f, io.DisplaySize.y);
+	mouseMoved = true;
 }
 
 // --- Feature list building ---
@@ -1468,6 +1536,7 @@ namespace
 		"ExponentialHeightFog",
 		"Skylighting",
 		"CloudShadows",
+		"LightLimitFix",
 	};
 
 	bool IsExcludedCategory(std::string_view a_cat)
@@ -1488,7 +1557,6 @@ namespace
 		{ "VolumetricLighting", { "God rays and atmospheric light scattering", "[VRAM/GPU]", 2 } },
 		{ "ScreenSpaceShadows", { "Contact shadows for small-scale detail", "[GPU]", 2 } },
 		{ "VolumetricShadows", { "Shadows cast through volumetric fog", "[GPU]", 2 } },
-		{ "LightLimitFix", { "Removes the game's light count cap", "[GPU]", 1 } },
 		{ "TerrainShadows", { "Self-shadowing for terrain geometry", "[GPU]", 1 } },
 		{ "DynamicCubemaps", { "Real-time reflections on surfaces", "[VRAM/GPU]", 1 } },
 		{ "WetnessEffects", { "Rain wetness, puddles, and raindrop effects", "[GPU]", 1 } },
@@ -1498,14 +1566,14 @@ namespace
 		{ "WaterEffects", { "Enhanced water rendering", "[GPU]", 0 } },
 		{ "UnifiedWater", { "Improved water shader with blending", "[GPU]", 0 } },
 		{ "ExtendedMaterials", { "Parallax, terrain blending, and material enhancements", "[GPU]", 0 } },
-		{ "HairSpecular", { "Anisotropic hair highlights", "[GPU]", 0 } },
+		{ "HairSpecular", { "Anisotropic hair highlights", "[GPU]", 2 } },
 		{ "GrassLighting", { "Improved grass shading and shadows", "[GPU]", 0 } },
 		{ "GrassCollision", { "Grass bends when characters walk through it", "[GPU]", 0 } },
 		{ "LODBlending", { "Smooth transitions between LOD levels", "[GPU]", 0 } },
-		{ "SkySync", { "Synchronizes sky colors with lighting", "[GPU]", 0 } },
+		{ "SkySync", { "Synchronizes sky colors with lighting", "[CPU]", 2 } },
 		{ "InteriorSun", { "Directional sun light in interiors", "[GPU]", 0 } },
 		{ "ExtendedTranslucency", { "Enhanced translucent material rendering", "[GPU]", 0 } },
-		{ "Upscaling", { "FidelityFX/Streamline upscaling", "[VRAM/GPU]", 1 } },
+		{ "Upscaling", { "Reconstructs from a lower render resolution", "[GPU SAVE]", 0 } },
 		{ "HDRDisplay", { "HDR output for supported displays", "[GPU]", 0 } },
 		{ "TerrainHelper", { "Terrain shader improvements and fixes", "[GPU]", 0 } },
 		{ "CloudRelight", { "Dynamic cloud lighting from sun and moon", "[GPU]", 0 } },
@@ -1562,7 +1630,7 @@ namespace
 	constexpr ImVec4 kColorBg{ 0.0f, 0.0f, 0.0f, kBgAlpha };
 	constexpr ImVec4 kColorBorder{ 0.25f, 0.25f, 0.25f, 1.0f };
 	constexpr ImVec4 kColorText{ 0.733f, 0.741f, 0.749f, 1.0f };
-	constexpr ImVec4 kColorTextDim{ 0.733f, 0.741f, 0.749f, 0.30f };
+	constexpr ImVec4 kColorTextDim{ 0.733f, 0.741f, 0.749f, 0.65f };
 	constexpr ImVec4 kColorFrameBg{ 1.0f, 1.0f, 1.0f, 0.063f };
 	constexpr ImVec4 kColorFrameBgHovered{ 1.0f, 1.0f, 1.0f, 0.2f };
 	constexpr ImVec4 kColorButton{ 0.0f, 0.0f, 0.0f, 1.0f };
@@ -1620,6 +1688,11 @@ namespace
 		ImGui::PopStyleVar(kStyleVarCount);
 		ImGui::PopStyleColor(kStyleColorCount);
 	}
+
+	bool IsGamepadNavDownPressed()
+	{
+		return ImGui::IsKeyPressed(ImGuiKey_GamepadDpadDown) || ImGui::IsKeyPressed(ImGuiKey_GamepadLStickDown);
+	}
 }
 
 void BasicMenu::Draw()
@@ -1633,7 +1706,8 @@ void BasicMenu::Draw()
 	bool sawMouseKB = false;
 	bool sawGamepad = false;
 
-	if (ImGui::IsKeyPressed(ImGuiKey_MouseLeft) || ImGui::IsKeyPressed(ImGuiKey_MouseRight)) {
+	if (mouseMoved || io.MouseWheel != 0.0f || io.MouseWheelH != 0.0f ||
+		ImGui::IsKeyPressed(ImGuiKey_MouseLeft) || ImGui::IsKeyPressed(ImGuiKey_MouseRight)) {
 		sawMouseKB = true;
 	}
 	for (int key = ImGuiKey_Tab; key <= ImGuiKey_KeypadEqual; ++key) {
@@ -1655,17 +1729,12 @@ void BasicMenu::Draw()
 	else if (sawMouseKB)
 		inputMode = InputMode::kMouseKeyboard;
 
-	io.MouseDrawCursor = (inputMode == InputMode::kMouseKeyboard);
+	if (inputMode == InputMode::kMouseKeyboard && mousePos.x > -FLT_MAX && mousePos.y > -FLT_MAX)
+		io.MousePos = mousePos;
+	io.MouseDrawCursor = inputMode == InputMode::kMouseKeyboard;
 
 	// ESC / gamepad B handling
 	if (ImGui::IsKeyPressed(ImGuiKey_Escape) || ImGui::IsKeyPressed(ImGuiKey_GamepadFaceRight)) {
-		if (selectedFeatureIdx >= 0) {
-			// Back to list view
-			PlayGameSound("UIMenuCancel");
-			selectedFeatureIdx = -1;
-			firstFrame = true;  // re-seed focus
-			return;
-		}
 		PlayGameSound("UIMenuCancel");
 		Deactivate();
 		return;
@@ -1695,11 +1764,7 @@ void BasicMenu::Draw()
 	ImGui::Separator();
 	ImGui::Spacing();
 
-	if (selectedFeatureIdx >= 0 && selectedFeatureIdx < static_cast<int>(featureList.size())) {
-		DrawFeatureDetail(featureList[selectedFeatureIdx]);
-	} else {
-		DrawListView();
-	}
+	DrawListView();
 
 	// Bottom bar: VRAM + hints
 	ImGui::Separator();
@@ -1711,6 +1776,7 @@ void BasicMenu::Draw()
 
 	if (firstFrame)
 		firstFrame = false;
+	mouseMoved = false;
 }
 
 void BasicMenu::DrawListView()
@@ -1725,13 +1791,12 @@ void BasicMenu::DrawListView()
 		if (firstFrame)
 			ImGui::SetKeyboardFocusHere();
 
-		static constexpr const char* presetLabels[] = { "Low", "Medium", "High" };
 		const float presetBtnWidth = (ImGui::GetContentRegionAvail().x - ImGui::GetStyle().ItemSpacing.x * 2.0f) / 3.0f;
 
 		for (int i = 0; i < 3; ++i) {
 			if (i > 0)
 				ImGui::SameLine();
-			if (DrawButton(presetLabels[i], presetBtnWidth)) {
+			if (DrawButton(kQualityPresetLabels[i], presetBtnWidth)) {
 				const auto level = static_cast<Feature::QualityLevel>(i);
 				for (auto* feat : Feature::GetFeatureList()) {
 					if (feat->loaded)
@@ -1740,38 +1805,138 @@ void BasicMenu::DrawListView()
 			}
 		}
 
+		ImGui::PushStyleColor(ImGuiCol_Text, kColorTextDim);
+		ImGui::TextWrapped("Applies Low/Medium/High settings to supported features. Feature toggles stay unchanged.");
+		ImGui::PopStyleColor();
+
+		const bool focusFeatureList = DrawTopControls() && IsGamepadNavDownPressed();
+
 		ImGui::Spacing();
 		ImGui::Separator();
 		ImGui::Spacing();
-	}
 
-	// Scrollable feature list
-	const float bottomBarHeight = ImGui::GetFrameHeightWithSpacing() * 3.5f;
-	ImGui::BeginChild("##FeatureList", ImVec2(0, -bottomBarHeight), ImGuiChildFlags_NavFlattened);
+		// Scrollable feature list
+		const float frameHeight = ImGui::GetFrameHeightWithSpacing();
+		const float listHeight = std::max(frameHeight * kFeatureListMinRows, ImGui::GetContentRegionAvail().y - frameHeight * kBottomBarRows);
+		ImGui::BeginChild("##FeatureList", ImVec2(0, listHeight), ImGuiChildFlags_NavFlattened);
 
-	for (int i = 0; i < static_cast<int>(featureList.size()); ++i) {
-		ImGui::PushID(i);
-		DrawFeatureToggle(featureList[i]);
+		if (focusFeatureList)
+			ImGui::SetKeyboardFocusHere();
 
-		// A / Enter on a focused feature → open detail view
-		if (ImGui::IsItemFocused() &&
-			(ImGui::IsKeyPressed(ImGuiKey_GamepadFaceDown) || ImGui::IsKeyPressed(ImGuiKey_Enter))) {
-			selectedFeatureIdx = i;
-			firstFrame = true;
-			PlayGameSound("UIMenuOK");
+		for (int i = 0; i < static_cast<int>(featureList.size()); ++i) {
+			ImGui::PushID(i);
+			DrawFeatureToggle(featureList[i]);
+
+			ImGui::PopID();
 		}
-		ImGui::PopID();
+
+		// LB/RB page scroll (vanilla Skyrim pattern)
+		if (ImGui::IsKeyPressed(ImGuiKey_GamepadL1)) {
+			ImGui::SetScrollY(ImMax(0.0f, ImGui::GetScrollY() - ImGui::GetWindowHeight() * 0.8f));
+		}
+		if (ImGui::IsKeyPressed(ImGuiKey_GamepadR1)) {
+			ImGui::SetScrollY(ImMin(ImGui::GetScrollMaxY(), ImGui::GetScrollY() + ImGui::GetWindowHeight() * 0.8f));
+		}
+
+		ImGui::EndChild();
+	}
+}
+
+bool BasicMenu::DrawTopControls()
+{
+	auto drawChoiceRow = [this](const char* a_label, const auto& a_labels, int a_active, auto&& a_apply) {
+		ImGui::TextUnformatted(a_label);
+		ImGui::Spacing();
+
+		const float spacing = ImGui::GetStyle().ItemSpacing.x;
+		const float width = (ImGui::GetContentRegionAvail().x - spacing * (a_labels.size() - 1)) / static_cast<float>(a_labels.size());
+		bool lastFocused = false;
+
+		for (std::size_t i = 0; i < a_labels.size(); ++i) {
+			if (i > 0)
+				ImGui::SameLine();
+
+			const bool selected = static_cast<int>(i) == a_active;
+			if (selected)
+				ImGui::PushStyleColor(ImGuiCol_Button, kColorFrameBgHovered);
+
+			if (DrawButton(a_labels[i], width))
+				a_apply(i);
+
+			if (i + 1 == a_labels.size())
+				lastFocused = ImGui::IsItemFocused();
+
+			if (selected)
+				ImGui::PopStyleColor();
+		}
+
+		return lastFocused;
+	};
+
+	bool lastTopControlFocused = false;
+
+	if (globals::features::upscaling.loaded) {
+		ImGui::Spacing();
+		auto& upscaling = globals::features::upscaling;
+		int activeQuality = -1;
+		for (std::size_t i = 0; i < kUpscaleQualityValues.size(); ++i) {
+			if (upscaling.settings.qualityMode == kUpscaleQualityValues[i]) {
+				activeQuality = static_cast<int>(i);
+				break;
+			}
+		}
+
+		lastTopControlFocused = drawChoiceRow("Upscale Quality", kUpscaleQualityLabels, activeQuality, [&upscaling](std::size_t a_index) {
+			upscaling.settings.qualityMode = kUpscaleQualityValues[a_index];
+		});
+
+		if (!globals::game::isVR) {
+			ImGui::Spacing();
+			bool frameGeneration = upscaling.settings.frameGenerationMode != 0;
+			if (DrawToggle("Frame Generation", &frameGeneration))
+				upscaling.settings.frameGenerationMode = frameGeneration ? 1 : 0;
+			lastTopControlFocused = ImGui::IsItemFocused();
+		}
 	}
 
-	// LB/RB page scroll (vanilla Skyrim pattern)
-	if (ImGui::IsKeyPressed(ImGuiKey_GamepadL1)) {
-		ImGui::SetScrollY(ImMax(0.0f, ImGui::GetScrollY() - ImGui::GetWindowHeight() * 0.8f));
-	}
-	if (ImGui::IsKeyPressed(ImGuiKey_GamepadR1)) {
-		ImGui::SetScrollY(ImMin(ImGui::GetScrollMaxY(), ImGui::GetScrollY() + ImGui::GetWindowHeight() * 0.8f));
+	if (globals::features::hdrDisplay.loaded) {
+		ImGui::Spacing();
+		auto& hdr = globals::features::hdrDisplay;
+		bool hdrEnabled;
+		int paperWhite;
+		int peakNits;
+		{
+			std::lock_guard<std::mutex> lock(hdr.settingsMutex);
+			hdrEnabled = hdr.settings.enableHDR;
+			paperWhite = static_cast<int>(hdr.settings.hdrPaperWhite);
+			peakNits = static_cast<int>(hdr.settings.hdrPeakNits);
+		}
+
+		if (DrawToggle("HDR", &hdrEnabled)) {
+			std::lock_guard<std::mutex> lock(hdr.settingsMutex);
+			hdr.settings.enableHDR = hdrEnabled;
+			hdr.UpdateHDRData();
+			hdr.UpdateSwapChainColorSpace();
+		}
+		lastTopControlFocused = ImGui::IsItemFocused();
+
+		if (hdrEnabled) {
+			if (ImGui::SliderInt("Paper White", &paperWhite, kHdrPaperWhiteMin, kHdrPaperWhiteMax)) {
+				std::lock_guard<std::mutex> lock(hdr.settingsMutex);
+				hdr.settings.hdrPaperWhite = static_cast<std::uint32_t>(std::min(paperWhite, peakNits - 1));
+				hdr.UpdateHDRData();
+			}
+			lastTopControlFocused = ImGui::IsItemFocused();
+			if (ImGui::SliderInt("Peak Brightness", &peakNits, kHdrPeakNitsMin, kHdrPeakNitsMax)) {
+				std::lock_guard<std::mutex> lock(hdr.settingsMutex);
+				hdr.settings.hdrPeakNits = static_cast<std::uint32_t>(std::max(peakNits, paperWhite + 1));
+				hdr.UpdateHDRData();
+			}
+			lastTopControlFocused = ImGui::IsItemFocused();
+		}
 	}
 
-	ImGui::EndChild();
+	return lastTopControlFocused;
 }
 
 void BasicMenu::DrawFeatureToggle(const FeatureEntry& a_entry)
@@ -1796,7 +1961,7 @@ void BasicMenu::DrawFeatureToggle(const FeatureEntry& a_entry)
 		}
 	}
 
-	// Description line with badge — clickable to open detail view
+	// Description line with badge.
 	{
 		ImVec4 badgeColor;
 		switch (a_entry.perfLevel) {
@@ -1811,27 +1976,13 @@ void BasicMenu::DrawFeatureToggle(const FeatureEntry& a_entry)
 			break;
 		}
 
-		// Compose description + badge into a single selectable line
-		// so SameLine positioning issues are avoided
 		float badgeWidth = ImGui::CalcTextSize(a_entry.badge).x;
 
 		ImGui::PushStyleColor(ImGuiCol_Text, kColorTextDim);
 		std::string descLine = std::string("  ") + a_entry.description;
-		if (ImGui::Selectable(descLine.c_str(), false, ImGuiSelectableFlags_None)) {
-			// Find this entry's index and open detail
-			for (int i = 0; i < static_cast<int>(featureList.size()); ++i) {
-				if (featureList[i].feature == a_entry.feature) {
-					selectedFeatureIdx = i;
-					firstFrame = true;
-					PlayGameSound("UIMenuOK");
-					break;
-				}
-			}
-		}
+		ImGui::TextUnformatted(descLine.c_str());
 		ImGui::PopStyleColor();
 
-		// Draw badge on the same line as the selectable, right-aligned
-		// Use previous line's rect to overlay the badge at the correct Y position
 		ImVec2 badgePos = ImVec2(
 			ImGui::GetWindowPos().x + ImGui::GetContentRegionMax().x - badgeWidth,
 			ImGui::GetItemRectMin().y);
@@ -1879,6 +2030,7 @@ bool BasicMenu::DrawToggle(const char* a_label, bool* a_value)
 
 	bool hovered, held;
 	bool pressed = ImGui::ButtonBehavior(bb, id, &hovered, &held);
+	const bool active = held || ImGui::IsItemActive();
 	if (pressed) {
 		*a_value = !*a_value;
 		ImGui::MarkItemEdited(id);
@@ -1914,7 +2066,7 @@ bool BasicMenu::DrawToggle(const char* a_label, bool* a_value)
 	drawList->AddRectFilled(railMin, railMax, ImGui::GetColorU32(kColorToggleRail), g.Style.FrameRounding);
 
 	// Rail border
-	const ImU32 borderCol = (hovered || ImGui::IsItemFocused())
+	const ImU32 borderCol = (hovered || active || ImGui::IsItemFocused())
 	                            ? ImGui::GetColorU32(kColorToggleBorderActive)
 	                            : ImGui::GetColorU32(kColorToggleBorder);
 	drawList->AddRect(railMin, railMax, borderCol, g.Style.FrameRounding, 0, 1.0f);
@@ -1938,7 +2090,7 @@ bool BasicMenu::DrawToggle(const char* a_label, bool* a_value)
 		drawList->AddCircle(knobCenter, ringRadius, knobRingCol, 0, ringThick);
 
 	// Nav highlight frame for keyboard/gamepad navigation
-	if (ImGui::IsItemFocused()) {
+	if (active || ImGui::IsItemFocused()) {
 		drawList->AddRect(bb.Min, bb.Max, ImGui::GetColorU32(ImGuiCol_NavCursor), 0.0f, 0, 2.0f);
 	}
 
@@ -2015,119 +2167,14 @@ bool BasicMenu::DrawButton(const char* a_label, float a_width)
 	return pressed;
 }
 
-void BasicMenu::DrawFeatureDetail(const FeatureEntry& a_entry)
-{
-	bool* runtimeFlag = a_entry.feature->GetEnabledFlag();
-	bool enabled = runtimeFlag ? *runtimeFlag : a_entry.feature->loaded;
-
-	// Back button
-	if (firstFrame)
-		ImGui::SetKeyboardFocusHere();
-
-	if (DrawButton("Back")) {
-		selectedFeatureIdx = -1;
-		firstFrame = true;
-		PlayGameSound("UIMenuCancel");
-		return;
-	}
-
-	ImGui::Spacing();
-
-	// Feature name
-	ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 1.0f, 1.0f, 1.0f));
-	ImGui::Text("%s", a_entry.feature->GetName().c_str());
-	ImGui::PopStyleColor();
-
-	ImGui::Spacing();
-
-	// Description
-	ImGui::PushStyleColor(ImGuiCol_Text, kColorTextDim);
-	ImGui::TextWrapped("%s", a_entry.description);
-	ImGui::PopStyleColor();
-
-	ImGui::Spacing();
-
-	// Performance badge
-	{
-		ImVec4 badgeColor;
-		const char* perfLabel;
-		switch (a_entry.perfLevel) {
-		case 2:
-			badgeColor = kColorPerfHeavy;
-			perfLabel = "Heavy";
-			break;
-		case 1:
-			badgeColor = kColorPerfMedium;
-			perfLabel = "Medium";
-			break;
-		default:
-			badgeColor = kColorPerfLight;
-			perfLabel = "Light";
-			break;
-		}
-		ImGui::PushStyleColor(ImGuiCol_Text, badgeColor);
-		ImGui::Text("Performance: %s %s", perfLabel, a_entry.badge);
-		ImGui::PopStyleColor();
-	}
-
-	ImGui::Spacing();
-	ImGui::Separator();
-	ImGui::Spacing();
-
-	// Enable/disable toggle
-	if (DrawToggle("Enabled", &enabled)) {
-		if (runtimeFlag) {
-			*runtimeFlag = enabled;
-		} else {
-			a_entry.feature->loaded = enabled;
-			if (!enabled)
-				userToggledOff.insert(a_entry.feature->GetShortName());
-			else
-				userToggledOff.erase(a_entry.feature->GetShortName());
-		}
-	}
-
-	ImGui::Spacing();
-	ImGui::Separator();
-	ImGui::Spacing();
-
-	// Per-feature settings (scrollable)
-	const float bottomBarHeight = ImGui::GetFrameHeightWithSpacing() * 3.5f;
-	ImGui::BeginChild("##FeatureSettings", ImVec2(0, -bottomBarHeight), ImGuiChildFlags_NavFlattened);
-
-	if (enabled) {
-		ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 1.0f, 1.0f, 0.85f));
-		ImGui::Text("Settings");
-		ImGui::PopStyleColor();
-		ImGui::Spacing();
-		a_entry.feature->DrawSettings();
-	} else {
-		ImGui::PushStyleColor(ImGuiCol_Text, kColorTextDim);
-		ImGui::TextWrapped("Enable this feature to access its settings.");
-		ImGui::PopStyleColor();
-	}
-
-	ImGui::EndChild();
-}
-
 void BasicMenu::DrawInputHints()
 {
 	ImGui::PushStyleColor(ImGuiCol_Text, kColorTextDim);
 
 	if (inputMode == InputMode::kGamepad) {
-		if (selectedFeatureIdx >= 0) {
-			ImGui::Text("[B] Back    [A] Toggle    [LB/RB] Adjust");
-		} else {
-			ImGui::Text("[A] Select    [B] Close    [LB/RB] Page Scroll");
-		}
+		ImGui::Text("[A] Select    [B] Close    [LB/RB] Page Scroll");
 	} else {
-		auto* menu = Menu::GetSingleton();
-		std::string keyName = menu ? Util::Input::KeyIdToString(menu->GetSettings().ToggleKey) : "END";
-		if (selectedFeatureIdx >= 0) {
-			ImGui::Text("Press %s for advanced settings", keyName.c_str());
-		} else {
-			ImGui::Text("Click feature for details | %s for advanced settings", keyName.c_str());
-		}
+		ImGui::Text("ESC closes");
 	}
 
 	ImGui::PopStyleColor();

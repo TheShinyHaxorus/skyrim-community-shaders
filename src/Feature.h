@@ -55,8 +55,6 @@ struct Feature
 		for (const auto& p : presets) {
 			if (p.id == level) {
 				ApplyPreset(this, p);
-				if (auto* en = GetEnabledFlag())
-					*en = true;
 				return true;
 			}
 		}
