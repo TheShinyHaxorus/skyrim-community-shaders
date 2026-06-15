@@ -1,6 +1,8 @@
 #include "CloudShadows.h"
 
 #include "../I18n/I18n.h"
+#include "Effect11.h"
+#include "Effect11/SettingManager.h"
 #include "State.h"
 #include "Utils/D3D.h"
 
@@ -15,6 +17,14 @@ NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(
 
 void CloudShadows::DrawSettings()
 {
+	if (globals::features::effect11.loaded) {
+		auto& enb = globals::features::effect11;
+		if (enb.enableEffect) {
+			ImGui::TextColored(ImVec4(1.0f, 1.0f, 0.0f, 1.0f), "Settings are currently managed by ENB.");
+			return;
+		}
+	}
+
 	ImGui::SliderFloat(T(TKEY("opacity"), "Opacity"), &settings.Opacity, 0.0f, 1.0f, "%.2f");
 	if (auto _tt = Util::HoverTooltipWrapper()) {
 		ImGui::Text("%s", T(TKEY("opacity_tooltip"),
@@ -55,6 +65,33 @@ void CloudShadows::SaveSettings(json& o_json)
 void CloudShadows::RestoreDefaultSettings()
 {
 	settings = {};
+}
+
+CloudShadows::Settings CloudShadows::GetCommonBufferData()
+{
+	if (!loaded)
+		return settings;
+
+	auto data = settings;
+
+	// When ENB post-processing manages cloud shadows, drive opacity from the ENB preset.
+	// ENB's "Amount" ranges 0..4, but our shader treats Opacity as a 0..1 lerp factor
+	// (CloudShadows.hlsli: lerp(1.0, 1.0 - cloudCubeSample, Opacity)), so clamp to avoid
+	// extrapolating past full shadow (which produces negative/black results).
+	if (globals::features::effect11.loaded) {
+		auto& enb = globals::features::effect11;
+		if (enb.enableEffect) {
+			auto& settingManager = SettingManager::GetSingleton();
+			if (settingManager.GetValue<bool>("EnableCloudShadows", "EFFECT")) {
+				float amount = settingManager.GetInterpolatedTimeOfDayValue("Amount", "CLOUDSHADOWS");
+				data.Opacity = amount < 0.0f ? 0.0f : (amount > 1.0f ? 1.0f : amount);
+			} else {
+				data.Opacity = 0.0f;
+			}
+		}
+	}
+
+	return data;
 }
 
 void CloudShadows::CheckResourcesSide(int side)
