@@ -247,6 +247,48 @@ PS_OUTPUT main(PS_INPUT input)
 	psout.Color.xyz = Color::Sky(input.Color.xyz) * baseColor.xyz + skyScale;
 #		endif
 
+#	if defined(CLOUD_SHADOWS) && defined(CLOUDS)
+	if (baseColor.w > 0.0) {
+		// viewDir = this cloud fragment's direction on the celestial sphere (the sky-dome vertex
+		// world position IS the cloud direction).
+		float3 viewDir = normalize(input.WorldPosition.xyz);
+
+		// Beer-Lambert self-shadowing: march from the cloud toward the sun through the cloud
+		// occlusion cubemap (previous-frame copy on t25, hazard-free) accumulating density.
+		const int SHADOW_STEPS = 8;
+		float rcpSteps = rcp(float(SHADOW_STEPS));
+		float totalDensity = 0.0;
+
+		// Clamp the sun direction to the upper hemisphere so the march always finds cloud density.
+		float3 lightDir = normalize(float3(SharedData::DirLightDirection.xy, max(0.05, SharedData::DirLightDirection.z)));
+
+		[unroll]
+		for (int i = 0; i < SHADOW_STEPS; i++) {
+			float t = (float(i) + 0.5) * rcpSteps;
+			float3 sampleDir = normalize(lerp(viewDir, lightDir, t));
+			totalDensity += CloudShadows::VolumetricCloudShadowsTexture.SampleLevel(SampBaseSampler, sampleDir, 0).x;
+		}
+
+		// Beer-Lambert transmittance, scaled by sunlight luminance.
+		float dirLightLum = dot(SharedData::DirLightColor.xyz, float3(0.2126, 0.7152, 0.0722));
+		float transmittance = exp(-totalDensity * rcpSteps * SharedData::cloudShadowsSettings.InnerCloudShadowOpacity * saturate(dirLightLum));
+
+		// Multi-scattering approximation: thicker clouds scatter more light back in.
+		transmittance = lerp(transmittance, 1.0, 0.25 * baseColor.w * (1.0 - transmittance));
+
+		psout.Color.xyz *= transmittance;
+
+		// Sun/moon scatter via Henyey-Greenstein phase function (silver lining toward the sun).
+		float sunCos = dot(viewDir, lightDir);
+		static const float g = 0.8;
+		static const float g2 = g * g;
+		float forwardScatter = min((1.0 - g2) / (4.0 * Math::PI * pow(1.0 + g2 - 2.0 * g * sunCos, 1.5)), 10.0);
+		float shadowSide = saturate(-sunCos) * 0.25;
+		float scatter = SharedData::cloudShadowsSettings.SunScatterStrength * baseColor.w * transmittance;
+		psout.Color.xyz = max(0, psout.Color.xyz * (1.0 - shadowSide * scatter) + SharedData::DirLightColor.xyz * forwardScatter * scatter);
+	}
+#	endif
+
 #	else
 	psout.Color = float4(0, 0, 0, 1.0);
 #	endif  // OCCLUSION

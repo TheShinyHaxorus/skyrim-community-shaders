@@ -94,7 +94,18 @@ cbuffer PerTechnique : register(b0)
 	float shadowContribution = noShadow;
 
 #	if defined(TERRAIN_SHADOWS) || defined(CLOUD_SHADOWS)
-	shadowContribution *= sqrt(ShadowSampling::GetWorldShadow(positionWS.xyz, PosAdjust));
+	if (!SharedData::InInterior && !SharedData::HideSky && !SharedData::InMapMenu) {
+		float worldShadow = 1.0;
+#		if defined(TERRAIN_SHADOWS)
+		worldShadow *= TerrainShadows::GetTerrainShadow(positionWS.xyz + PosAdjust, LinearSampler);
+#		endif
+		shadowContribution *= sqrt(worldShadow);
+#		if defined(CLOUD_SHADOWS)
+		// Volumetric Light Penetration lets god rays bleed through clouds (1.0 = clouds don't block VL).
+		float cloudMult = sqrt(CloudShadows::GetCloudShadowMult(positionWS.xyz, LinearSampler));
+		shadowContribution *= lerp(cloudMult, 1.0, SharedData::cloudShadowsSettings.VolumetricLightPenetration);
+#		endif
+	}
 #	endif
 
 	float vl = shadowContribution * densityContribution * phaseContribution;

@@ -625,6 +625,13 @@ float3 GetLightingShadow(float3 color, float3 worldPosition, float2 screenPositi
 
 	dirColor *= shadow;
 
+#		if defined(VOLUMETRIC_SHADOWS)
+	if (inWorld && !SharedData::InInterior) {
+		float vsmDetailedShadow;
+		dirColor *= VolumetricShadows::GetVSMShadow2D(worldPosition, vsmDetailedShadow);
+	}
+#		endif
+
 #		if defined(EXP_HEIGHT_FOG)
 	if (SharedData::exponentialHeightFogSettings.enabled) {
 		dirColor *= ExponentialHeightFog::GetSunlightFogAttenuation(worldPosition.xyz, FrameBuffer::CameraPosAdjust.xyz);

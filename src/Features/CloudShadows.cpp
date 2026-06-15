@@ -8,14 +8,35 @@
 
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(
 	CloudShadows::Settings,
-	Opacity)
+	Opacity,
+	InnerCloudShadowOpacity,
+	SunScatterStrength,
+	VolumetricLightPenetration)
 
 void CloudShadows::DrawSettings()
 {
-	ImGui::SliderFloat(T(TKEY("opacity"), "Opacity"), &settings.Opacity, 0.0f, 1.0f, "%.1f");
+	ImGui::SliderFloat(T(TKEY("opacity"), "Opacity"), &settings.Opacity, 0.0f, 1.0f, "%.2f");
 	if (auto _tt = Util::HoverTooltipWrapper()) {
 		ImGui::Text("%s", T(TKEY("opacity_tooltip"),
-							  "Higher values make cloud shadows darker."));
+							  "Controls how dark cloud shadows appear on terrain and objects."));
+	}
+
+	ImGui::SliderFloat(T(TKEY("inner_opacity"), "Inner Cloud Shadow Opacity"), &settings.InnerCloudShadowOpacity, 0.0f, 2.0f, "%.2f");
+	if (auto _tt = Util::HoverTooltipWrapper()) {
+		ImGui::Text("%s", T(TKEY("inner_opacity_tooltip"),
+							  "Extinction coefficient for cloud self-shadowing. Higher values make cloud undersides darker. Values above 1 give cumulonimbus-style heavy shadows."));
+	}
+
+	ImGui::SliderFloat(T(TKEY("sun_scatter"), "Sun Scatter Strength"), &settings.SunScatterStrength, 0.0f, 1.0f, "%.2f");
+	if (auto _tt = Util::HoverTooltipWrapper()) {
+		ImGui::Text("%s", T(TKEY("sun_scatter_tooltip"),
+							  "Controls how much the sun direction brightens cloud edges facing the sun (silver lining effect) and darkens the opposite side."));
+	}
+
+	ImGui::SliderFloat(T(TKEY("vl_penetration"), "Volumetric Light Penetration"), &settings.VolumetricLightPenetration, 0.0f, 1.0f, "%.2f");
+	if (auto _tt = Util::HoverTooltipWrapper()) {
+		ImGui::Text("%s", T(TKEY("vl_penetration_tooltip"),
+							  "Controls how much volumetric light (god rays) can penetrate through clouds. At 0, clouds fully block god rays. At 1, god rays pass through clouds unaffected."));
 	}
 }
 
@@ -123,9 +144,13 @@ void CloudShadows::ReflectionsPrepass()
 
 		context->CopyResource(texCubemapCloudOccCopy->resource.get(), texCubemapCloudOcc->resource.get());
 
+		// Before the live cubemap is rendered this frame, both t25 (volumetric) and t26
+		// (ground) read the previous-frame copy so reflection-pass consumers stay hazard-free.
 		ID3D11ShaderResourceView* srv = texCubemapCloudOccCopy->srv.get();
 		context->PSSetShaderResources(25, 1, &srv);
 		context->CSSetShaderResources(25, 1, &srv);
+		context->PSSetShaderResources(26, 1, &srv);
+		context->CSSetShaderResources(26, 1, &srv);
 	}
 }
 
@@ -137,9 +162,17 @@ void CloudShadows::EarlyPrepass()
 
 	auto context = globals::d3d::context;
 
+	// t25 = VolumetricCloudShadowsTexture: previous-frame copy, sampled by the sky cloud
+	// self-shadow march to avoid a read/write hazard with the live occlusion cubemap that
+	// the cloud pass writes this same frame.
+	ID3D11ShaderResourceView* copySrv = texCubemapCloudOccCopy->srv.get();
+	context->PSSetShaderResources(25, 1, &copySrv);
+	context->CSSetShaderResources(25, 1, &copySrv);
+
+	// t26 = CloudShadowsTexture: live cubemap for terrain/world ground shadows.
 	ID3D11ShaderResourceView* srv = texCubemapCloudOcc->srv.get();
-	context->PSSetShaderResources(25, 1, &srv);
-	context->CSSetShaderResources(25, 1, &srv);
+	context->PSSetShaderResources(26, 1, &srv);
+	context->CSSetShaderResources(26, 1, &srv);
 }
 
 void CloudShadows::SetupResources()
