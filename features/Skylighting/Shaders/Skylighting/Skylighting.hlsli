@@ -35,14 +35,13 @@ namespace Skylighting
 
 	float MixSpecular(float visibility)
 	{
-		return lerp(SharedData::skylightingSettings.MinDiffuseVisibility, 1.0, visibility);
+		return lerp(SharedData::skylightingSettings.MinSpecularVisibility, 1.0, visibility);
 	}
 
 	float EvaluateDiffuse(sh2 skylightingSH, float3 normal, float fadeOutFactor = 1.0)
 	{
 		float visibility = SphericalHarmonics::FuncProductIntegral(skylightingSH, SphericalHarmonics::EvaluateCosineLobe(normal)) / Math::PI;
 		visibility = lerp(1.0, saturate(visibility), fadeOutFactor);
-		visibility = pow(visibility, SharedData::skylightingSettings.MinSpecularVisibility);
 		return MixDiffuse(visibility);
 	}
 
@@ -50,7 +49,6 @@ namespace Skylighting
 	{
 		float visibility = SphericalHarmonics::FuncProductIntegral(skylightingSH, specularLobe);
 		visibility = lerp(1.0, saturate(visibility), fadeOutFactor);
-		visibility = pow(visibility, SharedData::skylightingSettings.MinSpecularVisibility);
 		return MixSpecular(visibility);
 	}
 
