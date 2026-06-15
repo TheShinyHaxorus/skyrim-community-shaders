@@ -1,4 +1,5 @@
 #include "LightLimitFix.h"
+#include "Effect11.h"
 #include "InverseSquareLighting.h"
 #include "LinearLighting.h"
 
@@ -246,6 +247,12 @@ void LightLimitFix::BSLightingShader_SetupGeometry_GeometrySetupConstantPointLig
 
 		light.fade *= bsLight->lodDimmer;
 
+		{
+			auto& enbpp = globals::features::effect11;
+			if (inWorld && enbpp.enableEffect)
+				enbpp.OverridePointLightColor(light.color);
+		}
+
 		SetLightPosition(light, niLight->world.translate, inWorld);
 
 		if (i < a_pass->numShadowLights) {
@@ -425,6 +432,12 @@ void LightLimitFix::UpdateLights()
 					}
 
 					light.fade *= bsLight->lodDimmer;
+
+					{
+						auto& enbpp = globals::features::effect11;
+						if (enbpp.enableEffect)
+							enbpp.OverridePointLightColor(light.color);
+					}
 
 					if (!IsGlobalLight(bsLight)) {
 						// List of BSMultiBoundRooms affected by a light

@@ -77,6 +77,8 @@ public:
 	} settings;
 	STATIC_ASSERT_ALIGNAS_16(Settings);
 
+	Settings GetCommonBufferData() const;
+
 private:
 	struct VolumetricFogCB
 	{

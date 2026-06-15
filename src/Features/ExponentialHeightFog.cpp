@@ -1,6 +1,7 @@
 #include "ExponentialHeightFog.h"
 
 #include "Deferred.h"
+#include "Effect11.h"
 #include "Features/CloudShadows.h"
 #include "Features/IBL.h"
 #include "Features/LightLimitFix.h"
@@ -82,8 +83,31 @@ void ExponentialHeightFog::SaveSettings(json& o_json)
 	o_json = settings;
 }
 
+ExponentialHeightFog::Settings ExponentialHeightFog::GetCommonBufferData() const
+{
+	Settings data = settings;
+
+	// When ENB post-processing is active, ENB handles fog; disable ours.
+	if (globals::features::effect11.loaded) {
+		auto& enb = globals::features::effect11;
+		if (enb.enableEffect) {
+			data.enabled = 0;
+		}
+	}
+
+	return data;
+}
+
 void ExponentialHeightFog::DrawSettings()
 {
+	if (globals::features::effect11.loaded) {
+		auto& enb = globals::features::effect11;
+		if (enb.enableEffect) {
+			ImGui::TextColored(ImVec4(1.0f, 1.0f, 0.0f, 1.0f), "Settings are currently managed by ENB.");
+			return;
+		}
+	}
+
 	ImGui::Checkbox(T(TKEY("enable_exp_height_fog"), "Enable Exponential Height Fog"), (bool*)&settings.enabled);
 	Util::WeatherUI::SliderFloat(T(TKEY("start_distance"), "Start Distance"), this, "startDistance", &settings.startDistance, 0.0f, 100000.0f, "%.1f");
 	Util::WeatherUI::SliderFloat(T(TKEY("fog_height"), "Fog Height"), this, "fogHeight", &settings.fogHeight, -22000.0f, 22000.0f, "%.1f");
@@ -579,6 +603,13 @@ void ExponentialHeightFog::Prepass()
 
 void ExponentialHeightFog::RegisterWeatherVariables()
 {
+	if (globals::features::effect11.loaded) {
+		auto& enb = globals::features::effect11;
+		if (enb.enableEffect) {
+			return;
+		}
+	}
+
 	auto* registry = WeatherVariables::GlobalWeatherRegistry::GetSingleton()->GetOrCreateFeatureRegistry(GetShortName());
 	registry->RegisterVariable(std::make_shared<WeatherVariables::FloatVariable>(
 		"Start Distance",

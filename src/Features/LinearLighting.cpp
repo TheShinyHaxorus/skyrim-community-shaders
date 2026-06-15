@@ -1,6 +1,7 @@
 #include "LinearLighting.h"
 
 #include "../I18n/I18n.h"
+#include "Effect11.h"
 #include "State.h"
 #include "Utils/UI.h"
 
@@ -86,6 +87,14 @@ void LinearLighting::ApplyPresetMaster(float a_master)
 
 void LinearLighting::DrawSettings()
 {
+	if (globals::features::effect11.loaded) {
+		auto& enb = globals::features::effect11;
+		if (enb.enableEffect) {
+			ImGui::TextColored(ImVec4(1.0f, 1.0f, 0.0f, 1.0f), "Settings are currently managed by ENB.");
+			return;
+		}
+	}
+
 	ImGui::Checkbox(T(TKEY("enable"), "Enable Linear Lighting"), (bool*)&settings.enableLinearLighting);
 
 	if (ImGui::BeginTabBar("##LinearLightingTabs", ImGuiTabBarFlags_None)) {
@@ -273,6 +282,39 @@ LinearLighting::PerFrameData LinearLighting::GetCommonBufferData()
 	data.projectedEffectMult = settings.projectedEffectMult;
 	data.deferredEffectMult = settings.deferredEffectMult;
 	data.otherEffectMult = settings.otherEffectMult;
+
+	// When ENB post-processing is active, ENB takes over linear lighting:
+	// neutralize all gammas and multipliers so we pass through untouched.
+	if (globals::features::effect11.loaded) {
+		auto& enb = globals::features::effect11;
+		if (enb.enableEffect) {
+			data.enableLinearLighting = false;
+			data.lightGamma = 1.0f;
+			data.colorGamma = 1.0f;
+			data.emitColorGamma = 1.0f;
+			data.glowmapGamma = 1.0f;
+			data.ambientGamma = 1.0f;
+			data.fogGamma = 1.0f;
+			data.fogAlphaGamma = 1.0f;
+			data.effectGamma = 1.0f;
+			data.effectAlphaGamma = 1.0f;
+			data.skyGamma = 1.0f;
+			data.waterGamma = 1.0f;
+			data.vlGamma = 1.0f;
+			data.vanillaDiffuseColorMult = 1.0f;
+			data.directionalLightMult = 1.0f;
+			data.pointLightMult = 1.0f;
+			data.ambientMult = 1.0f;
+			data.emitColorMult = 1.0f;
+			data.glowmapMult = 1.0f;
+			data.effectLightingMult = 1.0f;
+			data.membraneEffectMult = 1.0f;
+			data.bloodEffectMult = 1.0f;
+			data.projectedEffectMult = 1.0f;
+			data.deferredEffectMult = 1.0f;
+			data.otherEffectMult = 1.0f;
+		}
+	}
 	return data;
 }
 
