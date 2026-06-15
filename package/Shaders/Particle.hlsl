@@ -25,6 +25,9 @@ struct VS_OUTPUT
 #if defined(ENVCUBE)
 	float4 PrecipitationOcclusionTexCoord: TEXCOORD1;
 #endif
+#if defined(ENVCUBE) && defined(RAIN)
+	float2 RaindropData: TEXCOORD2;
+#endif
 };
 
 #ifdef VSHADER
@@ -83,7 +86,12 @@ VS_OUTPUT main(VS_INPUT input)
 
 	float4 viewPosition = mul(WorldViewProj, msPosition);
 #		if defined(RAIN)
-	float4 adjustedMsPosition = msPosition - float4(Velocity.xyz, 0);
+	float3 rainVelocity = Velocity.xyz;
+	if (SharedData::enbSettings.EnableRain) {
+		float3 normVel = normalize(rainVelocity);
+		rainVelocity = lerp(normVel, rainVelocity, SharedData::enbSettings.RainMotionStretch);
+	}
+	float4 adjustedMsPosition = msPosition - float4(rainVelocity, 0);
 	float positionBlendParam = 0.5 * (1 + input.TexCoord1.y);
 	float4 adjustedViewPosition = mul(WorldViewProj, adjustedMsPosition);
 	float4 finalViewPosition = lerp(adjustedViewPosition, viewPosition, positionBlendParam);
@@ -100,6 +108,12 @@ VS_OUTPUT main(VS_INPUT input)
 	float4 precipitationOcclusionTexCoord = mul(PrecipitationOcclusionWorldViewProj, msPosition);
 	precipitationOcclusionTexCoord.y = -precipitationOcclusionTexCoord.y;
 	vsout.PrecipitationOcclusionTexCoord = precipitationOcclusionTexCoord;
+#		if defined(RAIN)
+	float2 raindropUv = input.TexCoord1.xy;
+	raindropUv.y *= 1.25;  // UV fix
+	raindropUv.xy *= 0.5;  // UV unfix
+	vsout.RaindropData.xy = raindropUv * 0.5 + 0.5;
+#		endif
 #	else
 	float tmp2 = input.Normal.w * input.Position.w;
 	float tmp1 = tmp2 / fVars0.y;
@@ -213,6 +227,9 @@ Texture2D<float4> TexGrayscaleTexture : register(t1);
 Texture2D<float4> TexPrecipitationOcclusionTexture : register(t2);
 Texture2D<float4> TexUnderwaterMask : register(t3);
 #	endif
+#	if defined(ENVCUBE) && defined(RAIN)
+Texture2D<float4> TexRaindropNormals : register(t80);
+#	endif
 
 cbuffer PerGeometry : register(b2)
 {
@@ -223,7 +240,12 @@ cbuffer PerGeometry : register(b2)
 #	define LinearSampler SampSourceTexture
 #	include "Common/ShadowSampling.hlsli"
 
-PS_OUTPUT main(PS_INPUT input)
+#	if defined(RAIN) && defined(DYNAMIC_CUBEMAPS)
+#		define SampColorSampler SampSourceTexture
+#		include "DynamicCubemaps/DynamicCubemaps.hlsli"
+#	endif
+
+PS_OUTPUT main(PS_INPUT input, bool frontFace : SV_IsFrontFace)
 {
 	PS_OUTPUT psout;
 
@@ -234,6 +256,52 @@ PS_OUTPUT main(PS_INPUT input)
 	float underwaterMask = TexUnderwaterMask.Sample(SampUnderwaterMask, underwaterMaskUv).x;
 	if (precipitationOcclusion - underwaterMask < 0) {
 		discard;
+	}
+#	endif
+
+#	if defined(RAIN) && defined(DYNAMIC_CUBEMAPS)
+	// ENB-style raindrop billboards: refract/reflect the dynamic cubemap through a raindrop normal map.
+	if (SharedData::enbSettings.EnableRain) {
+		float4 raindropNormal = TexRaindropNormals.Sample(SampSourceTexture, input.RaindropData.xy);
+		float alpha = saturate(raindropNormal.w * (1.0 - SharedData::enbSettings.RainMotionTransparency));
+		clip(alpha - (4.0 / 255.0));
+		raindropNormal.y = 1.0 - raindropNormal.y;
+
+		// Reconstruct camera-relative worldspace position (camera at origin).
+		float2 rainUv = input.Position.xy * SharedData::BufferDim.zw;
+		float4 posCS = float4(2.0 * float2(rainUv.x, 1.0 - rainUv.y) - 1.0, input.Position.z, 1.0);
+		float4 posWS = mul(FrameBuffer::CameraViewProjInverse, posCS);
+		posWS.xyz /= posWS.w;
+
+		// Build worldspace TBN from screen-space derivatives. The billboard is camera-aligned,
+		// so dPdx/dPdy lie in the billboard plane along screen X/Y.
+		float3 T = normalize(ddx(posWS.xyz));
+		float3 N = normalize(cross(T, -ddy(posWS.xyz)));
+		float3 B = cross(N, T);
+		float3x3 TBN = float3x3(T, B, N);
+
+		float3 normalTS = normalize(raindropNormal.xyz * 2.0 - 1.0);
+		float3 normalWS = normalize(mul(normalTS, TBN));
+
+		if (frontFace)
+			normalWS = -normalWS;
+
+		float3 V = normalize(-posWS.xyz);
+		float NdotV = saturate(dot(normalWS, V));
+		float fresnel = 0.02 + 0.98 * pow(1.0 - NdotV, 5.0);
+
+		float3 reflectDir = reflect(-V, normalWS);
+		float3 refractDir = refract(-V, normalWS, 1.0 / 1.33);
+		if (dot(refractDir, refractDir) < 1e-4)
+			refractDir = -V;
+
+		float3 reflectColor = DynamicCubemaps::EnvReflectionsTexture.SampleLevel(SampSourceTexture, reflectDir, 0).xyz;
+		float3 refractColor = DynamicCubemaps::EnvReflectionsTexture.SampleLevel(SampSourceTexture, refractDir, 0).xyz;
+
+		psout.Color.xyz = lerp(refractColor, reflectColor, fresnel);
+		psout.Color.w = alpha;
+		psout.Normal = float4(0, 1, 0, alpha);
+		return psout;
 	}
 #	endif
 
