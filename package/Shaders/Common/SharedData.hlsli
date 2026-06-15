@@ -250,6 +250,75 @@ namespace SharedData
 		uint pad0;
 	};
 
+	struct ENBSettings
+	{
+		uint Enable;
+		uint EnableSky;
+		float ColorPow;
+		float LightSpriteIntensity;
+
+		float CloudsCurve;
+		float CloudsDesaturation;
+		float CloudsEdgeIntensity;
+		float CloudsEdgeMoonMultiplier;
+
+		float VolumetricRaysDesaturation;
+		float3 VolumetricRaysColorFilter;
+
+		uint UseProceduralGradientWeights;
+		float ProceduralGradientWeightCurve;
+		uint EnableProceduralSun;
+		float ProceduralSunDiskRadiusSq;
+
+		float ProceduralSunDiskEdgeScale;
+		float ProceduralSunGlowIntensity;
+		float ProceduralSunCoronaFalloff;
+		float ProceduralSunCoronaScale;
+
+		float ParticleIntensity;
+		float ParticleLightingInfluence;
+		float ParticleAmbientInfluence;
+		float ParticlePointLightingInfluence;
+
+		uint EnableCloudsScattering;
+		uint EnableCloudsLightingFromMoon;
+		uint ScatteringColorHDRWeighting;
+		float SkyScatteringAtmosphereThickness;
+
+		float SkyScatteringHorizonRange;
+		float SkyScatteringIntensity;
+		float SkyScatteringAmount;
+		float SkyScatteringDustVolume;
+
+		float SkyScatteringDustDensity;
+		float SkyScatteringDustDarkening;
+		float SkyScatteringShadowAmount;
+		float SkyScatteringColorFromSun;
+
+		float3 SkyScatteringColor;
+		float SkyScatteringAirGlowIntensity;
+
+		float SkyScatteringAirGlowRange;
+		float SkyScatteringSunGlowIntensity;
+		float SkyScatteringSunGlowRange;
+		float SkyScatteringMoonGlowAmount;
+
+		float SkyScatteringMoonGlowRange;
+		float SkyScatteringCloudsLightingSunMinIntensity;
+		float SkyScatteringCloudsLightingSunMultiplier;
+		float SkyScatteringCloudsLightingMoonIntensity;
+
+		uint EnableVolumetricRays;
+		float VolumetricRaysIntensity;
+		float VolumetricRaysExtinction;
+		float VolumetricRaysSkyColorAmount;
+
+		uint EnableRain;
+		float RainMotionStretch;
+		float RainMotionTransparency;
+		uint pad0;
+	};
+
 	struct TerrainBlendingSettings
 	{
 		uint Enabled;
@@ -344,6 +413,7 @@ namespace SharedData
 		IBLSettings iblSettings;
 		ExtendedTranslucencySettings extendedTranslucencySettings;
 		LinearLightingSettings linearLightingSettings;
+		ENBSettings enbSettings;
 		TerrainBlendingSettings terrainBlendingSettings;
 		ExponentialHeightFogSettings exponentialHeightFogSettings;
 		TruePBRSettings truePBRSettings;

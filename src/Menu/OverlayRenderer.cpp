@@ -13,6 +13,7 @@
 #include "CSEditor/EditorWindow.h"
 #include "Feature.h"
 #include "FeatureIssues.h"
+#include "Features/Effect11/EffectManager.h"
 #include "Features/RenderDoc.h"
 #include "Globals.h"
 #include "I18n/I18n.h"
@@ -41,6 +42,22 @@ namespace
 
 		if (FeatureIssues::HasPotentialShaderModifyingFeatures()) {
 			ImGui::TextColored(themeSettings.StatusPalette.Error, "%s", T("overlay.modified_features", "Features that may have modified shaders detected. Check Feature Issues in the Menu."));
+		}
+	}
+
+	void DrawEffect11Errors(const Menu::ThemeSettings& themeSettings)
+	{
+		auto& effectManager = EffectManager::GetSingleton();
+		if (!effectManager.IsInitialized())
+			return;
+
+		uint32_t effectFailed = effectManager.GetFailedEffectCount();
+		if (effectFailed) {
+			ImGui::TextColored(themeSettings.StatusPalette.Error,
+				"ERROR: %u effect(s) failed to compile",
+				effectFailed);
+			for (const auto& err : effectManager.GetAllErrors())
+				ImGui::TextColored(themeSettings.StatusPalette.Error, "  %s", err.c_str());
 		}
 	}
 
@@ -185,11 +202,14 @@ bool OverlayRenderer::ShouldSkipRendering()
 	auto* abTestingManager = ABTestingManager::GetSingleton();
 	auto* renderDoc = RenderDoc::GetSingleton();
 
+	uint32_t effectFailed = EffectManager::GetSingleton().IsInitialized() ? EffectManager::GetSingleton().GetFailedEffectCount() : 0;
+
 	return !(shaderCache->IsCompiling() ||
 			 Menu::GetSingleton()->IsEnabled ||
 			 EditorWindow::GetSingleton()->open ||
 			 abTestingManager->IsEnabled() ||
 			 (failed && !hide) ||
+			 effectFailed ||
 			 globals::features::performanceOverlay.settings.ShowInOverlay ||
 			 renderDoc->IsAvailable());
 }
@@ -259,6 +279,8 @@ void OverlayRenderer::RenderShaderCompilationStatus(const std::function<const ch
 	auto percent = (float)compiledShaders / (float)totalShaders;
 	auto progressOverlay = fmt::format("{}/{} ({:2.1f}%)", compiledShaders, totalShaders, 100 * percent);
 
+	uint32_t effectFailed = EffectManager::GetSingleton().IsInitialized() ? EffectManager::GetSingleton().GetFailedEffectCount() : 0;
+
 	if (shaderCache->IsCompiling()) {
 		ImGui::SetNextWindowPos(ImVec2(pos, pos));
 		if (!ImGui::Begin("ShaderCompilationInfo", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings)) {
@@ -294,6 +316,7 @@ void OverlayRenderer::RenderShaderCompilationStatus(const std::function<const ch
 		if (failed && !hide) {
 			DrawShaderCompilationFailures(failed, themeSettings);
 		}
+		DrawEffect11Errors(themeSettings);
 
 		if (renderDocAvailable)
 			ImGui::TextColored(themeSettings.StatusPalette.Warning, renderDocInformation.c_str());
@@ -302,21 +325,21 @@ void OverlayRenderer::RenderShaderCompilationStatus(const std::function<const ch
 		return;
 	}
 
-	if (failed) {
-		if (!hide) {
-			ImGui::SetNextWindowPos(ImVec2(pos, pos));
-			if (!ImGui::Begin("ShaderCompilationInfo", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings)) {
-				ImGui::End();
-				return;
-			}
-
-			DrawShaderCompilationFailures(failed, themeSettings);
-
-			if (renderDocAvailable)
-				ImGui::TextColored(themeSettings.StatusPalette.Warning, renderDocInformation.c_str());
-
+	if ((failed && !hide) || effectFailed) {
+		ImGui::SetNextWindowPos(ImVec2(pos, pos));
+		if (!ImGui::Begin("ShaderCompilationInfo", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings)) {
 			ImGui::End();
+			return;
 		}
+
+		if (failed && !hide)
+			DrawShaderCompilationFailures(failed, themeSettings);
+		DrawEffect11Errors(themeSettings);
+
+		if (renderDocAvailable)
+			ImGui::TextColored(themeSettings.StatusPalette.Warning, renderDocInformation.c_str());
+
+		ImGui::End();
 	} else if (renderDocAvailable) {
 		ImGui::SetNextWindowPos(ImVec2(pos, pos));
 		if (!ImGui::Begin("ShaderCompilationInfo", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings)) {

@@ -8,6 +8,7 @@
 #include "FeatureIssues.h"
 #include "Features/CSEditor.h"
 #include "Features/CloudShadows.h"
+#include "Features/Effect11.h"
 #include "Features/ExponentialHeightFog.h"
 #include "Features/HDRDisplay.h"
 #include "Features/InteriorSun.h"
@@ -77,6 +78,11 @@ void State::Draw()
 		if (cloudShadows.loaded) {
 			ZoneScopedN("CloudShadows::SkyShaderHacks");
 			cloudShadows.SkyShaderHacks();
+		}
+
+		{
+			ZoneScopedN("Effect11::ParticleShaderHacks");
+			globals::features::effect11.ParticleShaderHacks();
 		}
 
 		if (terrainHelper.loaded) {
@@ -170,6 +176,29 @@ void State::Debug()
 		SetPerfMarker(std::format("Defines: {}", SIE::ShaderCache::GetDefinesString(*currentShader, permutationData.PixelShaderDescriptor)));
 		EndPerfEvent();
 	}
+}
+
+bool State::HandlePostProcessing(RE::RENDER_TARGET a_input, RE::RENDER_TARGET a_output)
+{
+	auto& effect11 = globals::features::effect11;
+	if (!effect11.loaded || !effect11.HandleTonemapRender(a_input, a_output))
+		return false;
+
+	auto renderer = globals::game::renderer;
+	auto& outputRT = renderer->GetRuntimeData().renderTargets[a_output];
+	globals::d3d::context->OMSetRenderTargets(1, &outputRT.RTV, nullptr);
+
+	auto shadowState = globals::game::shadowState;
+	auto& stateData = shadowState->GetRuntimeData();
+	stateData.renderTargets[0] = a_output;
+	stateData.setRenderTargetMode[0] = RE::BSGraphics::SetRenderTargetMode::SRTM_NO_CLEAR;
+	for (int i = 1; i < D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT; i++) {
+		stateData.renderTargets[i] = RE::RENDER_TARGET::kNONE;
+		stateData.setRenderTargetMode[i] = RE::BSGraphics::SetRenderTargetMode::SRTM_NO_CLEAR;
+	}
+	stateData.depthStencil = static_cast<uint32_t>(-1);
+
+	return true;
 }
 
 void State::Reset()

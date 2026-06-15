@@ -10,6 +10,7 @@
 #include "State.h"
 #include "Util.h"
 
+#include "Features/Effect11.h"
 #include "Features/HDRDisplay.h"
 #include "Features/InteriorSun.h"
 #include "Features/ScreenshotFeature.h"
@@ -185,6 +186,8 @@ namespace SkyExtensions
 		static void thunk(RE::BSShader* shader, RE::BSRenderPass* pass, uint32_t renderFlags)
 		{
 			globals::state->UpdateSkyShaderPermutation(pass);
+			if (globals::features::effect11.loaded)
+				globals::features::effect11.ModifySky(pass);
 			func(shader, pass, renderFlags);
 		}
 		static inline REL::Relocation<decltype(thunk)> func;
@@ -250,6 +253,47 @@ namespace WaterBlendHistory
 			func(imageSpaceShader, shape, param);
 		}
 
+		static inline REL::Relocation<decltype(thunk)> func;
+	};
+}
+
+namespace Effect11Extensions
+{
+	struct Sky_SetDirectionalAmbientColors
+	{
+		static void thunk(Effect11::DirectionalAmbientColors& DirectionalAmbientColors, RE::NiColor* AmbientSpecularTint, float AmbientSpecularFresnel)
+		{
+			if (globals::features::effect11.loaded) {
+				globals::features::effect11.CheckCommonData();
+				if (globals::features::effect11.enableEffect)
+					globals::features::effect11.OverrideAmbientLighting(DirectionalAmbientColors);
+			}
+			func(DirectionalAmbientColors, AmbientSpecularTint, AmbientSpecularFresnel);
+		}
+		static inline REL::Relocation<decltype(thunk)> func;
+	};
+
+	struct Main_HDRTonemapBlendCinematic_Render
+	{
+		static void thunk(RE::ImageSpaceManager* a1, RE::ImageSpaceEffect* a2, uint32_t a3, uint32_t a4, RE::ImageSpaceShaderParam* a5)
+		{
+			if (globals::state->HandlePostProcessing(
+					static_cast<RE::RENDER_TARGET>(a3),
+					static_cast<RE::RENDER_TARGET>(a4)))
+				return;
+			func(a1, a2, a3, a4, a5);
+		}
+		static inline REL::Relocation<decltype(thunk)> func;
+	};
+
+	struct BSParticleShader_SetupGeometry
+	{
+		static void thunk(RE::BSShader* This, RE::BSRenderPass* Pass, uint32_t RenderFlags)
+		{
+			func(This, Pass, RenderFlags);
+			if (globals::features::effect11.loaded)
+				globals::features::effect11.ModifyParticle(Pass);
+		}
 		static inline REL::Relocation<decltype(thunk)> func;
 	};
 }
@@ -863,6 +907,7 @@ namespace Hooks
 	void Sky_UpdateColors::thunk(RE::Sky* sky, float a_delta)
 	{
 		func(sky, a_delta);
+		globals::features::effect11.OnSkyUpdateColors(sky);
 		globals::features::skySync.OnSkyUpdateColors(sky);
 	}
 
@@ -936,6 +981,9 @@ namespace Hooks
 		logger::info("Hooking Sky::UpdateColors");
 		stl::detour_thunk<Sky_UpdateColors>(REL::RelocationID(25686, 26233));
 
+		logger::info("Hooking Sky::SetDirectionalAmbientColors for Effect11");
+		stl::detour_thunk<Effect11Extensions::Sky_SetDirectionalAmbientColors>(REL::RelocationID(98989, 105643));
+
 		logger::info("Hooking MenuManager::DrawInterfaceStart for menu TAA");
 		stl::detour_thunk<MenuManagerDrawInterfaceStart>(REL::RelocationID(79947, 82084));
 
@@ -944,6 +992,12 @@ namespace Hooks
 		stl::write_vfunc<0x6, SkyExtensions::BSSkyShader_SetupGeometry>(RE::VTABLE_BSSkyShader[0]);
 		stl::write_thunk_call<GrassExtensions::BSGrassShaderProperty_ctor>(REL::RelocationID(15214, 15383).address() + REL::Relocate(0x45B, 0x4F5));
 		stl::write_vfunc<0x6, GrassExtensions::BSGrassShader_SetupGeometry>(RE::VTABLE_BSGrassShader[0]);
+		stl::write_vfunc<0x6, Effect11Extensions::BSParticleShader_SetupGeometry>(RE::VTABLE_BSParticleShader[0]);
+
+		logger::info("Installing post-processing hooks");
+		stl::write_thunk_call<Effect11Extensions::Main_HDRTonemapBlendCinematic_Render>(REL::RelocationID(99023, 105674).address() + REL::Relocate(0x1EA, 0x178));
+		if (REL::Module::IsSE())
+			stl::write_thunk_call<Effect11Extensions::Main_HDRTonemapBlendCinematic_Render>(REL::RelocationID(99023, 105674).address() + REL::Relocate(0x230, 0x178));
 
 		// Patch render space in BSLightingShader::SetupGeometry to always use world space
 		// The variable updateEyePosition is set to 1 when not skinned. By patching to be 0 it will always use world space
