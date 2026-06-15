@@ -1,3 +1,7 @@
+// Particle rain (RAIN technique) reads ENB rain settings from FeatureData (b6) in the vertex
+// shader. The particle VS only uses b0/b2, and Effect11::ModifyParticle binds b5/b6 for it, so
+// opting into the SharedData cbuffers here is safe (see SHARED_DATA_IN_VERTEX in SharedData.hlsli).
+#define SHARED_DATA_IN_VERTEX
 #include "Common/Color.hlsli"
 #include "Common/FrameBuffer.hlsli"
 #include "Common/SharedData.hlsli"

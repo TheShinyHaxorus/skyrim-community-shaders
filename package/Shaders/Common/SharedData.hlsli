@@ -7,7 +7,10 @@
 namespace SharedData
 {
 
-#if defined(PSHADER) || defined(CSHADER) || defined(COMPUTESHADER)
+// SHARED_DATA_IN_VERTEX lets a specific vertex shader opt into the SharedData/FeatureData
+// cbuffers (b5/b6). It must NOT be enabled globally: some vertex shaders (e.g. Grass Collision)
+// already use b5 for their own cbuffer, so a blanket VS exposure would cause a register conflict.
+#if defined(PSHADER) || defined(CSHADER) || defined(COMPUTESHADER) || defined(SHARED_DATA_IN_VERTEX)
 	cbuffer SharedData : register(b5)
 	{
 		float4 WaterData[25];
