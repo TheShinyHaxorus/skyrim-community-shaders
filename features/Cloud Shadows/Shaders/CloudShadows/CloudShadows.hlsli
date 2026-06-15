@@ -2,11 +2,7 @@
 
 namespace CloudShadows
 {
-	// t25: previous-frame copy, used by the sky cloud self-shadow march (Sky.hlsl) to avoid a
-	// read/write hazard with the live occlusion cubemap rendered in the same frame.
-	TextureCube<float> VolumetricCloudShadowsTexture : register(t25);
-	// t26: live cubemap, used by GetCloudShadowMult for terrain/world ground shadows.
-	TextureCube<float> CloudShadowsTexture : register(t26);
+	TextureCube<float> CloudShadowsTexture : register(t25);
 
 	// 2 km cloud altitude / 6371 km planet radius converted from metres
 	// to game units. The original 1.428e-2 is GAME_UNIT_TO_M (1.428f / 100),
