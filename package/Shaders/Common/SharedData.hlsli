@@ -310,6 +310,22 @@ namespace SharedData
 		float4 wetParams;
 	};
 
+	struct VanillaFresnelSettings
+	{
+		uint Enable;
+		uint EnableGGX;
+		uint EnableGGXOnGrass;
+		uint EnableDynamicCubemapsConversion;
+		uint EnableEyeSpecialHandling;
+		float RoughnessMultiplier;
+		float SpecularRoughnessBlend;
+		float BaseF0Multiplier;
+		float MinF0;
+		float CubemapToF0Multiplier;
+		float ComplexMaterialF0Multiplier;
+		float pad;
+	};
+
 	cbuffer FeatureData : register(b6)
 	{
 		GrassLightingSettings grassLightingSettings;
@@ -330,6 +346,7 @@ namespace SharedData
 		ExponentialHeightFogSettings exponentialHeightFogSettings;
 		TruePBRSettings truePBRSettings;
 		SkinData skinData;
+		VanillaFresnelSettings vanillaFresnelSettings;
 	};
 
 	Texture2D<float4> DepthTexture : register(t17);
