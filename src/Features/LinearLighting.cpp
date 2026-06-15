@@ -2,6 +2,7 @@
 
 #include "../I18n/I18n.h"
 #include "State.h"
+#include "Utils/UI.h"
 
 #define I18N_KEY_PREFIX "feature.linear_lighting."
 
@@ -33,11 +34,103 @@ NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(
 	deferredEffectMult,
 	otherEffectMult)
 
+void LinearLighting::ApplyMasterGamma(float a_newMaster)
+{
+	const float delta = a_newMaster - settings.colorGamma;
+	const auto shift = [delta](float& a_gamma) { a_gamma = std::clamp(a_gamma + delta, 0.1f, 3.0f); };
+	shift(settings.lightGamma);
+	shift(settings.colorGamma);
+	shift(settings.emitColorGamma);
+	shift(settings.glowmapGamma);
+	shift(settings.ambientGamma);
+	shift(settings.fogGamma);
+	shift(settings.fogAlphaGamma);
+	shift(settings.effectGamma);
+	shift(settings.effectAlphaGamma);
+	shift(settings.skyGamma);
+	shift(settings.waterGamma);
+	shift(settings.vlGamma);
+}
+
+void LinearLighting::UnifyGammas(float a_gamma)
+{
+	a_gamma = std::clamp(a_gamma, 0.1f, 3.0f);
+	settings.lightGamma = a_gamma;
+	settings.colorGamma = a_gamma;
+	settings.emitColorGamma = a_gamma;
+	settings.glowmapGamma = a_gamma;
+	settings.ambientGamma = a_gamma;
+	settings.fogGamma = a_gamma;
+	settings.fogAlphaGamma = a_gamma;
+	settings.effectGamma = a_gamma;
+	settings.effectAlphaGamma = a_gamma;
+	settings.skyGamma = a_gamma;
+	settings.waterGamma = a_gamma;
+	settings.vlGamma = a_gamma;
+}
+
+void LinearLighting::SetLightingBrightness(float a_brightness)
+{
+	settings.directionalLightMult = a_brightness;
+	settings.pointLightMult = a_brightness;
+	settings.ambientMult = a_brightness;
+}
+
+void LinearLighting::ApplyPresetMaster(float a_master)
+{
+	const bool wasEnabled = settings.enableLinearLighting;
+	RestoreDefaultSettings();
+	settings.enableLinearLighting = wasEnabled;
+	ApplyMasterGamma(a_master);
+}
+
 void LinearLighting::DrawSettings()
 {
 	ImGui::Checkbox(T(TKEY("enable"), "Enable Linear Lighting"), (bool*)&settings.enableLinearLighting);
 
 	if (ImGui::BeginTabBar("##LinearLightingTabs", ImGuiTabBarFlags_None)) {
+		if (ImGui::BeginTabItem(T(TKEY("tab_simple"), "Simple"))) {
+			ImGui::TextWrapped("%s", T(TKEY("simple_help"), "Quick controls that affect the whole image. For per-domain control, use the General and Advanced tabs."));
+
+			ImGui::SeparatorText(T(TKEY("presets"), "Presets"));
+			if (ImGui::Button(T(TKEY("preset_vanilla"), "Vanilla Match")))
+				ApplyPresetMaster(1.8f);
+			if (auto _tt = Util::HoverTooltipWrapper())
+				ImGui::Text("%s", T(TKEY("preset_vanilla_tooltip"), "The shipped default balance. Closest match to the vanilla look."));
+			ImGui::SameLine();
+			if (ImGui::Button(T(TKEY("preset_srgb"), "sRGB (2.2)")))
+				ApplyPresetMaster(2.2f);
+			if (auto _tt = Util::HoverTooltipWrapper())
+				ImGui::Text("%s", T(TKEY("preset_srgb_tooltip"), "Standard sRGB response. Deeper midtones and more contrast."));
+			ImGui::SameLine();
+			if (ImGui::Button(T(TKEY("preset_soft"), "Soft (1.5)")))
+				ApplyPresetMaster(1.5f);
+			if (auto _tt = Util::HoverTooltipWrapper())
+				ImGui::Text("%s", T(TKEY("preset_soft_tooltip"), "Lifted midtones for a softer, brighter look."));
+
+			ImGui::SeparatorText(T(TKEY("quick_adjust"), "Quick Adjust"));
+
+			float master = settings.colorGamma;
+			if (ImGui::SliderFloat(T(TKEY("master_gamma"), "Master Gamma"), &master, 0.1f, 3.0f, "%.2f"))
+				ApplyMasterGamma(master);
+			if (auto _tt = Util::HoverTooltipWrapper())
+				ImGui::Text("%s", T(TKEY("master_gamma_tooltip"), "Shifts every gamma curve together, preserving the relative balance between domains. Higher = darker midtones."));
+
+			float brightness = settings.directionalLightMult;
+			if (ImGui::SliderFloat(T(TKEY("lighting_brightness"), "Lighting Brightness"), &brightness, 0.0f, 5.0f, "%.2f"))
+				SetLightingBrightness(brightness);
+			if (auto _tt = Util::HoverTooltipWrapper())
+				ImGui::Text("%s", T(TKEY("lighting_brightness_tooltip"), "Scales directional, point, and ambient light together."));
+
+			ImGui::Spacing();
+			if (ImGui::Button(T(TKEY("unify_gammas"), "Match all domains to Master")))
+				UnifyGammas(master);
+			if (auto _tt = Util::HoverTooltipWrapper())
+				ImGui::Text("%s", T(TKEY("unify_gammas_tooltip"), "Sets every domain to the same gamma so all surfaces share one response curve - the most reliable way to make everything match."));
+
+			ImGui::EndTabItem();
+		}
+
 		if (ImGui::BeginTabItem(T(TKEY("tab_general"), "General"))) {
 			ImGui::SeparatorText(T(TKEY("gamma_settings"), "Gamma Settings"));
 			ImGui::SliderFloat(T(TKEY("fog_gamma"), "Fog Gamma"), &settings.fogGamma, 0.1f, 3.0f, "%.2f");

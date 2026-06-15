@@ -2,6 +2,7 @@
 #include "Common/DummyVSTexCoord.hlsl"
 #include "Common/FrameBuffer.hlsli"
 #include "Common/Math.hlsli"
+#include "Common/Random.hlsli"
 #include "Common/SharedData.hlsli"
 
 typedef VS_OUTPUT PS_INPUT;
@@ -219,6 +220,12 @@ PS_OUTPUT main(PS_INPUT input)
 		if (ENABLE_LL)
 			outputColor = Color::LinearToGammaSafe(outputColor);
 		outputColor = FrameBuffer::ToSRGBColor(outputColor);
+
+		// Ported from PR #2302 (Effect11 ColorCorrectionCS / CopyPS): apply TPDF dither in
+		// the final 8-bit output space to remove the banding that linear lighting tends to
+		// expose, especially across smooth sky/fog gradients. Runs after tonemap/TAA so it is
+		// not averaged away. HDR output is higher bit-depth and left undithered.
+		outputColor += Random::TriDither(input.Position.xy, SharedData::FrameCount) * (1.0 / 255.0);
 	}
 
 	// outputColor = blendedColor; // debug: bypass color grading and hdr display mapping

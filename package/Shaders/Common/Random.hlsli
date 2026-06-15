@@ -144,6 +144,20 @@ namespace Random
 		return v;
 	}
 
+	// Triangular-PDF (TPDF) dither in [-1, 1], zero-mean and temporally animated via
+	// frameCount. Multiply by one quantization step (e.g. 1.0 / 255.0 for an 8-bit target)
+	// before adding to a color to break up banding without introducing a DC bias.
+	// Two independent uniform samples are differenced in float space to form a true
+	// triangular distribution - subtracting in uint space would wrap and collapse it
+	// back to a rectangular PDF.
+	float3 TriDither(float2 screenPos, uint frameCount)
+	{
+		const float invMax = 1.0 / 4294967295.0;  // 1 / 0xFFFFFFFF
+		float3 r1 = pcg3d(uint3(uint2(screenPos), frameCount)) * invMax;
+		float3 r2 = pcg3d(uint3(uint2(screenPos), frameCount + 4729u)) * invMax;
+		return r1 - r2;
+	}
+
 	uint iqint3(uint2 x)
 	{
 		uint2 q = 1103515245U * ((x >> 1U) ^ (x.yx));
