@@ -286,10 +286,6 @@ PS_OUTPUT main(PS_INPUT input, bool frontFace : SV_IsFrontFace)
 
 		float3 normalTS = normalize(raindropNormal.xyz * 2.0 - 1.0);
 		float3 normalWS = normalize(mul(normalTS, TBN));
-
-		if (frontFace)
-			normalWS = -normalWS;
-
 		float3 V = normalize(-posWS.xyz);
 		float NdotV = saturate(dot(normalWS, V));
 		float fresnel = 0.02 + 0.98 * pow(1.0 - NdotV, 5.0);
