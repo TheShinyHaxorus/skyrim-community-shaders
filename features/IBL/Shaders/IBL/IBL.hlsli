@@ -122,6 +122,8 @@ namespace ImageBasedLighting
 			linEnv = GetEnvIBLColor(rayDir);
 			linSky = GetSkyIBLColor(rayDir);
 		}
+		if (SharedData::enbSettings.Enable)
+			linSky *= saturate(-rayDir.z * 0.65 + 0.35);
 		return Color::IrradianceToGamma(linEnv + linSky);
 	}
 
@@ -143,6 +145,8 @@ namespace ImageBasedLighting
 			linEnv = GetEnvIBLColor(rayDir);
 			linSky = GetSkyIBLColorOccluded(rayDir, visibility);
 		}
+		if (SharedData::enbSettings.Enable)
+			linSky *= saturate(-rayDir.z * 0.65 + 0.35);
 		return Color::IrradianceToGamma(linEnv + linSky);
 	}
 

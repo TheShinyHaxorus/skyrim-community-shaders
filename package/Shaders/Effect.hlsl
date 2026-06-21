@@ -533,6 +533,13 @@ float3 GetLightingColor(float3 msPosition, float3 worldPosition, float2 screenPo
 	ExtractEffectLighting(color, dirColor, ambientColor, 1.0);
 #		endif
 
+	if (SharedData::enbSettings.Enable) {
+		dirColor = ShadowSampling::GetDirectionalLighting();
+		ambientColor = ShadowSampling::GetAmbientLighting(ShadowSampling::LightingSampleNormal);
+		dirColor *= SharedData::enbSettings.ParticleLightingInfluence;
+		ambientColor *= SharedData::enbSettings.ParticleAmbientInfluence;
+	}
+
 	float3 viewDirection = normalize(worldPosition.xyz);
 
 	float unusedSurfaceShadow;
@@ -572,9 +579,10 @@ float3 GetLightingColor(float3 msPosition, float3 worldPosition, float2 screenPo
 	{
 		float4 lightDistanceSquared = (PLightPositionX[0] - msPosition.xxxx) * (PLightPositionX[0] - msPosition.xxxx) + (PLightPositionY[0] - msPosition.yyyy) * (PLightPositionY[0] - msPosition.yyyy) + (PLightPositionZ[0] - msPosition.zzzz) * (PLightPositionZ[0] - msPosition.zzzz);
 		float4 lightFadeMul = 1.0.xxxx - saturate(PLightingRadiusInverseSquared * lightDistanceSquared);
-		color.x += dot(Color::PointLight(PLightColorR.xxx).x * lightFadeMul * Color::EffectLightingMult(), 1.0.xxxx);
-		color.y += dot(Color::PointLight(PLightColorG.xxx).x * lightFadeMul * Color::EffectLightingMult(), 1.0.xxxx);
-		color.z += dot(Color::PointLight(PLightColorB.xxx).x * lightFadeMul * Color::EffectLightingMult(), 1.0.xxxx);
+		float pointScale = SharedData::enbSettings.Enable ? SharedData::enbSettings.ParticlePointLightingInfluence : 1.0;
+		color.x += dot(Color::PointLight(PLightColorR.xxx).x * lightFadeMul * Color::EffectLightingMult(), 1.0.xxxx) * pointScale;
+		color.y += dot(Color::PointLight(PLightColorG.xxx).x * lightFadeMul * Color::EffectLightingMult(), 1.0.xxxx) * pointScale;
+		color.z += dot(Color::PointLight(PLightColorB.xxx).x * lightFadeMul * Color::EffectLightingMult(), 1.0.xxxx) * pointScale;
 	}
 
 	return color;
@@ -686,6 +694,11 @@ PS_OUTPUT main(PS_INPUT input)
 	float lightingInfluence = LightingInfluence.x;
 	float3 propertyColor = Color::Effect(PropertyColor.xyz);
 	float shadowVariance = 1.0;
+
+#	if !defined(IS_VOLUMETRIC_FOG)
+	if (SharedData::enbSettings.Enable && !(Permutation::VertexShaderDescriptor & Permutation::EffectFlags::SkyObject))
+		propertyColor *= SharedData::enbSettings.ParticleIntensity;
+#	endif
 
 #	if defined(LIGHTING)
 	propertyColor = GetLightingColor(input.MSPosition.xyz, input.WorldPosition.xyz, input.Position.xy, shadowVariance);
@@ -853,6 +866,8 @@ PS_OUTPUT main(PS_INPUT input)
 #		if defined(ADDBLEND)
 #			if defined(EXP_HEIGHT_FOG)
 	float3 blendedColor = lightColor * (1 - vanillaFogFactor) * (1 - expFogFactor);
+	if (SharedData::enbSettings.Enable)
+		blendedColor *= SharedData::enbSettings.LightSpriteIntensity;
 #			else
 	float3 blendedColor = lightColor * (1 - fogFactor);
 #			endif
