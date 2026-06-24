@@ -268,7 +268,8 @@ public:
 		IsBeastRace = 1 << 2,
 		GrassSphereNormal = 1 << 3,
 		IsSun = 1 << 4,
-		SuppressExternalEmittance = 1 << 5
+		SuppressExternalEmittance = 1 << 5,
+		NoSnow = 1 << 7
 	};
 
 	enum class ExtraFeatureDescriptors : uint32_t

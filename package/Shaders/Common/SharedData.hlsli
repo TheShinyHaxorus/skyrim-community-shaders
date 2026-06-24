@@ -310,6 +310,43 @@ namespace SharedData
 		float4 wetParams;
 	};
 
+	struct SnowCoverSettings
+	{
+		float Month;
+		float TimeSnowing;
+		float SnowingDensity;
+		float SeasonalAltitude;
+
+		uint EnableExpensiveFoliage;
+		float SnowHeightOffset;
+		uint2 pad;
+
+		uint EnableSnowCover;
+		uint AffectGrassTint;
+		uint AffectTreeTint;
+		float FoliageHeightOffset;
+
+		float UVScale;
+		float peakMainAngle;
+		float peakAltAngle;
+		float minAngle;
+
+		float maxAngle;
+		float mainSpec;
+		float altSpec;
+		float mapZscale;
+
+		float2 mapScale;
+		float2 mapOffset;
+
+		float4 Glint;
+		float4 MainTint;
+		float4 AltTint;
+
+		float BlendSmoothness;
+		uint3 pad2;
+	};
+
 	cbuffer FeatureData : register(b6)
 	{
 		GrassLightingSettings grassLightingSettings;
@@ -330,6 +367,7 @@ namespace SharedData
 		ExponentialHeightFogSettings exponentialHeightFogSettings;
 		TruePBRSettings truePBRSettings;
 		SkinData skinData;
+		SnowCoverSettings snowCoverSettings;
 	};
 
 	Texture2D<float4> DepthTexture : register(t17);
