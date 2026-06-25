@@ -49,6 +49,7 @@ PS_OUTPUT main(PS_INPUT input)
 #	include "Common/Random.hlsli"
 #	include "Common/Shading.hlsli"
 #	include "Common/Color.hlsli"
+#	include "Common/WaterBRDF.hlsli"
 
 #	define WATER
 
@@ -929,8 +930,16 @@ float3 GetSunColor(float3 normal, float3 viewDirection, float3 worldPosition)
 	if (Permutation::PixelShaderDescriptor & Permutation::WaterFlags::Interior)
 		return 0.0.xxx;
 
+// Set to 0 to A/B against the legacy Phong sun glint.
+#				define WATER_PBR_SUN_SPECULAR 1
+#				if WATER_PBR_SUN_SPECULAR
+	// Cook-Torrance GGX sun glint; NdotL for energy conservation, boost for HDR sparkle.
+	float NdotL = saturate(dot(normal, SunDir.xyz));
+	float3 reflectionMul = WaterBRDF::SpecularBRDF(normal, viewDirection, SunDir.xyz, VarAmounts.x) * NdotL * WaterBRDF::WATER_SPECULAR_ENERGY_BOOST;
+#				else
 	float3 reflectionDirection = reflect(viewDirection, normal);
 	float reflectionMul = exp2(VarAmounts.x * log2(saturate(dot(reflectionDirection, SunDir.xyz))));
+#				endif
 
 	float llDirLightMult = (SharedData::linearLightingSettings.enableLinearLighting && !SharedData::linearLightingSettings.isDirLightLinear) ? SharedData::linearLightingSettings.dirLightMult : 1.0f;
 	float3 sunColor = Color::DirectionalLight((SunColor.xyz * SunDir.w) / max(llDirLightMult, 1e-5), SharedData::linearLightingSettings.isDirLightLinear) * (1.0 - exp(-DeepColor.w)) * llDirLightMult;
