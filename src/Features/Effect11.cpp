@@ -651,8 +651,6 @@ void Effect11::DrawVolumetricRays()
 			defines.push_back({ "CLOUD_SHADOWS", nullptr });
 		if (globals::features::terrainShadows.loaded)
 			defines.push_back({ "TERRAIN_SHADOWS", nullptr });
-		if (REL::Module::IsVR())
-			defines.push_back({ "FRAMEBUFFER", nullptr });
 
 		raymarchVolumetricRaysPS = static_cast<ID3D11PixelShader*>(Util::CompileShader(L"Data\\Shaders\\Effect11\\RaymarchVolumetricRaysPS.hlsl", defines, "ps_5_0"));
 		if (!raymarchVolumetricRaysPS)
@@ -663,8 +661,6 @@ void Effect11::DrawVolumetricRays()
 		std::vector<std::pair<const char*, const char*>> defines;
 		if (globals::features::ibl.loaded)
 			defines.push_back({ "IBL", nullptr });
-		if (REL::Module::IsVR())
-			defines.push_back({ "FRAMEBUFFER", nullptr });
 
 		applyVolumetricRaysPS = static_cast<ID3D11PixelShader*>(Util::CompileShader(L"Data\\Shaders\\Effect11\\ApplyVolumetricRaysPS.hlsl", defines, "ps_5_0"));
 		if (!applyVolumetricRaysPS)
