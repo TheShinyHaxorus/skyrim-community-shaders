@@ -542,7 +542,7 @@ void Effect11::OnSkyUpdateColors(RE::Sky* a_sky)
 		OverrideWeather(a_sky);
 }
 
-bool Effect11::HandleTonemapRender([[maybe_unused]] RE::RENDER_TARGET a_input, RE::RENDER_TARGET a_output)
+bool Effect11::HandleTonemapRender(RE::RENDER_TARGET a_input, RE::RENDER_TARGET a_output)
 {
 	CheckCommonData();
 
@@ -552,7 +552,7 @@ bool Effect11::HandleTonemapRender([[maybe_unused]] RE::RENDER_TARGET a_input, R
 	if (enableEffect && !settingManager.GetValue<bool>("UseOriginalPostProcessing", "EFFECT")) {
 		auto renderer = globals::game::renderer;
 		auto& renderTargets = renderer->GetRuntimeData().renderTargets;
-		effectManager.ExecuteEffects(renderTargets[RE::RENDER_TARGETS::kMAIN], renderTargets[a_output]);
+		effectManager.ExecuteEffects(renderTargets[a_input], renderTargets[a_output]);
 		return true;
 	}
 	return false;
