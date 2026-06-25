@@ -762,8 +762,8 @@ void ScreenSpaceGI::DrawSSGI()
 	// prefilter depths
 	{
 		TracyD3D11Zone(globals::state->tracyCtx, "SSGI - Prefilter Depths");
-
-		srvs.at(0) = Util::GetCurrentSceneDepthSRV();
+		
+		srvs.at(0) = renderer->GetDepthStencilData().depthStencils[RE::RENDER_TARGETS_DEPTHSTENCIL::kPOST_ZPREPASS_COPY].depthSRV;
 		for (int i = 0; i < 5; ++i)
 			uavs.at(i) = uavWorkingDepth[i].get();
 
