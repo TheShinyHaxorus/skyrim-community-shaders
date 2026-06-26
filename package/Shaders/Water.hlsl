@@ -924,8 +924,9 @@ DiffuseOutput GetWaterDiffuseColor(PS_INPUT input, float3 normal, float3 viewDir
 #			endif
 }
 
-float3 GetSunColor(float3 normal, float3 viewDirection, float3 worldPosition)
+float3 GetSunColor(float3 normal, float3 viewDirection, float3 worldPosition, out float3 o_sss)
 {
+	o_sss = 0.0.xxx;
 #			if defined(UNDERWATER)
 	return 0.0.xxx;
 #			else
@@ -950,14 +951,13 @@ float3 GetSunColor(float3 normal, float3 viewDirection, float3 worldPosition)
 		sunColor *= ExponentialHeightFog::GetSunlightFogAttenuation(worldPosition.xyz, FrameBuffer::CameraPosAdjust.xyz);
 	}
 #				endif
-	float3 result = reflectionMul * sunColor;
-	// Backlit subsurface-scattering glow (UnifiedWater toggle + strength).
+	// SSS is returned via o_sss so the caller adds it to the transmitted (diffuse) color like the
+	// original's waveSSS; it must NOT be gated by specular depthControl.w / surfaceShadow.
 	if (SharedData::unifiedWaterSettings.EnableBacklitSSS)
-		result += WaterBRDF::GetBacklitSSS(normal, viewDirection, SunDir.xyz, sunColor, ShallowColor.xyz) * SharedData::unifiedWaterSettings.BacklitSSSStrength;
-	// Toward-sun forward-scatter glow (UnifiedWater toggle + intensity).
+		o_sss += WaterBRDF::GetBacklitSSS(normal, viewDirection, SunDir.xyz, sunColor, ShallowColor.xyz) * SharedData::unifiedWaterSettings.BacklitSSSStrength;
 	if (SharedData::unifiedWaterSettings.EnableForwardScatterSSS)
-		result += WaterBRDF::GetForwardScatterSSS(normal, viewDirection, SunDir.xyz, sunColor, ShallowColor.xyz) * SharedData::unifiedWaterSettings.ForwardScatterIntensity;
-	return result;
+		o_sss += WaterBRDF::GetForwardScatterSSS(normal, viewDirection, SunDir.xyz, sunColor, ShallowColor.xyz) * SharedData::unifiedWaterSettings.ForwardScatterIntensity;
+	return reflectionMul * sunColor;
 #			endif
 }
 #		endif
@@ -1171,11 +1171,12 @@ PS_OUTPUT main(PS_INPUT input)
 #					endif
 #				else
 
-	float3 sunColor = GetSunColor(normal, viewDirection, input.WPosition.xyz) * surfaceShadow;
+	float3 waterSSS;
+	float3 sunColor = GetSunColor(normal, viewDirection, input.WPosition.xyz, waterSSS) * surfaceShadow;
 
 #					if defined(VC)
 	float specularFraction = lerp(1, fresnel * diffuseOutput.refractionMul, distanceBlendFactor);
-	float3 finalColorPreFog = lerp(diffuseColor, specularColor, specularFraction) + sunColor * depthControl.w;
+	float3 finalColorPreFog = lerp(diffuseColor + waterSSS, specularColor, specularFraction) + sunColor * depthControl.w;
 
 #						if !defined(UNIFIED_WATER)
 	float fogDistanceFactor = input.FogParam.w;
@@ -1226,7 +1227,7 @@ PS_OUTPUT main(PS_INPUT input)
 
 #					else
 	float specularFraction = lerp(1, fresnel, distanceBlendFactor);
-	float3 finalColorPreFog = lerp(diffuseOutput.refractionDiffuseColor, specularColor, specularFraction) + sunColor * depthControl.w;
+	float3 finalColorPreFog = lerp(diffuseOutput.refractionDiffuseColor + waterSSS, specularColor, specularFraction) + sunColor * depthControl.w;
 
 #						if !defined(UNIFIED_WATER)
 	float fogDistanceFactor = input.FogParam.w;
