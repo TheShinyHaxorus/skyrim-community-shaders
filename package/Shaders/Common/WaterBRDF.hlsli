@@ -4,6 +4,13 @@
 #include "Common/Color.hlsli"
 #include "Common/Math.hlsli"
 
+// Color::Water exists only in pixel/compute shaders; fall back to raw color so the shared VS path parses.
+#if defined(PSHADER) || defined(CSHADER) || defined(COMPUTESHADER)
+#	define WATER_SHALLOW_TINT(c) Color::Water(c)
+#else
+#	define WATER_SHALLOW_TINT(c) (c)
+#endif
+
 // Cook-Torrance microfacet sun specular for water (GGX + Smith-GGX + Schlick).
 // Maths from Google Filament: https://google.github.io/filament/Filament.md.html
 namespace WaterBRDF
@@ -101,7 +108,7 @@ namespace WaterBRDF
 		float NdotV = saturate(dot(N, V));
 		float rim = pow(1.0f - NdotV, SSS_RIM_POWER) * (1.0f - NdotV) * SSS_RIM_SCALE;
 
-		float3 tint = Color::Water(shallowColor) * sunColor;
+		float3 tint = WATER_SHALLOW_TINT(shallowColor) * sunColor;
 		return tint * (backScatter + rim) * thickness * sunBehind * SSS_STRENGTH;
 	}
 
@@ -133,7 +140,7 @@ namespace WaterBRDF
 		float grazing = pow(1.0f - NdotV, DIR_SSS_GRAZING_POW);                    // thin-film at grazing view
 		float thickness = 1.0f - saturate(dot(N, float3(0.0f, 0.0f, 1.0f)));       // wavelet-face proxy
 
-		float3 tint = Color::Water(shallowColor) * sunColor;
+		float3 tint = WATER_SHALLOW_TINT(shallowColor) * sunColor;
 		float strength = facingSun * wrapLight * grazing * (0.2f + 0.8f * thickness) * DIR_SSS_INTENSITY;
 		return tint * strength;
 	}
