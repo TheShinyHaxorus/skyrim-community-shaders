@@ -248,6 +248,18 @@ IBL::PerFrame IBL::GetCommonBufferData() const
 	return data;
 }
 
+bool IBL::IsDisabledForCurrentScene() const
+{
+	const auto state = globals::state;
+	if (!state)
+		return false;
+
+	const bool inLoadingScreen = settings.DisableInLoadingScreen && state->IsMainOrLoadingMenuOpen();
+	const bool inWorldMap = settings.DisableInWorldMap && state->isMapMenuOpen;
+	const bool inInterior = settings.DisableInInteriors && Util::IsInterior();
+	return inLoadingScreen || inWorldMap || inInterior;
+}
+
 void IBL::ReflectionsPrepass()
 {
 	if (loaded) {
