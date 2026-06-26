@@ -948,7 +948,13 @@ float3 GetSunColor(float3 normal, float3 viewDirection, float3 worldPosition)
 		sunColor *= ExponentialHeightFog::GetSunlightFogAttenuation(worldPosition.xyz, FrameBuffer::CameraPosAdjust.xyz);
 	}
 #				endif
-	return reflectionMul * sunColor;
+	float3 result = reflectionMul * sunColor;
+// Set to 0 to disable the backlit subsurface-scattering glow.
+#				define WATER_BACKLIT_SSS 1
+#				if WATER_BACKLIT_SSS
+	result += WaterBRDF::GetBacklitSSS(normal, viewDirection, SunDir.xyz, sunColor, ShallowColor.xyz);
+#				endif
+	return result;
 #			endif
 }
 #		endif
