@@ -120,8 +120,6 @@ void SampleSSGISpecular(uint2 pixCoord, sh2 lobe, inout float ao, out float3 il,
 	float3 ssgiIl;
 	SampleSSGI(dispatchID.xy, normalWS, ssgiAo, ssgiIl);
 
-	// Masks2.x stores 1 - vertexAO (Lighting.hlsl only); cleared to 0 for
-	// pixels with no vertex AO contribution, so vertexAO defaults to 1.
 	float vertexAO = 1.0 - Masks2Texture[dispatchID.xy].x;
 	ssgiAo = saturate(ssgiAo / max(vertexAO, EPSILON_DIVISION));
 
