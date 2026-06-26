@@ -954,6 +954,11 @@ float3 GetSunColor(float3 normal, float3 viewDirection, float3 worldPosition)
 #				if WATER_BACKLIT_SSS
 	result += WaterBRDF::GetBacklitSSS(normal, viewDirection, SunDir.xyz, sunColor, ShallowColor.xyz);
 #				endif
+// Set to 0 to disable the toward-sun forward-scatter glow.
+#				define WATER_FORWARD_SSS 1
+#				if WATER_FORWARD_SSS
+	result += WaterBRDF::GetForwardScatterSSS(normal, viewDirection, SunDir.xyz, sunColor, ShallowColor.xyz);
+#				endif
 	return result;
 #			endif
 }

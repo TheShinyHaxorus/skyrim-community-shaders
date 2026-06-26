@@ -104,6 +104,39 @@ namespace WaterBRDF
 		float3 tint = Color::Water(shallowColor) * sunColor;
 		return tint * (backScatter + rim) * thickness * sunBehind * SSS_STRENGTH;
 	}
+
+	// Forward-scatter companion: glow when looking toward the sun across the water.
+	// Same normal-tilt thickness proxy; Gerstner ScatteringCoeff folded into the intensity.
+	static const float DIR_SSS_FACING_POW = 1.65f;   // viewer-faces-sun sharpness
+	static const float DIR_SSS_WRAP = 0.5f;          // wrapped-diffuse softening
+	static const float DIR_SSS_GRAZING_POW = 1.85f;  // grazing thin-film sharpness
+	static const float DIR_SSS_INTENSITY = 0.48f;    // overall master multiplier
+
+	// viewDirection is camera->surface; sunDir points toward the sun; shallowColor is ShallowColor.xyz.
+	float3 GetForwardScatterSSS(float3 normal, float3 viewDirection, float3 sunDir, float3 sunColor, float3 shallowColor)
+	{
+		float sunLenSq = dot(sunDir, sunDir);
+		if (sunLenSq < 1e-8f)
+			return 0.0.xxx;
+		float3 L = sunDir * rsqrt(sunLenSq);
+		float3 V = -viewDirection;
+
+		float nlen = length(normal);
+		float3 N = (nlen > 1e-4f) ? (normal / nlen) : float3(0.0f, 0.0f, 1.0f);
+
+		float NdotL = saturate(dot(N, L));
+		float NdotV = saturate(dot(N, V));
+		float VdotL = saturate(dot(V, L));
+
+		float facingSun = pow(VdotL, DIR_SSS_FACING_POW);                          // looking toward the sun
+		float wrapLight = saturate(NdotL * (1.0f - DIR_SSS_WRAP) + DIR_SSS_WRAP);  // wrapped diffuse on lit faces
+		float grazing = pow(1.0f - NdotV, DIR_SSS_GRAZING_POW);                    // thin-film at grazing view
+		float thickness = 1.0f - saturate(dot(N, float3(0.0f, 0.0f, 1.0f)));       // wavelet-face proxy
+
+		float3 tint = Color::Water(shallowColor) * sunColor;
+		float strength = facingSun * wrapLight * grazing * (0.2f + 0.8f * thickness) * DIR_SSS_INTENSITY;
+		return tint * strength;
+	}
 }
 
 #endif  // WATER_BRDF_HLSLI
