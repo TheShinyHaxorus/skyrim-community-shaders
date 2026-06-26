@@ -435,6 +435,18 @@ namespace SharedData
 		uint3 pad2;
 	};
 
+	struct UnifiedWaterSettings
+	{
+		uint EnablePBRSunSpecular;
+		uint EnableBacklitSSS;
+		uint EnableForwardScatterSSS;
+		float SunSpecularBoost;
+
+		float BacklitSSSStrength;
+		float ForwardScatterIntensity;
+		uint2 pad;
+	};
+
 	cbuffer FeatureData : register(b6)
 	{
 		GrassLightingSettings grassLightingSettings;
@@ -458,6 +470,7 @@ namespace SharedData
 		SkinData skinData;
 		VanillaFresnelSettings vanillaFresnelSettings;
 		SnowCoverSettings snowCoverSettings;
+		UnifiedWaterSettings unifiedWaterSettings;
 	};
 
 	Texture2D<float4> DepthTexture : register(t17);

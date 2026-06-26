@@ -15,7 +15,13 @@
 
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(
 	UnifiedWater::Settings,
-	UseOptimisedMeshes)
+	UseOptimisedMeshes,
+	EnablePBRSunSpecular,
+	EnableBacklitSSS,
+	EnableForwardScatterSSS,
+	SunSpecularBoost,
+	BacklitSSSStrength,
+	ForwardScatterIntensity)
 
 namespace
 {
@@ -65,6 +71,18 @@ namespace
 
 }
 
+UnifiedWater::PerFrame UnifiedWater::GetCommonBufferData() const
+{
+	PerFrame data{};
+	data.EnablePBRSunSpecular = settings.EnablePBRSunSpecular;
+	data.EnableBacklitSSS = settings.EnableBacklitSSS;
+	data.EnableForwardScatterSSS = settings.EnableForwardScatterSSS;
+	data.SunSpecularBoost = settings.SunSpecularBoost;
+	data.BacklitSSSStrength = settings.BacklitSSSStrength;
+	data.ForwardScatterIntensity = settings.ForwardScatterIntensity;
+	return data;
+}
+
 void UnifiedWater::LoadSettings(json& o_json)
 {
 	settings = o_json;
@@ -87,6 +105,41 @@ void UnifiedWater::DrawSettings()
 		ImGui::Text("%s", T(TKEY("use_optimised_meshes_tooltip"),
 							  "Uses meshes with significantly lower tri-count for improved performance with no visual quality loss.\n"
 							  "Will only affect newly created water - requires a change of location or game restart to take effect."));
+	}
+
+	ImGui::Spacing();
+
+	if (ImGui::TreeNodeEx(T(TKEY("water_lighting"), "Water Lighting"), ImGuiTreeNodeFlags_DefaultOpen)) {
+		ImGui::Checkbox(T(TKEY("pbr_sun_specular"), "PBR Sun Specular"), &settings.EnablePBRSunSpecular);
+		if (auto _tt = Util::HoverTooltipWrapper()) {
+			ImGui::Text("%s", T(TKEY("pbr_sun_specular_tooltip"),
+								  "Cook-Torrance microfacet sun glint. Disable to use the legacy Phong highlight."));
+		}
+		if (settings.EnablePBRSunSpecular) {
+			ImGui::SliderFloat(T(TKEY("sun_specular_boost"), "Sun Specular Boost"), &settings.SunSpecularBoost, 0.0f, 4.0f, "%.2f");
+		}
+
+		ImGui::Spacing();
+		ImGui::Checkbox(T(TKEY("backlit_sss"), "Backlit SSS"), &settings.EnableBacklitSSS);
+		if (auto _tt = Util::HoverTooltipWrapper()) {
+			ImGui::Text("%s", T(TKEY("backlit_sss_tooltip"),
+								  "Translucent glow on wave faces when the sun is behind the water."));
+		}
+		if (settings.EnableBacklitSSS) {
+			ImGui::SliderFloat(T(TKEY("backlit_sss_strength"), "Backlit SSS Strength"), &settings.BacklitSSSStrength, 0.0f, 4.0f, "%.2f");
+		}
+
+		ImGui::Spacing();
+		ImGui::Checkbox(T(TKEY("forward_scatter_sss"), "Forward Scatter SSS"), &settings.EnableForwardScatterSSS);
+		if (auto _tt = Util::HoverTooltipWrapper()) {
+			ImGui::Text("%s", T(TKEY("forward_scatter_sss_tooltip"),
+								  "Glow when looking toward the sun across the water surface."));
+		}
+		if (settings.EnableForwardScatterSSS) {
+			ImGui::SliderFloat(T(TKEY("forward_scatter_intensity"), "Forward Scatter Intensity"), &settings.ForwardScatterIntensity, 0.0f, 4.0f, "%.2f");
+		}
+
+		ImGui::TreePop();
 	}
 
 	ImGui::Spacing();

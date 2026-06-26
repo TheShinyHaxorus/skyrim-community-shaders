@@ -932,16 +932,16 @@ float3 GetSunColor(float3 normal, float3 viewDirection, float3 worldPosition)
 	if (Permutation::PixelShaderDescriptor & Permutation::WaterFlags::Interior)
 		return 0.0.xxx;
 
-// Set to 0 to A/B against the legacy Phong sun glint.
-#				define WATER_PBR_SUN_SPECULAR 1
-#				if WATER_PBR_SUN_SPECULAR
-	// Cook-Torrance GGX sun glint; NdotL for energy conservation, boost for HDR sparkle.
-	float NdotL = saturate(dot(normal, SunDir.xyz));
-	float3 reflectionMul = WaterBRDF::SpecularBRDF(normal, viewDirection, SunDir.xyz, VarAmounts.x) * NdotL * WaterBRDF::WATER_SPECULAR_ENERGY_BOOST;
-#				else
-	float3 reflectionDirection = reflect(viewDirection, normal);
-	float reflectionMul = exp2(VarAmounts.x * log2(saturate(dot(reflectionDirection, SunDir.xyz))));
-#				endif
+	// PBR Cook-Torrance GGX sun glint, or legacy Phong highlight when disabled (UnifiedWater toggle).
+	float3 reflectionMul;
+	if (SharedData::unifiedWaterSettings.EnablePBRSunSpecular) {
+		// NdotL for energy conservation, boost for HDR sparkle.
+		float NdotL = saturate(dot(normal, SunDir.xyz));
+		reflectionMul = WaterBRDF::SpecularBRDF(normal, viewDirection, SunDir.xyz, VarAmounts.x) * NdotL * WaterBRDF::WATER_SPECULAR_ENERGY_BOOST * SharedData::unifiedWaterSettings.SunSpecularBoost;
+	} else {
+		float3 reflectionDirection = reflect(viewDirection, normal);
+		reflectionMul = exp2(VarAmounts.x * log2(saturate(dot(reflectionDirection, SunDir.xyz)))).xxx;
+	}
 
 	float llDirLightMult = (SharedData::linearLightingSettings.enableLinearLighting && !SharedData::linearLightingSettings.isDirLightLinear) ? SharedData::linearLightingSettings.dirLightMult : 1.0f;
 	float3 sunColor = Color::DirectionalLight((SunColor.xyz * SunDir.w) / max(llDirLightMult, 1e-5), SharedData::linearLightingSettings.isDirLightLinear) * (1.0 - exp(-DeepColor.w)) * llDirLightMult;
@@ -951,16 +951,12 @@ float3 GetSunColor(float3 normal, float3 viewDirection, float3 worldPosition)
 	}
 #				endif
 	float3 result = reflectionMul * sunColor;
-// Set to 0 to disable the backlit subsurface-scattering glow.
-#				define WATER_BACKLIT_SSS 1
-#				if WATER_BACKLIT_SSS
-	result += WaterBRDF::GetBacklitSSS(normal, viewDirection, SunDir.xyz, sunColor, ShallowColor.xyz);
-#				endif
-// Set to 0 to disable the toward-sun forward-scatter glow.
-#				define WATER_FORWARD_SSS 1
-#				if WATER_FORWARD_SSS
-	result += WaterBRDF::GetForwardScatterSSS(normal, viewDirection, SunDir.xyz, sunColor, ShallowColor.xyz);
-#				endif
+	// Backlit subsurface-scattering glow (UnifiedWater toggle + strength).
+	if (SharedData::unifiedWaterSettings.EnableBacklitSSS)
+		result += WaterBRDF::GetBacklitSSS(normal, viewDirection, SunDir.xyz, sunColor, ShallowColor.xyz) * SharedData::unifiedWaterSettings.BacklitSSSStrength;
+	// Toward-sun forward-scatter glow (UnifiedWater toggle + intensity).
+	if (SharedData::unifiedWaterSettings.EnableForwardScatterSSS)
+		result += WaterBRDF::GetForwardScatterSSS(normal, viewDirection, SunDir.xyz, sunColor, ShallowColor.xyz) * SharedData::unifiedWaterSettings.ForwardScatterIntensity;
 	return result;
 #			endif
 }

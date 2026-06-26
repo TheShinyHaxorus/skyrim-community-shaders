@@ -29,9 +29,32 @@ struct UnifiedWater : OverlayFeature
 	struct Settings
 	{
 		bool UseOptimisedMeshes = true;
+
+		// Ported water lighting (see Common/WaterBRDF.hlsli).
+		bool EnablePBRSunSpecular = true;
+		bool EnableBacklitSSS = true;
+		bool EnableForwardScatterSSS = true;
+		float SunSpecularBoost = 1.0f;
+		float BacklitSSSStrength = 1.0f;
+		float ForwardScatterIntensity = 1.0f;
 	};
 
 	Settings settings;
+
+	// Mirrors UnifiedWaterSettings in Common/SharedData.hlsli (FeatureData cbuffer, b6).
+	struct alignas(16) PerFrame
+	{
+		uint32_t EnablePBRSunSpecular;
+		uint32_t EnableBacklitSSS;
+		uint32_t EnableForwardScatterSSS;
+		float SunSpecularBoost;
+
+		float BacklitSSSStrength;
+		float ForwardScatterIntensity;
+		uint32_t pad[2];
+	};
+
+	PerFrame GetCommonBufferData() const;
 
 	/** @brief Hook that overrides water shader material parameters during water initialization. */
 	struct TESWaterSystem_InitializeWater_SetWaterShaderMaterialParams
