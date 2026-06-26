@@ -49,7 +49,9 @@ PS_OUTPUT main(PS_INPUT input)
 #	include "Common/Random.hlsli"
 #	include "Common/Shading.hlsli"
 #	include "Common/Color.hlsli"
-#	include "Common/WaterBRDF.hlsli"
+#	ifdef PSHADER
+#		include "Common/WaterBRDF.hlsli"  // PS-only: uses Color::Water (undefined for VS)
+#	endif
 
 #	define WATER
 
