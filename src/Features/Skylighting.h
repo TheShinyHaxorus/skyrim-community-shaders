@@ -54,6 +54,7 @@ public:
 		float MaxZenith = 3.1415926f / 2.f;  // 90 deg
 		float MinDiffuseVisibility = 0.1f;
 		float MinSpecularVisibility = 0.1f;
+		float OcclusionUpdateInterval = 33.0f;
 	} settings;
 
 	struct SkylightingCB
