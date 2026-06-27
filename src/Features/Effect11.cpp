@@ -22,9 +22,16 @@
 Effect11::PerFrame Effect11::GetCommonBufferData()
 {
 	CheckCommonData();
+	return frameData ? *frameData : PerFrame{};
+}
 
+void Effect11::UpdateFrameData()
+{
 	auto& settingManager = SettingManager::GetSingleton();
-	PerFrame data{};
+	if (!frameData)
+		frameData = std::make_unique<PerFrame>();
+	*frameData = {};
+	PerFrame& data = *frameData;
 
 	data.Enable = enableEffect;
 	data.EnableSky = enableEffect && settingManager.GetValue<bool>("Enable", "SKY");
@@ -106,7 +113,9 @@ Effect11::PerFrame Effect11::GetCommonBufferData()
 
 	data.ProceduralSunGlowIntensity = settingManager.GetInterpolatedTimeOfDayValue("GlowIntensity", "PROCEDURALSUN");
 
-	return data;
+	cachedPointLightingCurve = settingManager.GetInterpolatedTimeOfDayValue("PointLightingCurve", "ENVIRONMENT");
+	cachedPointLightingDesaturation = settingManager.GetInterpolatedTimeOfDayValue("PointLightingDesaturation", "ENVIRONMENT");
+	cachedPointLightingIntensity = settingManager.GetInterpolatedTimeOfDayValue("PointLightingIntensity", "ENVIRONMENT");
 }
 
 void Effect11::DrawSettings()
@@ -502,16 +511,16 @@ void Effect11::CheckCommonData()
 		uint32_t currentWeatherID = weatherManager.GetEffectiveWeatherID(static_cast<uint32_t>(commonData.weather[0]));
 		uint32_t lastWeatherID = weatherManager.GetEffectiveWeatherID(static_cast<uint32_t>(commonData.weather[1]));
 		settingManager.SetWeatherBlendFactors(currentWeatherID, lastWeatherID, commonData.weather[2]);
+
+		UpdateFrameData();
 	}
 }
 
 void Effect11::OverridePointLightColor(float3& a_color)
 {
-	auto& settingManager = SettingManager::GetSingleton();
-
-	a_color = Curve(a_color, settingManager.GetInterpolatedTimeOfDayValue("PointLightingCurve", "ENVIRONMENT"));
-	a_color = Desaturation(a_color, settingManager.GetInterpolatedTimeOfDayValue("PointLightingDesaturation", "ENVIRONMENT"));
-	a_color = Intensity(a_color, settingManager.GetInterpolatedTimeOfDayValue("PointLightingIntensity", "ENVIRONMENT"));
+	a_color = Curve(a_color, cachedPointLightingCurve);
+	a_color = Desaturation(a_color, cachedPointLightingDesaturation);
+	a_color = Intensity(a_color, cachedPointLightingIntensity);
 }
 
 void Effect11::OverrideAmbientLighting(DirectionalAmbientColors& DirectionalAmbientColors)

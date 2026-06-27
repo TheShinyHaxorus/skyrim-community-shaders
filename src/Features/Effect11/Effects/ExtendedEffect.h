@@ -29,7 +29,14 @@ private:
 	using WeatherValues = std::unordered_map<std::string, std::string>;
 	std::unordered_map<uint32_t, WeatherValues> weatherData;
 
+	using WeatherNumericValues = std::unordered_map<std::string, std::vector<float>>;
+	std::unordered_map<uint32_t, WeatherNumericValues> weatherDataNumeric;
+
 	std::unordered_map<std::string, int> bindingCache;
+
+	void RebuildWeatherNumeric();
+	void RebuildWeatherNumericForID(uint32_t weatherID);
+	static std::vector<float> ParseWeatherValue(const std::string& str);
 
 	int ResolveTechniqueBinding(const std::string& variableName);
 	static float GetPeriodWeight(const std::string& period);

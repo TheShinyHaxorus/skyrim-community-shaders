@@ -96,6 +96,11 @@ public:
 
 	bool enableEffect = false;
 
+	std::unique_ptr<PerFrame> frameData;
+	float cachedPointLightingCurve = 1.0f;
+	float cachedPointLightingDesaturation = 0.0f;
+	float cachedPointLightingIntensity = 1.0f;
+
 	ID3D11PixelShader* raymarchVolumetricRaysPS = nullptr;
 	ID3D11PixelShader* applyVolumetricRaysPS = nullptr;
 	ID3D11ComputeShader* blurHCS = nullptr;
@@ -124,6 +129,7 @@ public:
 	void OnSkyUpdateColors(RE::Sky* a_sky);
 	void OverrideWeather(RE::Sky* a_sky);
 	void CheckCommonData();
+	void UpdateFrameData();
 	void OverridePointLightColor(float3& a_color);
 
 	struct DirectionalAmbientColors

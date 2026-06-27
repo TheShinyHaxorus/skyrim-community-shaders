@@ -195,9 +195,9 @@ T SettingManager::GetValueInternal(uint32_t id, bool rawValue) const
 	}
 
 	const auto& setting = allSettings[id];
-	const auto& categorySettings = categories.at(setting.category);
 
 	if (setting.hasWeatherSupport) {
+		const auto& categorySettings = categories.at(setting.category);
 		bool isInterior = (timeOfDay2[2] + timeOfDay2[3]) > 0.5f;
 		bool shouldIgnoreWeather = isInterior ?
 		                               categorySettings.ignoreWeatherSystemInterior :
@@ -259,9 +259,9 @@ void SettingManager::SetValueInternal(uint32_t id, const T& value)
 	}
 
 	auto& setting = allSettings[id];
-	const auto& categorySettings = categories.at(setting.category);
 
 	if (setting.hasWeatherSupport) {
+		const auto& categorySettings = categories.at(setting.category);
 		bool isInterior = (timeOfDay2[2] + timeOfDay2[3]) > 0.5f;
 		bool shouldIgnoreWeather = isInterior ?
 		                               categorySettings.ignoreWeatherSystemInterior :
