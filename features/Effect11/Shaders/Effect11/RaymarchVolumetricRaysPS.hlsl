@@ -13,7 +13,13 @@ struct VS_OUTPUT_POST
 	float2 txcoord0 : TEXCOORD0;
 };
 
-float main(VS_OUTPUT_POST input) : SV_Target0
+struct PS_OUTPUT
+{
+	float shadow : SV_Target0;
+	float depth : SV_Target1;
+};
+
+PS_OUTPUT main(VS_OUTPUT_POST input)
 {
 	float2 uv = input.txcoord0;
 
@@ -60,5 +66,8 @@ float main(VS_OUTPUT_POST input) : SV_Target0
 		transmittance *= stepTransmittance;
 	}
 
-	return scattering;
+	PS_OUTPUT output;
+	output.shadow = scattering;
+	output.depth = depth;
+	return output;
 }

@@ -110,6 +110,7 @@ public:
 
 	std::unique_ptr<Texture2D> vrTexA;
 	std::unique_ptr<Texture2D> vrTexB;
+	std::unique_ptr<Texture2D> vrDepth;
 	std::unique_ptr<ConstantBuffer> vrBlurCB;
 
 	winrt::com_ptr<ID3D11Texture2D> raindropTexture;

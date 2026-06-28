@@ -6,6 +6,7 @@
 #endif
 
 Texture2D<float> BlurredShadowTexture : register(t0);
+SamplerState BlurredShadowSampler : register(s0);
 
 struct VS_OUTPUT_POST
 {
@@ -17,7 +18,10 @@ float4 main(VS_OUTPUT_POST input) : SV_Target0
 {
 	float2 uv = input.txcoord0;
 
-	float volumetricShadow = BlurredShadowTexture.Load(int3(input.pos.xy, 0));
+	uint2 vrDims;
+	BlurredShadowTexture.GetDimensions(vrDims.x, vrDims.y);
+	float2 vrUV = (input.pos.xy * 0.5) / float2(vrDims);
+	float volumetricShadow = BlurredShadowTexture.SampleLevel(BlurredShadowSampler, vrUV, 0);
 
 	float depth = SharedData::GetDepth(uv);
 	float4 positionCS = float4(2 * float2(uv.x, -uv.y + 1) - 1, depth, 1);
