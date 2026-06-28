@@ -509,6 +509,8 @@ Texture2D<float4> TexShadowMaskSampler : register(t14);
 Texture2D<float4> TexSkinExtraSampler : register(t71);
 Texture2D<float4> TexSkinWetnessSampler : register(t74);
 Texture2D<float4> TexSkinWetnessNormalSampler : register(t75);
+// Skin _sk subsurface map on a dedicated slot; t12 is clobbered in the deferred path.
+Texture2D<float4> TexSkinSkSampler : register(t99);
 #	endif
 
 cbuffer PerTechnique : register(b0)
@@ -1815,7 +1817,7 @@ PS_OUTPUT main(PS_INPUT input, bool frontFace : SV_IsFrontFace)
 	bool hasSkinExtra = false;
 	bool hasSkinWetness = false;
 	if (skinEnabled) {
-		skinsk = TexRimSoftLightWorldMapOverlaySampler.Sample(SampRimSoftLightWorldMapOverlaySampler, uv);
+		skinsk = TexSkinSkSampler.Sample(SampColorSampler, uv);
 		TexSkinExtraSampler.GetDimensions(skinExtraDimensions.x, skinExtraDimensions.y);
 		TexSkinWetnessSampler.GetDimensions(wetnessDimensions.x, wetnessDimensions.y);
 		hasSkinExtra = skinExtraDimensions.x > 32 && skinExtraDimensions.y > 32;

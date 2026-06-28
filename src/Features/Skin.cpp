@@ -437,14 +437,15 @@ float4 Skin::GetWetness(RE::BSGeometry* geometry)
 struct SkinExtendedRendererState
 {
 	uint32_t PSResourceModifiedBits = 0;
-	std::array<ID3D11ShaderResourceView*, 2> PSTexture;
+	std::array<ID3D11ShaderResourceView*, 3> PSTexture;
 
-	void SetExtraSkinPSTexture(RE::BSGraphics::Texture* newTexture, RE::BSGraphics::Texture* newTexture2)
+	void SetExtraSkinPSTexture(RE::BSGraphics::Texture* newTexture, RE::BSGraphics::Texture* newTexture2, RE::BSGraphics::Texture* newTexture3)
 	{
 		{
 			PSTexture = {
 				newTexture ? newTexture->resourceView : nullptr,
-				newTexture2 ? newTexture2->resourceView : nullptr
+				newTexture2 ? newTexture2->resourceView : nullptr,
+				newTexture3 ? newTexture3->resourceView : nullptr
 			};
 			PSResourceModifiedBits = 1;
 		}
@@ -582,10 +583,22 @@ void Skin::BSLightingShader_SetupMaterial(RE::BSLightingShaderMaterialBase const
 	auto graphicsState = globals::game::graphicsState;
 	const auto& workingExtraPtr = skinExtraTextures[hashKey];
 
+	// The skin _sk subsurface map is fed by the vanilla pipeline into the shared RimSoftLight slot (t12), which CS's deferred passes overwrite; capture it for a dedicated slot.
+	RE::BSGraphics::Texture* subsurfaceTex = nullptr;
+	if (material->rimSoftLightingTexture && material->rimSoftLightingTexture->rendererTexture) {
+		subsurfaceTex = material->rimSoftLightingTexture->rendererTexture;
+	} else if (materialFeature == RE::BSShaderMaterial::Feature::kFaceGen) {
+		auto* facegenMaterial = static_cast<const RE::BSLightingShaderMaterialFacegen*>(material);
+		if (facegenMaterial->subsurfaceTexture && facegenMaterial->subsurfaceTexture->rendererTexture)
+			subsurfaceTex = facegenMaterial->subsurfaceTexture->rendererTexture;
+	}
+	if (!subsurfaceTex)
+		subsurfaceTex = graphicsState->GetRuntimeData().defaultTextureBlack->rendererTexture;
+
 	if (workingExtraPtr.hasExtraTexture || workingExtraPtr.hasWetnessTexture) {
-		skinExtendedRendererState.SetExtraSkinPSTexture(workingExtraPtr.rfaosTexture->rendererTexture, workingExtraPtr.wetnessTexture->rendererTexture);
+		skinExtendedRendererState.SetExtraSkinPSTexture(workingExtraPtr.rfaosTexture->rendererTexture, workingExtraPtr.wetnessTexture->rendererTexture, subsurfaceTex);
 	} else {
-		skinExtendedRendererState.SetExtraSkinPSTexture(graphicsState->GetRuntimeData().defaultTextureBlack->rendererTexture, graphicsState->GetRuntimeData().defaultTextureBlack->rendererTexture);
+		skinExtendedRendererState.SetExtraSkinPSTexture(graphicsState->GetRuntimeData().defaultTextureBlack->rendererTexture, graphicsState->GetRuntimeData().defaultTextureBlack->rendererTexture, subsurfaceTex);
 	}
 }
 
@@ -614,6 +627,7 @@ void Skin::SetShaderResources(ID3D11DeviceContext* a_context)
 	if (skinExtendedRendererState.PSResourceModifiedBits != 0) {
 		a_context->PSSetShaderResources(71, 1, &skinExtendedRendererState.PSTexture.at(0));
 		a_context->PSSetShaderResources(74, 1, &skinExtendedRendererState.PSTexture.at(1));
+		a_context->PSSetShaderResources(99, 1, &skinExtendedRendererState.PSTexture.at(2));
 	}
 	skinExtendedRendererState.PSResourceModifiedBits = 0;
 }
