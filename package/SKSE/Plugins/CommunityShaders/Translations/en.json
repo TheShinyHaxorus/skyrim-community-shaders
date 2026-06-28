@@ -1325,8 +1325,6 @@
     "feature.skylighting.max_zenith_tooltip": "Smaller angles creates more focused top-down shadow.",
     "feature.skylighting.min_visibility_desc": "Minimum visibility values. Diffuse darkens objects. Specular removes the sky from reflections.",
     "feature.skylighting.name": "Skylighting",
-    "feature.skylighting.occlusion_distance_culling": "Distance Culling",
-    "feature.skylighting.occlusion_distance_culling_tooltip": "Skips small objects from the sky-occlusion map more aggressively the further they are from the player. Higher values improve performance in cluttered areas; very high values may drop distant ambient shadows. 0 disables.",
     "feature.skylighting.occlusion_update_interval": "Occlusion Update Interval (ms)",
     "feature.skylighting.occlusion_update_interval_tooltip": "Minimum time between sky-occlusion map updates. Higher values improve performance in geometry-dense areas by rendering the occlusion map less often, at the cost of slower skylighting response. 0 updates every frame.",
     "feature.skylighting.rebuild": "Rebuild Skylighting",

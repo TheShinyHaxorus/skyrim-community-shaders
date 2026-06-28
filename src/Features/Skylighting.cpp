@@ -12,8 +12,7 @@ NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(
 	MaxZenith,
 	MinDiffuseVisibility,
 	MinSpecularVisibility,
-	OcclusionUpdateInterval,
-	OcclusionDistanceCulling)
+	OcclusionUpdateInterval)
 
 void Skylighting::LoadSettings(json& o_json)
 {
@@ -47,10 +46,6 @@ void Skylighting::DrawSettings()
 	ImGui::SliderFloat(T(TKEY("occlusion_update_interval"), "Occlusion Update Interval (ms)"), &settings.OcclusionUpdateInterval, 0.f, 66.f, "%.0f ms");
 	if (auto _tt = Util::HoverTooltipWrapper())
 		ImGui::Text("%s", T(TKEY("occlusion_update_interval_tooltip"), "Minimum time between sky-occlusion map updates. Higher values improve performance in geometry-dense areas by rendering the occlusion map less often, at the cost of slower skylighting response. 0 updates every frame."));
-
-	ImGui::SliderFloat(T(TKEY("occlusion_distance_culling"), "Distance Culling"), &settings.OcclusionDistanceCulling, 0.f, 1.f, "%.2f");
-	if (auto _tt = Util::HoverTooltipWrapper())
-		ImGui::Text("%s", T(TKEY("occlusion_distance_culling_tooltip"), "Skips small objects from the sky-occlusion map more aggressively the further they are from the player. Higher values improve performance in cluttered areas; very high values may drop distant ambient shadows. 0 disables."));
 
 	ImGui::Separator();
 
@@ -418,16 +413,7 @@ RE::BSShaderProperty::RenderPassArray* Skylighting::BSLightingShaderProperty_Get
 	}
 
 	if (valid) {
-		float minRadius = 32.0f;
-		if (skylighting.inOcclusion && skylighting.settings.OcclusionDistanceCulling > 0.0f) {
-			auto& center = geometry->worldBound.center;
-			float dx = center.x - skylighting.eyePosition.x;
-			float dy = center.y - skylighting.eyePosition.y;
-			float dz = center.z - skylighting.eyePosition.z;
-			float dist = std::sqrt(dx * dx + dy * dy + dz * dz);
-			minRadius += skylighting.settings.OcclusionDistanceCulling * 256.0f * (dist / skylighting.occlusionDistance);
-		}
-		if (geometry->worldBound.radius > minRadius) {
+		if (geometry->worldBound.radius > 32) {
 			stl::enumeration<RE::BSUtilityShader::Flags> technique;
 			technique.set(RenderDepth);
 
@@ -555,10 +541,6 @@ void Skylighting::RenderOcclusion()
 				RE::NiPoint3 originalParticleShaderDirection = PrecipitationShaderDirection;
 
 				inOcclusion = true;
-				{
-					auto eyePosNI = Util::GetEyePosition();
-					eyePosition = { eyePosNI.x, eyePosNI.y, eyePosNI.z };
-				}
 				PrecipitationShaderCubeSize = occlusionDistance;
 
 				float originaLastCubeSize = precip->lastCubeSize;

@@ -55,7 +55,6 @@ public:
 		float MinDiffuseVisibility = 0.1f;
 		float MinSpecularVisibility = 0.1f;
 		float OcclusionUpdateInterval = 33.0f;
-		float OcclusionDistanceCulling = 0.0f;
 	} settings;
 
 	struct SkylightingCB
@@ -99,7 +98,6 @@ public:
 	bool inOcclusion = false;
 	REX::W32::XMFLOAT4X4 OcclusionTransform;
 	float4 OcclusionDir;
-	float3 eyePosition{};
 	uint frameCount = 0;
 
 	/** @brief Clears the accumulation frames array to force a full rebuild of skylighting probes. */
