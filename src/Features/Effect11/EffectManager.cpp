@@ -383,15 +383,9 @@ void EffectManager::ExecuteEffects(RE::BSGraphics::RenderTargetData& a_input, [[
 	textureManager.IncrementTextureSwap();
 
 	auto* textureSDRTemp = textureManager.GetCommonTexture("TextureSDRTemp");
-	if (textureSDRTemp) {
-		auto textureFramebuffer = renderer->GetRuntimeData().renderTargets[RE::RENDER_TARGETS::kIMAGESPACE_TEMP_COPY];
-		globals::profiler->BeginPass("Effect11::CopyToFramebuffer");
-		CopyTexture(textureSDRTemp->srv.get(), textureFramebuffer.RTV);
-		globals::profiler->EndPass();
-
-		auto textureFramebuffer2 = renderer->GetRuntimeData().renderTargets[RE::RENDER_TARGETS::kIMAGESPACE_TEMP_COPY2];
-		globals::profiler->BeginPass("Effect11::CopyToFramebuffer2");
-		CopyTexture(textureSDRTemp->srv.get(), textureFramebuffer2.RTV);
+	if (textureSDRTemp && a_output.RTV) {
+		globals::profiler->BeginPass("Effect11::CopyToOutput");
+		CopyTexture(textureSDRTemp->srv.get(), a_output.RTV);
 		globals::profiler->EndPass();
 	}
 
