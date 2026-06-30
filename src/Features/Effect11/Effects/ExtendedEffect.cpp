@@ -2,8 +2,6 @@
 
 #ifdef ENABLE_ENB_EXTENDER
 
-#include <cmath>
-#include <limits>
 #include <sstream>
 
 #include "../EffectManager.h"
@@ -22,47 +20,8 @@ bool ExtendedEffect::IsVariableWeatherControlled(const std::string& iniKey) cons
 void ExtendedEffect::Unload()
 {
 	weatherData.clear();
-	weatherDataNumeric.clear();
 	bindingCache.clear();
 	Effect::Unload();
-}
-
-std::vector<float> ExtendedEffect::ParseWeatherValue(const std::string& str)
-{
-	std::vector<float> result;
-	std::stringstream ss(str);
-	std::string item;
-	while (std::getline(ss, item, ',')) {
-		try {
-			result.push_back(std::stof(item));
-		} catch (...) {
-			result.push_back(std::numeric_limits<float>::quiet_NaN());
-		}
-	}
-	return result;
-}
-
-void ExtendedEffect::RebuildWeatherNumericForID(uint32_t weatherID)
-{
-	auto it = weatherData.find(weatherID);
-	if (it == weatherData.end()) {
-		weatherDataNumeric.erase(weatherID);
-		return;
-	}
-	auto& numeric = weatherDataNumeric[weatherID];
-	numeric.clear();
-	for (const auto& [key, str] : it->second)
-		numeric[key] = ParseWeatherValue(str);
-}
-
-void ExtendedEffect::RebuildWeatherNumeric()
-{
-	weatherDataNumeric.clear();
-	for (const auto& [weatherID, values] : weatherData) {
-		auto& numeric = weatherDataNumeric[weatherID];
-		for (const auto& [key, str] : values)
-			numeric[key] = ParseWeatherValue(str);
-	}
 }
 
 // Technique evaluation
@@ -242,22 +201,24 @@ void ExtendedEffect::LoadWeatherData()
 		}
 	}
 
-	RebuildWeatherNumeric();
-
 	if (!weatherData.empty())
 		logger::info("[ExtendedEffect] Loaded weather data for '{}' ({} weathers)", GetName(), weatherData.size());
 }
 
 void ExtendedEffect::ApplyWeatherBlending(float blendFactor, uint32_t currentWeatherID, uint32_t lastWeatherID)
 {
-	if (weatherDataNumeric.empty())
+	if (weatherData.empty())
 		return;
 
-	auto currentIt = weatherDataNumeric.find(currentWeatherID);
-	auto lastIt = weatherDataNumeric.find(lastWeatherID);
+	auto currentIt = weatherData.find(currentWeatherID);
+	auto lastIt = weatherData.find(lastWeatherID);
 
-	if (currentIt == weatherDataNumeric.end() && lastIt == weatherDataNumeric.end())
+	if (currentIt == weatherData.end() && lastIt == weatherData.end())
 		return;
+
+	auto safeStof = [](const std::string& s, float fallback) -> float {
+		try { return std::stof(s); } catch (...) { return fallback; }
+	};
 
 	for (auto& uiVar : uiVariables) {
 		if (uiVar.isLabel)
@@ -274,15 +235,15 @@ void ExtendedEffect::ApplyWeatherBlending(float blendFactor, uint32_t currentWea
 		switch (uiVar.type) {
 		case UIVariableType::Float:
 			{
-				auto getVal = [&](const WeatherNumericValues* vals) -> float {
+				auto getVal = [&](const WeatherValues* vals) -> float {
 					if (!vals) return uiVar.floatValue;
 					auto it = vals->find(iniKey);
-					if (it == vals->end() || it->second.empty() || std::isnan(it->second[0])) return uiVar.floatValue;
-					return it->second[0];
+					if (it == vals->end()) return uiVar.floatValue;
+					return safeStof(it->second, uiVar.floatValue);
 				};
 
-				float currentVal = getVal(currentIt != weatherDataNumeric.end() ? &currentIt->second : nullptr);
-				float lastVal = getVal(lastIt != weatherDataNumeric.end() ? &lastIt->second : nullptr);
+				float currentVal = getVal(currentIt != weatherData.end() ? &currentIt->second : nullptr);
+				float lastVal = getVal(lastIt != weatherData.end() ? &lastIt->second : nullptr);
 				uiVar.floatValue = lastVal + blendFactor * (currentVal - lastVal);
 				if (uiVar.effectVariable)
 					uiVar.effectVariable->AsScalar()->SetFloat(uiVar.floatValue);
@@ -295,7 +256,7 @@ void ExtendedEffect::ApplyWeatherBlending(float blendFactor, uint32_t currentWea
 				int comps = (uiVar.type == UIVariableType::Float2) ? 2 : (uiVar.type == UIVariableType::Float3) ? 3 : 4;
 				bool perComp = IsPerComponentVector(uiVar);
 
-				auto parseVec = [&](const WeatherNumericValues* vals, float* out) {
+				auto parseVec = [&](const WeatherValues* vals, float* out) {
 					if (!vals) {
 						memcpy(out, uiVar.vectorValue, sizeof(float) * comps);
 						return;
@@ -304,18 +265,15 @@ void ExtendedEffect::ApplyWeatherBlending(float blendFactor, uint32_t currentWea
 						static const char* suffixes[] = { "X", "Y", "Z", "W" };
 						for (int c = 0; c < comps; ++c) {
 							auto it = vals->find(iniKey + suffixes[c]);
-							out[c] = (it != vals->end() && !it->second.empty() && !std::isnan(it->second[0])) ? it->second[0] : uiVar.vectorValue[c];
+							out[c] = (it != vals->end()) ? safeStof(it->second, uiVar.vectorValue[c]) : uiVar.vectorValue[c];
 						}
 					} else {
 						auto it = vals->find(iniKey);
 						if (it != vals->end()) {
-							const auto& parsed = it->second;
-							for (int c = 0; c < comps; ++c) {
-								if (c < static_cast<int>(parsed.size()))
-									out[c] = std::isnan(parsed[c]) ? uiVar.vectorValue[c] : parsed[c];
-								else
-									out[c] = 0.0f;
-							}
+							std::stringstream ss(it->second);
+							std::string item;
+							for (int c = 0; c < comps && std::getline(ss, item, ','); ++c)
+								out[c] = safeStof(item, uiVar.vectorValue[c]);
 						} else {
 							memcpy(out, uiVar.vectorValue, sizeof(float) * comps);
 						}
@@ -323,8 +281,8 @@ void ExtendedEffect::ApplyWeatherBlending(float blendFactor, uint32_t currentWea
 				};
 
 				float currentVals[4] = {}, lastVals[4] = {};
-				parseVec(currentIt != weatherDataNumeric.end() ? &currentIt->second : nullptr, currentVals);
-				parseVec(lastIt != weatherDataNumeric.end() ? &lastIt->second : nullptr, lastVals);
+				parseVec(currentIt != weatherData.end() ? &currentIt->second : nullptr, currentVals);
+				parseVec(lastIt != weatherData.end() ? &lastIt->second : nullptr, lastVals);
 
 				for (int c = 0; c < comps; ++c)
 					uiVar.vectorValue[c] = lastVals[c] + blendFactor * (currentVals[c] - lastVals[c]);
@@ -387,8 +345,6 @@ void ExtendedEffect::SyncWeatherDataFromUI(uint32_t weatherID)
 			break;
 		}
 	}
-
-	RebuildWeatherNumericForID(weatherID);
 }
 
 // Rendering

@@ -372,13 +372,7 @@ void EffectManager::ExecuteEffects(RE::BSGraphics::RenderTargetData& a_input, [[
 
 	auto& textureManager = TextureManager::GetSingleton();
 
-	auto& settingManager = SettingManager::GetSingleton();
-	auto effectWillRun = [&](EffectBase& a_effect, uint32_t enableSettingID) {
-		return a_effect.IsCompiled() && (enableSettingID == 0xFFFFFFFF || settingManager.GetValue<bool>(enableSettingID));
-	};
-
-	if (effectWillRun(enbBloom, ids.useBloom) || effectWillRun(enbLens, ids.useLens) || effectWillRun(enbAdaptation, ids.useAdaptation))
-		textureManager.UpdateDownsampledTexture(textureOriginal.SRV);
+	textureManager.UpdateDownsampledTexture(textureOriginal.SRV);
 
 	ExecuteEffect(enbBloom, ids.useBloom);
 	ExecuteEffect(enbLens, ids.useLens);
