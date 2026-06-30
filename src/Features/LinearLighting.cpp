@@ -91,6 +91,13 @@ void LinearLighting::DrawSettings()
 		auto& enb = globals::features::effect11;
 		if (enb.enableEffect) {
 			ImGui::TextColored(ImVec4(1.0f, 1.0f, 0.0f, 1.0f), "Settings are currently managed by ENB.");
+			ImGui::SeparatorText(T(TKEY("effect_brightness_enb"), "Effect Brightness (works under ENB)"));
+			ImGui::SliderFloat(T(TKEY("other_effects_multiplier"), "Other Effects Multiplier"), &settings.otherEffectMult, 0.0f, 10.0f, "%.2f");
+			if (auto _tt = Util::HoverTooltipWrapper())
+				ImGui::Text("%s", T(TKEY("other_effects_multiplier_tooltip"), "Brightness of additive effects such as fire and magic. Raise to compensate for dim flames under ENB."));
+			ImGui::SliderFloat(T(TKEY("deferred_effects_multiplier"), "Deferred Effects Multiplier"), &settings.deferredEffectMult, 0.0f, 10.0f, "%.2f");
+			if (auto _tt = Util::HoverTooltipWrapper())
+				ImGui::Text("%s", T(TKEY("deferred_effects_multiplier_tooltip"), "Brightness of effects rendered through the deferred path. Pair with Other Effects Multiplier if some fire still reads dim."));
 			return;
 		}
 	}
@@ -311,8 +318,6 @@ LinearLighting::PerFrameData LinearLighting::GetCommonBufferData()
 			data.membraneEffectMult = 1.0f;
 			data.bloodEffectMult = 1.0f;
 			data.projectedEffectMult = 1.0f;
-			data.deferredEffectMult = 1.0f;
-			data.otherEffectMult = 1.0f;
 		}
 	}
 	return data;
