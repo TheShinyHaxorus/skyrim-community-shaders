@@ -582,6 +582,18 @@ void Deferred::ClearShaderCache()
 	}
 }
 
+// True when kMAIN is an 8-bit UNORM target (HDR Display off); FP16 main needs no output dither.
+static bool IsMainTarget8Bit()
+{
+	auto& main = globals::game::renderer->GetRuntimeData().renderTargets[RE::RENDER_TARGETS::kMAIN];
+	if (!main.texture)
+		return false;
+	D3D11_TEXTURE2D_DESC desc{};
+	main.texture->GetDesc(&desc);
+	return desc.Format == DXGI_FORMAT_R8G8B8A8_UNORM || desc.Format == DXGI_FORMAT_R8G8B8A8_UNORM_SRGB ||
+	       desc.Format == DXGI_FORMAT_B8G8R8A8_UNORM || desc.Format == DXGI_FORMAT_B8G8R8A8_UNORM_SRGB;
+}
+
 ID3D11ComputeShader* Deferred::GetComputeMainComposite()
 {
 	if (!mainCompositeCS) {
@@ -605,6 +617,9 @@ ID3D11ComputeShader* Deferred::GetComputeMainComposite()
 		// (R24_UNORM_X8_TYPELESS game depth) to `Texture2D<float>` (R32_FLOAT blendedDepth).
 		if (globals::features::terrainBlending.loaded)
 			defines.push_back({ "TERRAIN_BLENDING", nullptr });
+
+		if (IsMainTarget8Bit())
+			defines.push_back({ "OUTPUT_DITHER", nullptr });
 
 		mainCompositeCS = static_cast<ID3D11ComputeShader*>(Util::CompileShader(L"Data\\Shaders\\DeferredCompositeCS.hlsl", defines, "cs_5_0"));
 	}
@@ -632,6 +647,9 @@ ID3D11ComputeShader* Deferred::GetComputeMainCompositeInterior()
 		// (R24_UNORM_X8_TYPELESS game depth) to `Texture2D<float>` (R32_FLOAT blendedDepth).
 		if (globals::features::terrainBlending.loaded)
 			defines.push_back({ "TERRAIN_BLENDING", nullptr });
+
+		if (IsMainTarget8Bit())
+			defines.push_back({ "OUTPUT_DITHER", nullptr });
 
 		mainCompositeInteriorCS = static_cast<ID3D11ComputeShader*>(Util::CompileShader(L"Data\\Shaders\\DeferredCompositeCS.hlsl", defines, "cs_5_0"));
 	}

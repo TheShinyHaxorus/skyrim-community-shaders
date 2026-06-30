@@ -4,6 +4,7 @@
 #include "Common/FrameBuffer.hlsli"
 #include "Common/GBuffer.hlsli"
 #include "Common/MotionBlur.hlsli"
+#include "Common/Random.hlsli"
 #include "Common/Shading.hlsli"
 #include "Common/SharedData.hlsli"
 #include "Common/Spherical Harmonics/SphericalHarmonics.hlsli"
@@ -304,6 +305,11 @@ void SampleSSGISpecular(uint2 pixCoord, sh2 lobe, inout float ao, out float3 il,
 		color = glossiness;
 	}
 
+#endif
+
+#if defined(OUTPUT_DITHER)
+	// Dither against 8-bit kMAIN quantization banding (skies, dark interiors, smooth ambient).
+	color += (Random::InterleavedGradientNoise(float2(dispatchID.xy)) - 0.5) / 255.0;
 #endif
 
 	MainRW[dispatchID.xy] = float4(color, 1.0);
