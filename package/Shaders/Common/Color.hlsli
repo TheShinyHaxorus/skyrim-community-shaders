@@ -314,7 +314,7 @@ namespace Color
 
 	float3 EffectMult(float3 color)
 	{
-		if (ENABLE_LL) {
+		if (ENABLE_LL || SharedData::enbSettings.Enable) {
 #	if defined(MEMBRANE)
 			color *= SharedData::linearLightingSettings.membraneEffectMult;
 #	elif defined(BLOOD)
