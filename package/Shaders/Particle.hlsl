@@ -244,6 +244,10 @@ cbuffer PerGeometry : register(b2)
 #	define LinearSampler SampSourceTexture
 #	include "Common/ShadowSampling.hlsli"
 
+#	if defined(IBL)
+#		include "IBL/IBL.hlsli"
+#	endif
+
 #	if defined(RAIN) && defined(DYNAMIC_CUBEMAPS)
 #		define SampColorSampler SampSourceTexture
 #		include "DynamicCubemaps/DynamicCubemaps.hlsli"
@@ -334,6 +338,10 @@ PS_OUTPUT main(PS_INPUT input, bool frontFace : SV_IsFrontFace)
 	float unusedDetailedShadow;
 	float3 dirLightColor = SharedData::DirLightColor.xyz * ShadowSampling::GetLightingShadow(positionWS.xyz, unusedDetailedShadow);
 	float3 ambientColor = max(0, SharedData::GetAmbient(float3(0, 0, 1)));
+#	if defined(IBL)
+	if (SharedData::iblSettings.EnableIBL)
+		ambientColor = ImageBasedLighting::GetDiffuseIBL(ambientColor, float3(0, 0, -1));
+#	endif
 
 	propertyColor += dirLightColor;
 	propertyColor += ambientColor;
