@@ -9,7 +9,6 @@ struct ExtendedMaterials;
 struct GrassCollision;
 struct GrassLighting;
 struct HairSpecular;
-struct HiZOcclusion;
 struct IBL;
 struct LightLimitFix;
 struct LinearLighting;
@@ -98,7 +97,6 @@ namespace globals
 		extern GrassCollision grassCollision;
 		extern GrassLighting grassLighting;
 		extern HairSpecular hairSpecular;
-		extern HiZOcclusion hiZOcclusion;
 		extern IBL ibl;
 		extern LightLimitFix lightLimitFix;
 		extern LinearLighting linearLighting;

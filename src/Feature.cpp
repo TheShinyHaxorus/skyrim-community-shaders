@@ -39,7 +39,6 @@
 #include "Features/VanillaFresnel.h"
 #include "Features/VolumetricLighting.h"
 #include "Features/VolumetricShadows.h"
-#include "Features/HiZOcclusion.h"
 #include "Features/WaterEffects.h"
 #include "Features/WetnessEffects.h"
 #include "I18n/I18n.h"
@@ -251,7 +250,6 @@ const std::vector<Feature*>& Feature::GetFeatureList()
 		&globals::features::extendedTranslucency,
 		&globals::features::upscaling,
 		&globals::features::renderDoc,
-		&globals::features::hiZOcclusion,
 		&globals::features::remoteControl,
 		&globals::features::csEditor,
 		&globals::features::screenshotFeature,
