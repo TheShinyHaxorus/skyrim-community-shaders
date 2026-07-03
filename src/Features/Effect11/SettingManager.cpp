@@ -490,6 +490,7 @@ void SettingManager::LoadWeatherSettings(const std::vector<uint32_t>& weatherIDs
 	}
 	for (auto& setting : settingsCopy) {
 		if (setting.hasWeatherSupport) {
+			setting.defaultValue = setting.currentValue;
 			LoadSettingFromFile(filePath, setting.category, setting.key, setting);
 			loadedValues[setting.id] = setting.currentValue;
 		}
