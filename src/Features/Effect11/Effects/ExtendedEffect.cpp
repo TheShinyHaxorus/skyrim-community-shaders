@@ -74,7 +74,7 @@ bool ExtendedEffect::IsTechniqueEnabled(TechniqueInfo& info)
 
 float ExtendedEffect::GetPeriodWeight(const std::string& period)
 {
-	auto& cd = EffectManager::GetSingleton().commonData;
+	auto& cd = EffectManager::GetSingleton().effectContextData;
 	if (period == "Dawn") return cd.timeOfDay1[static_cast<int>(TimeOfDay1Index::Dawn)];
 	if (period == "Sunrise") return cd.timeOfDay1[static_cast<int>(TimeOfDay1Index::Sunrise)];
 	if (period == "Day") return cd.timeOfDay1[static_cast<int>(TimeOfDay1Index::Day)];
@@ -105,7 +105,7 @@ void ExtendedEffect::ApplyTimeOfDayInterpolation()
 		baseGroups[name.substr(0, name.size() - period.size())].push_back({ i, GetPeriodWeight(period) });
 	}
 
-	auto& cd = EffectManager::GetSingleton().commonData;
+	auto& cd = EffectManager::GetSingleton().effectContextData;
 
 	for (auto& [baseName, entries] : baseGroups) {
 		auto baseVarIt = variables.find(baseName);
