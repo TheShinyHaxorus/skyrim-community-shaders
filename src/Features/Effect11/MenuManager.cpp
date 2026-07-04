@@ -5,7 +5,24 @@
 #include "TextureManager.h"
 #include "Utils/ShaderPatches.h"
 
+#include "Features/Effect11.h"
+#include "Globals.h"
+
+#include <imgui_stdlib.h>
+
 static const char* const timeOfDayNames[] = { "Dawn", "Sunrise", "Day", "Sunset", "Dusk", "Night", "InteriorDay", "InteriorNight" };
+
+namespace
+{
+	bool ContainsCaseInsensitive(std::string_view haystack, std::string_view needle)
+	{
+		if (needle.empty())
+			return true;
+		auto it = std::search(haystack.begin(), haystack.end(), needle.begin(), needle.end(),
+			[](char a, char b) { return std::tolower(static_cast<unsigned char>(a)) == std::tolower(static_cast<unsigned char>(b)); });
+		return it != haystack.end();
+	}
+}
 
 MenuManager& MenuManager::GetSingleton()
 {
@@ -69,15 +86,7 @@ void MenuManager::RenderSettingsPanel()
 	}
 
 	ImGui::SameLine();
-
-	if (ImGui::Button("Load")) {
-		settingManager.Load();
-		effectManager.Load();
-	}
-	if (ImGui::IsItemHovered()) {
-		ImGui::SetTooltip("Load all settings from enbseries.ini, weather files, and effect configurations");
-	}
-
+	ImGui::TextDisabled("|");
 	ImGui::SameLine();
 
 	if (ImGui::Button("Save")) {
@@ -85,7 +94,23 @@ void MenuManager::RenderSettingsPanel()
 		effectManager.Save();
 	}
 	if (ImGui::IsItemHovered()) {
-		ImGui::SetTooltip("Save all settings to enbseries.ini, weather files, and effect configurations");
+		ImGui::SetTooltip("Save all settings to enbseries.ini, weather files, and effect configurations (no shader reload)");
+	}
+
+	ImGui::SameLine();
+
+	if (ImGui::Button("Load")) {
+		settingManager.Load();
+		effectManager.Load();
+	}
+	if (ImGui::IsItemHovered()) {
+		ImGui::SetTooltip("Load all settings from enbseries.ini, weather files, and effect configurations (no shader reload)");
+	}
+
+	ImGui::SetNextItemWidth(-FLT_MIN);
+	ImGui::InputTextWithHint("##Effect11SettingsFilter", "Search settings...", &settingsFilter);
+	if (ImGui::IsItemHovered()) {
+		ImGui::SetTooltip("Filter settings by name or category across all tabs");
 	}
 
 	ImGui::Separator();
@@ -249,7 +274,9 @@ float MenuManager::GetTimeOfDayBlendFactor(int timeIndex) const
 void MenuManager::RenderAllSettings()
 {
 	auto& settingManager = SettingManager::GetSingleton();
-	auto categorizedSettings = SettingManager::GetSingleton().GetCategorizedSettings();
+	auto categorizedSettings = settingManager.GetCategorizedSettings();
+
+	const bool filtering = !settingsFilter.empty();
 
 	// Define explicit order for tabs
 	const std::vector<std::string> tabOrder = { "Main", "Weather", "Debug" };
@@ -262,6 +289,10 @@ void MenuManager::RenderAllSettings()
 			const auto& categories = categorizedSettings[tabName];
 
 			if (ImGui::BeginTabItem(tabName.c_str())) {
+				if (tabName == "Main") {
+					RenderModSettings();
+				}
+
 				// Add weather control to the Weather tab
 				if (tabName == "Weather") {
 					RenderWeatherControl();
@@ -273,11 +304,23 @@ void MenuManager::RenderAllSettings()
 				}
 
 				for (const auto& category : categories) {
+					auto settings = settingManager.GetSettingsByCategory(category);
+
+					// With a search active, show only matching settings; a match
+					// on the category name keeps the whole category visible.
+					if (filtering && !ContainsCaseInsensitive(category, settingsFilter)) {
+						std::erase_if(settings, [&](const std::string& key) {
+							return !ContainsCaseInsensitive(key, settingsFilter);
+						});
+						if (settings.empty())
+							continue;
+					}
+
 					ImGuiTreeNodeFlags flags = (tabName == "Weather") ? ImGuiTreeNodeFlags_None : ImGuiTreeNodeFlags_DefaultOpen;
+					if (filtering)
+						ImGui::SetNextItemOpen(true);
 
 					if (ImGui::TreeNodeEx(category.c_str(), flags)) {
-						auto settings = settingManager.GetSettingsByCategory(category);
-
 						if (ImGui::BeginTable((category + "_table").c_str(), 2, ImGuiTableFlags_BordersInnerV | ImGuiTableFlags_SizingStretchProp)) {
 							ImGui::TableSetupColumn("Parameter", ImGuiTableColumnFlags_WidthFixed);
 							ImGui::TableSetupColumn("Value", ImGuiTableColumnFlags_WidthStretch);
@@ -324,138 +367,7 @@ void MenuManager::RenderAllSettings()
 							}
 
 							for (const auto& settingKey : settings) {
-								auto settingInfo = settingManager.GetSettingInfo(settingKey, category);
-								if (!settingInfo)
-									continue;
-
-								uint32_t settingID = settingInfo->id;
-
-								ImGui::TableNextRow();
-								ImGui::TableSetColumnIndex(0);
-								ImGui::Text("%s", settingKey.c_str());
-								ImGui::TableSetColumnIndex(1);
-
-								switch (settingInfo->type) {
-								case SettingType::Bool:
-									{
-										bool v = settingManager.GetValue<bool>(settingID, true);
-										if (ImGui::Checkbox(("##" + settingKey).c_str(), &v)) {
-											settingManager.SetValue<bool>(settingID, v);
-										}
-										break;
-									}
-								case SettingType::Float:
-									{
-										float v = settingManager.GetValue<float>(settingID, true);
-										if (ImGui::InputFloat(("##" + settingKey).c_str(), &v, settingInfo->step, settingInfo->step * 10.0f, "%.2f")) {
-											// Clamp value between min and max after input
-											v = std::clamp(v, settingInfo->minValue, settingInfo->maxValue);
-											settingManager.SetValue<float>(settingID, v);
-										}
-										break;
-									}
-								case SettingType::TimeOfDay:
-									{
-										auto v = settingManager.GetValue<TimeOfDayValue>(settingID, true);
-										bool exteriorOnly = settingManager.IsCategoryExteriorOnly(category);
-
-										bool changed = false;
-										bool firstRow = true;
-
-										for (int i = 0; i < 8; ++i) {
-											if (exteriorOnly && i >= 6)
-												continue;
-
-											if (!firstRow) {
-												ImGui::TableNextRow();
-												ImGui::TableSetColumnIndex(0);
-												ImGui::TableSetColumnIndex(1);
-											}
-											firstRow = false;
-
-											// Style the input based on activity
-											float blendFactor = GetTimeOfDayBlendFactor(i);
-											bool isActive = blendFactor > 0.0f;
-
-											if (!isActive) {
-												// Inactive inputs: dim the appearance
-												ImGui::PushStyleVar(ImGuiStyleVar_Alpha, 0.5f);
-											}
-
-											std::string label = std::string(timeOfDayNames[i]) + "##" + settingKey + std::to_string(i);
-											if (ImGui::InputFloat(label.c_str(), &v.values[i], settingInfo->step, settingInfo->step * 10.0f, "%.2f")) {
-												// Clamp value between min and max after input
-												v.values[i] = std::clamp(v.values[i], settingInfo->minValue, settingInfo->maxValue);
-												changed = true;
-											}
-
-											if (ImGui::IsItemHovered()) {
-												ImGui::SetTooltip("%.0f%%", blendFactor * 100.0f);
-											}
-
-											if (!isActive) {
-												ImGui::PopStyleVar();
-											}
-										}
-
-										if (changed) {
-											settingManager.SetValue<TimeOfDayValue>(settingID, v);
-										}
-										break;
-									}
-								case SettingType::ColorTimeOfDay:
-									{
-										auto v = settingManager.GetValue<ColorTimeOfDayValue>(settingID, true);
-										bool exteriorOnly = settingManager.IsCategoryExteriorOnly(category);
-
-										bool changed = false;
-										bool firstRow = true;
-
-										for (int i = 0; i < 8; ++i) {
-											if (exteriorOnly && i >= 6)
-												continue;
-
-											if (!firstRow) {
-												ImGui::TableNextRow();
-												ImGui::TableSetColumnIndex(0);
-												ImGui::TableSetColumnIndex(1);
-											}
-											firstRow = false;
-
-											// Style the color picker based on activity
-											float blendFactor = GetTimeOfDayBlendFactor(i);
-											bool isActive = blendFactor > 0.0f;
-
-											if (!isActive) {
-												// Inactive sliders: dim the appearance
-												ImGui::PushStyleVar(ImGuiStyleVar_Alpha, 0.5f);
-											}
-
-											std::string label = std::string(timeOfDayNames[i]) + "##" + settingKey + std::to_string(i);
-											float color[3] = { v.values[i].x, v.values[i].y, v.values[i].z };
-
-											if (ImGui::ColorEdit3(label.c_str(), color, ImGuiColorEditFlags_NoInputs)) {
-												v.values[i].x = color[0];
-												v.values[i].y = color[1];
-												v.values[i].z = color[2];
-												changed = true;
-											}
-
-											if (ImGui::IsItemHovered()) {
-												ImGui::SetTooltip("%.0f%%", blendFactor * 100.0f);
-											}
-
-											if (!isActive) {
-												ImGui::PopStyleVar();
-											}
-										}
-
-										if (changed) {
-											settingManager.SetValue<ColorTimeOfDayValue>(settingID, v);
-										}
-										break;
-									}
-								}
+								RenderSettingRows(settingKey, category);
 							}
 
 							ImGui::EndTable();
@@ -467,6 +379,195 @@ void MenuManager::RenderAllSettings()
 			}
 		}
 		ImGui::EndTabBar();
+	}
+}
+
+void MenuManager::RenderSettingRows(const std::string& settingKey, const std::string& category)
+{
+	auto& settingManager = SettingManager::GetSingleton();
+	auto settingInfo = settingManager.GetSettingInfo(settingKey, category);
+	if (!settingInfo)
+		return;
+
+	uint32_t settingID = settingInfo->id;
+
+	ImGui::TableNextRow();
+	ImGui::TableSetColumnIndex(0);
+
+	switch (settingInfo->type) {
+	case SettingType::Bool:
+		{
+			ImGui::Text("%s", settingKey.c_str());
+			ImGui::TableSetColumnIndex(1);
+			bool v = settingManager.GetValue<bool>(settingID, true);
+			if (ImGui::Checkbox(("##" + settingKey).c_str(), &v)) {
+				settingManager.SetValue<bool>(settingID, v);
+			}
+			break;
+		}
+	case SettingType::Float:
+		{
+			ImGui::Text("%s", settingKey.c_str());
+			ImGui::TableSetColumnIndex(1);
+			float v = settingManager.GetValue<float>(settingID, true);
+			ImGui::SetNextItemWidth(-FLT_MIN);
+			if (ImGui::DragFloat(("##" + settingKey).c_str(), &v, settingInfo->step, settingInfo->minValue, settingInfo->maxValue, "%.2f")) {
+				v = std::clamp(v, settingInfo->minValue, settingInfo->maxValue);
+				settingManager.SetValue<float>(settingID, v);
+			}
+			if (ImGui::IsItemHovered()) {
+				ImGui::SetTooltip("Drag to adjust, Ctrl+Click to type\nRange: %.2f to %.2f", settingInfo->minValue, settingInfo->maxValue);
+			}
+			break;
+		}
+	case SettingType::TimeOfDay:
+		{
+			// Collapsed by default: one row showing the blended value currently
+			// in effect; expand to edit the individual time-of-day values.
+			bool open = ImGui::TreeNodeEx(settingKey.c_str(), ImGuiTreeNodeFlags_SpanAvailWidth);
+			ImGui::TableSetColumnIndex(1);
+			ImGui::TextDisabled("now: %.2f", settingManager.GetInterpolatedTimeOfDayValue(settingKey, category));
+			if (ImGui::IsItemHovered()) {
+				ImGui::SetTooltip("Blended value currently in effect. Expand the row to edit per time of day.");
+			}
+
+			if (open) {
+				auto v = settingManager.GetValue<TimeOfDayValue>(settingID, true);
+				bool exteriorOnly = settingManager.IsCategoryExteriorOnly(category);
+				bool changed = false;
+
+				for (int i = 0; i < 8; ++i) {
+					if (exteriorOnly && i >= 6)
+						continue;
+
+					ImGui::TableNextRow();
+					ImGui::TableSetColumnIndex(0);
+
+					// Dim time periods that are not currently contributing
+					float blendFactor = GetTimeOfDayBlendFactor(i);
+					bool isActive = blendFactor > 0.0f;
+					if (!isActive)
+						ImGui::PushStyleVar(ImGuiStyleVar_Alpha, 0.5f);
+
+					if (isActive)
+						ImGui::Text("%s (%.0f%%)", timeOfDayNames[i], blendFactor * 100.0f);
+					else
+						ImGui::Text("%s", timeOfDayNames[i]);
+
+					ImGui::TableSetColumnIndex(1);
+					ImGui::SetNextItemWidth(-FLT_MIN);
+					std::string label = "##" + settingKey + std::to_string(i);
+					if (ImGui::DragFloat(label.c_str(), &v.values[i], settingInfo->step, settingInfo->minValue, settingInfo->maxValue, "%.2f")) {
+						v.values[i] = std::clamp(v.values[i], settingInfo->minValue, settingInfo->maxValue);
+						changed = true;
+					}
+
+					if (!isActive)
+						ImGui::PopStyleVar();
+				}
+
+				if (changed) {
+					settingManager.SetValue<TimeOfDayValue>(settingID, v);
+				}
+
+				ImGui::TreePop();
+			}
+			break;
+		}
+	case SettingType::ColorTimeOfDay:
+		{
+			bool open = ImGui::TreeNodeEx(settingKey.c_str(), ImGuiTreeNodeFlags_SpanAvailWidth);
+			ImGui::TableSetColumnIndex(1);
+			float3 now = settingManager.GetInterpolatedColorTimeOfDayValue(settingKey, category);
+			ImGui::ColorButton(("##now_" + settingKey).c_str(), ImVec4(now.x, now.y, now.z, 1.0f), ImGuiColorEditFlags_NoTooltip);
+			ImGui::SameLine();
+			ImGui::TextDisabled("now");
+			if (ImGui::IsItemHovered()) {
+				ImGui::SetTooltip("Blended color currently in effect. Expand the row to edit per time of day.");
+			}
+
+			if (open) {
+				auto v = settingManager.GetValue<ColorTimeOfDayValue>(settingID, true);
+				bool exteriorOnly = settingManager.IsCategoryExteriorOnly(category);
+				bool changed = false;
+
+				for (int i = 0; i < 8; ++i) {
+					if (exteriorOnly && i >= 6)
+						continue;
+
+					ImGui::TableNextRow();
+					ImGui::TableSetColumnIndex(0);
+
+					float blendFactor = GetTimeOfDayBlendFactor(i);
+					bool isActive = blendFactor > 0.0f;
+					if (!isActive)
+						ImGui::PushStyleVar(ImGuiStyleVar_Alpha, 0.5f);
+
+					if (isActive)
+						ImGui::Text("%s (%.0f%%)", timeOfDayNames[i], blendFactor * 100.0f);
+					else
+						ImGui::Text("%s", timeOfDayNames[i]);
+
+					ImGui::TableSetColumnIndex(1);
+					std::string label = "##" + settingKey + std::to_string(i);
+					float color[3] = { v.values[i].x, v.values[i].y, v.values[i].z };
+
+					if (ImGui::ColorEdit3(label.c_str(), color, ImGuiColorEditFlags_NoInputs)) {
+						v.values[i].x = color[0];
+						v.values[i].y = color[1];
+						v.values[i].z = color[2];
+						changed = true;
+					}
+
+					if (!isActive)
+						ImGui::PopStyleVar();
+				}
+
+				if (changed) {
+					settingManager.SetValue<ColorTimeOfDayValue>(settingID, v);
+				}
+
+				ImGui::TreePop();
+			}
+			break;
+		}
+	}
+}
+
+void MenuManager::RenderModSettings()
+{
+	auto& effect11 = globals::features::effect11;
+
+	const bool filtering = !settingsFilter.empty();
+	if (filtering && !ContainsCaseInsensitive("PERK MENU AdaptationTarget", settingsFilter))
+		return;
+
+	if (filtering)
+		ImGui::SetNextItemOpen(true);
+
+	if (ImGui::TreeNodeEx("PERK MENU", ImGuiTreeNodeFlags_DefaultOpen)) {
+		if (ImGui::BeginTable("PERKMENU_table", 2, ImGuiTableFlags_BordersInnerV | ImGuiTableFlags_SizingStretchProp)) {
+			ImGui::TableSetupColumn("Parameter", ImGuiTableColumnFlags_WidthFixed);
+			ImGui::TableSetupColumn("Value", ImGuiTableColumnFlags_WidthStretch);
+
+			ImGui::TableNextRow();
+			ImGui::TableSetColumnIndex(0);
+			ImGui::Text("AdaptationTarget");
+			ImGui::TableSetColumnIndex(1);
+			ImGui::SetNextItemWidth(-FLT_MIN);
+			if (ImGui::DragFloat("##PerkMenuAdaptationTarget", &effect11.settings.statsMenuAdaptationTarget, 0.005f, 0.01f, 2.0f, "%.3f")) {
+				effect11.settings.statsMenuAdaptationTarget = std::clamp(effect11.settings.statsMenuAdaptationTarget, 0.01f, 2.0f);
+			}
+			if (ImGui::IsItemHovered()) {
+				ImGui::SetTooltip(
+					"Scene brightness the skills/perk menu adapts to while it is open.\n"
+					"Raise it if the menu looks too bright, lower it if too dark.\n"
+					"Saved with Community Shaders settings, not with the ENB preset.");
+			}
+
+			ImGui::EndTable();
+		}
+		ImGui::TreePop();
 	}
 }
 

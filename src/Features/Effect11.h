@@ -94,6 +94,16 @@ public:
 		uint pad0;
 	};
 
+	struct Settings
+	{
+		// Scene luminance the ENB adaptation converges to while the perk menu
+		// (StatsMenu) is open; keeps its brightness deterministic regardless of
+		// the scene it was opened from. Raising it darkens the menu.
+		float statsMenuAdaptationTarget = 0.18f;
+	};
+
+	Settings settings;
+
 	bool enableEffect = false;
 
 	ID3D11PixelShader* raymarchVolumetricRaysPS = nullptr;
@@ -115,6 +125,8 @@ public:
 	PerFrame GetCommonBufferData();
 
 	virtual void DrawSettings() override;
+	virtual void LoadSettings(json& o_json) override;
+	virtual void SaveSettings(json& o_json) override;
 	virtual void SetupResources() override;
 	virtual void Reset() override;
 	virtual void Prepass() override;

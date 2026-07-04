@@ -3,6 +3,8 @@
 #include "../SettingManager.h"
 #include "../TextureManager.h"
 
+#include "Features/Effect11.h"
+#include "Globals.h"
 #include "Utils/D3D.h"
 
 void ENBAdaptation::Execute()
@@ -81,20 +83,24 @@ void ENBAdaptation::CreateEffectTextures()
 
 bool ENBAdaptation::EnsureNeutralTexture()
 {
-	if (textureNeutralSRV)
+	// Luminance the perk menu adapts to; the preset's own sensitivity/min/max
+	// settings still shape the final brightness. User-tunable, so rebake the
+	// texture when the value changes.
+	const float neutralLuminance = std::max(globals::features::effect11.settings.statsMenuAdaptationTarget, 0.001f);
+	if (textureNeutralSRV && bakedNeutralLuminance == neutralLuminance)
 		return true;
 
 	auto device = globals::d3d::device;
 	if (!device)
 		return false;
 
-	// Average-scene luminance the perk menu adapts to; the preset's own
-	// sensitivity/min/max settings still shape the final brightness.
-	constexpr float kNeutralLuminance = 0.18f;
+	textureNeutralSRV = nullptr;
+	textureNeutral = nullptr;
+
 	constexpr uint32_t kSize = 16;
 
 	std::array<float, kSize * kSize> texels;
-	texels.fill(kNeutralLuminance);
+	texels.fill(neutralLuminance);
 
 	D3D11_TEXTURE2D_DESC desc{};
 	desc.Width = kSize;
@@ -119,5 +125,6 @@ bool ENBAdaptation::EnsureNeutralTexture()
 		return false;
 	}
 	Util::SetResourceName(textureNeutralSRV.get(), "ENBAdaptation::TextureNeutral SRV");
+	bakedNeutralLuminance = neutralLuminance;
 	return true;
 }

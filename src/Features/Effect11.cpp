@@ -19,6 +19,10 @@
 #include "Utils/D3D.h"
 #include "Utils/Game.h"
 
+NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(
+	Effect11::Settings,
+	statsMenuAdaptationTarget);
+
 Effect11::PerFrame Effect11::GetCommonBufferData()
 {
 	CheckCommonData();
@@ -112,6 +116,16 @@ Effect11::PerFrame Effect11::GetCommonBufferData()
 void Effect11::DrawSettings()
 {
 	MenuManager::GetSingleton().RenderImGui();
+}
+
+void Effect11::LoadSettings(json& o_json)
+{
+	settings = o_json;
+}
+
+void Effect11::SaveSettings(json& o_json)
+{
+	o_json = settings;
 }
 
 void Effect11::LoadRaindropTexture()
