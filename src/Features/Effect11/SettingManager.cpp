@@ -207,8 +207,9 @@ T SettingManager::GetValueInternal(uint32_t id, bool rawValue) const
 			return std::get<T>(setting.currentValue);
 		}
 
-		auto currentIt = weatherData.find(currentWeatherID);
-		auto lastIt = weatherData.find(lastWeatherID);
+		auto& weatherManager = WeatherManager::GetSingleton();
+		auto currentIt = weatherManager.FindWeatherEntry(currentWeatherID) ? weatherData.find(currentWeatherID) : weatherData.end();
+		auto lastIt = weatherManager.FindWeatherEntry(lastWeatherID) ? weatherData.find(lastWeatherID) : weatherData.end();
 
 		if (currentIt != weatherData.end() || lastIt != weatherData.end()) {
 			SettingValue currentValue = setting.currentValue;
@@ -291,15 +292,7 @@ void SettingManager::SetValueInternal(uint32_t id, const T& value)
 				data[id] = value;
 			}
 		} else {
-			// Fallback: update target ID only
-			auto& data = weatherData[targetWeatherID];
-			if (data.size() < allSettings.size()) {
-				data.resize(allSettings.size());
-				for (size_t i = 0; i < allSettings.size(); ++i) {
-					data[i] = allSettings[i].currentValue;
-				}
-			}
-			data[id] = value;
+			setting.currentValue = value;
 		}
 		return;
 	}

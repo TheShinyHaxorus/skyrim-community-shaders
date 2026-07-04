@@ -9,6 +9,7 @@
 #include "Features/CSEditor.h"
 #include "Features/CloudShadows.h"
 #include "Features/Effect11.h"
+#include "Features/Effect11/SettingManager.h"
 #include "Features/ExponentialHeightFog.h"
 #include "Features/HDRDisplay.h"
 #include "Features/InteriorSun.h"
@@ -651,6 +652,12 @@ void State::Save(ConfigMode a_configMode)
 	} catch (const std::exception& e) {
 		logger::warn("Failed to write settings to file: {}. Error: {}", configPath, e.what());
 	}
+
+	// Effect11's ENB-style settings live in enbseries.ini / per-weather inis, not
+	// the CS JSON; flush them here so the global Save button persists panel edits
+	// too (dirty-tracked, so this is a no-op when nothing changed).
+	if (globals::features::effect11.loaded)
+		SettingManager::GetSingleton().Save();
 }
 
 bool State::ValidateCache(CSimpleIniA& a_ini)
