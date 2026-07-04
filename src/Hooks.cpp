@@ -19,9 +19,6 @@
 #include "Features/SkySync.h"
 #include "Features/Upscaling.h"
 #include "Features/VolumetricLighting.h"
-#include "Features/HiZOcclusion.h"
-
-#include <RE/B/BSGeometry.h>
 
 #include "ShaderTools/BSShaderHooks.h"
 
@@ -923,67 +920,6 @@ namespace Hooks
 		globals::features::skySync.OnSkyUpdateColors(sky);
 	}
 
-	// Hooks the engine's primary geometry registration (BSShaderAccumulator) to
-	// perform early Hi-Z occlusion culling before draw submission. AE-only.
-	struct BSAccumProcess_RegisterObject
-	{
-		static uint64_t thunk(void* accum, RE::NiAVObject* object, uint64_t flags)
-		{
-			auto& hiz = globals::features::hiZOcclusion;
-			if (hiz.loaded && hiz.settings.enableHiZCulling) {
-				auto* geo = netimmerse_cast<RE::BSGeometry*>(object);
-
-				if (!geo || geo->worldBound.radius <= 0.0f) {
-					return func(accum, object, flags);
-				}
-
-				auto* refr = object->GetUserData();
-				if (!refr) {
-					return func(accum, object, flags);
-				}
-
-				hiz.stats.accumRegisterCalls.fetch_add(1, std::memory_order_relaxed);
-
-				// RenderModes from:
-				// https://github.com/Nukem9/skyrimse-test/blob/master/skyrim64_test/src/patches/TES/BSShader/BSShaderAccumulator.cpp
-				uint32_t renderMode = *reinterpret_cast<uint32_t*>(reinterpret_cast<uintptr_t>(accum) + 0x150);
-
-				if (renderMode >= 30) {
-					return func(accum, object, flags);
-				}
-
-				// 0 is most regular geometry, including LOD
-				// 12 culls most shadows and flickers first-person geometry
-				// 14 is more shadows - possibly just sun
-				// 15 is more shadows
-				// 22 culls first-person geometry in view.
-				hiz.stats.renderModeCalls[renderMode].fetch_add(1, std::memory_order_relaxed);
-
-				bool allowCulling = hiz.settings.cullRenderMode[renderMode];
-
-				if (allowCulling) {
-					// Initialize the thread-local registration if this thread is calling the hook for the first time
-					static thread_local bool threadRegistered = [&hiz]() {
-						std::lock_guard<std::mutex> lock(hiz.threadVectorsMutex);
-						hiz.allThreadVectors.push_back(&HiZOcclusion::localPendingGeometry);
-						return true;
-					}();
-
-					// Append to local list with zero thread synchronization
-					HiZOcclusion::localPendingGeometry.push_back(geo);
-
-					if (hiz.IsGeometryOccluded(geo)) {
-						hiz.stats.earlyCulledCount.fetch_add(1, std::memory_order_relaxed);
-						return 0;
-					}
-				}
-			}
-
-			return func(accum, object, flags);
-		}
-		static inline REL::Relocation<decltype(thunk)> func;
-	};
-
 	/**
 	 * @brief Installs hooks, detours, and memory patches for graphics, input, and rendering subsystems.
 	 *
@@ -1092,12 +1028,6 @@ namespace Hooks
 				std::uint8_t patch3[] = { 0x45, 0x31, 0xC0 };  // xor r8d, r8d (zeros r8d)
 				REL::safe_write(setupGeometryUpdateRenderSpace + 0x378, patch3, sizeof(patch3));
 			}
-		}
-
-		// Hook engine primary object registration for HiZ Occlusion (AE-only address)
-		if (REL::Module::IsAE()) {
-			logger::info("Hooking BSShaderAccumulator::RegisterObject for HiZ Occlusion");
-			stl::write_thunk_call<BSAccumProcess_RegisterObject>(REL::RelocationID(0, 76558).address() + 0xD3);
 		}
 
 		stl::write_thunk_call<BSLightingShader_SetupGeometry_GeometrySetupConstantPointLights>(REL::RelocationID(100565, 107300).address() + REL::Relocate(0x523, 0xB0E));
