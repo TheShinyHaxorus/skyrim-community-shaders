@@ -123,7 +123,7 @@ static const float MIP_LEVEL_BIAS = 1.5;
 /// @param viewPos Position in view/camera space
 /// @return UV coordinates suitable for sampling HiZBuffer
 float2 ViewToHiZUV(float3 viewPos) {
-    float2 uv = FrameBuffer::ViewToUV(viewPos, true);
+    float2 uv = FrameBuffer::ViewToUV(viewPos, true, 0);
 #ifdef VR
     // VR renders both eyes side-by-side: left eye = [0, 0.5], right eye = [0.5, 1]
     // We test against left eye only for conservative culling
@@ -338,8 +338,8 @@ float GetMipLevel(float3 centerVS, float radius) {
     if (depth < MIN_DEPTH_THRESHOLD) return 0.0;
     
     // Get projection scale from first element of projection matrix
-    // CameraProj[0][0] = horizontal FOV scale = 1/tan(fovX/2)
-    float projScaleX = FrameBuffer::CameraProj[0][0];
+    // CameraProj[0][0][0] = horizontal FOV scale = 1/tan(fovX/2)
+    float projScaleX = FrameBuffer::CameraProj[0][0][0];
     
     // Screen-space radius in NDC: (radius / depth) * projectionScale  
     float screenRadiusNDC = (radius / depth) * projScaleX;
@@ -405,7 +405,7 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID)
     // Subtract camera position to get true world-relative coords before view transform.
     // NOTE: Some interior cell bounds appear to follow the camera inverted - needs investigation.
     float3 centerWSCameraRelative = centerWS - CameraWorldPos;
-    float3 centerVS = mul(FrameBuffer::CameraView, float4(centerWSCameraRelative, 1)).xyz;
+    float3 centerVS = mul(FrameBuffer::CameraView[0], float4(centerWSCameraRelative, 1)).xyz;
 
     // =========================================================================
     // EARLY OUT 1: Invalid radius -> mark visible (safety)
@@ -473,7 +473,7 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID)
     // -------------------------------------------------------------------------
     if (centerVS.z > 0.0) {
         float2 centerUV = clamp(ViewToHiZUV(centerVS), float2(0.0, 0.0), float2(1.0, 1.0));
-        float4 centerClip = mul(FrameBuffer::CameraProj, float4(centerVS, 1));
+        float4 centerClip = mul(FrameBuffer::CameraProj[0], float4(centerVS, 1));
         float centerDepth = centerClip.z / centerClip.w;
         
         float hiZDepth = HiZBuffer.SampleLevel(HiZSampler, centerUV, mipLevel).r;
@@ -489,7 +489,7 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID)
         float3 nearestSpherePoint = centerVS + normalDir * radius;
         if (nearestSpherePoint.z > 0.0) {
             float2 nearestUV = clamp(ViewToHiZUV(nearestSpherePoint), float2(0.0, 0.0), float2(1.0, 1.0));
-            float4 nearestClip = mul(FrameBuffer::CameraProj, float4(nearestSpherePoint, 1));
+            float4 nearestClip = mul(FrameBuffer::CameraProj[0], float4(nearestSpherePoint, 1));
             float nearestDepth = nearestClip.z / nearestClip.w;
 
             // NEW: Entire sphere beyond far plane — don't occlusion-cull
@@ -527,7 +527,7 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID)
             continue;
         }
         
-        float4 pointClip = mul(FrameBuffer::CameraProj, float4(pointVS, 1));
+        float4 pointClip = mul(FrameBuffer::CameraProj[0], float4(pointVS, 1));
         float pointDepth = pointClip.z / pointClip.w;
         
         float2 rawUV = ViewToHiZUV(pointVS);
