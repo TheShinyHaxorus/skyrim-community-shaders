@@ -1669,30 +1669,3 @@ bool HiZOcclusion::IsGeometryOccluded(RE::BSGeometry* geometry) const
     if (!geometry) return false;
     return (geometry->GetFlags().underlying() & kOccludedFlag) != 0;
 }
-
-bool HiZOcclusion::IsPlayerAttachedGeometry(RE::BSGeometry* geometry, RE::TESObjectREFR* refr)
-{
-    auto* player = RE::PlayerCharacter::GetSingleton();
-    if (!player)
-        return false;
-
-    // Player body and skeleton-attached gear carry the player as user data
-    if (refr == player)
-        return true;
-
-    if (refr) {
-        const auto& grabbed = player->GetPlayerRuntimeData().grabData.grabbedObject;
-        if (grabbed && refr->GetHandle() == grabbed)
-            return true;
-    }
-
-    auto* root1st = player->Get3D(true);
-    auto* root3rd = player->Get3D(false);
-    if (!root1st && !root3rd)
-        return false;
-    for (RE::NiNode* parent = geometry ? geometry->parent : nullptr; parent; parent = parent->parent) {
-        if (parent == root1st || parent == root3rd)
-            return true;
-    }
-    return false;
-}
