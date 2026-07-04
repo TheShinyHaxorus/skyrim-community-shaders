@@ -57,14 +57,12 @@ void ENBAdaptation::UpdateEffectVariables()
 
 	float adaptationTime = settingManager.GetValue<float>(idAdaptTime);
 	float deltaTime = (globals::game::deltaTime) ? (*globals::game::deltaTime) : 0.0f;
-	auto ui = globals::game::ui;
-	bool freezeAdaptation = ui && ui->IsMenuOpen(RE::StatsMenu::MENU_NAME);
 
 	float4 adaptationParameters{};
 	adaptationParameters.x = !forceMinMaxValues ? 0.0f : settingManager.GetValue<float>(idAdaptMin);
 	adaptationParameters.y = !forceMinMaxValues ? 65535.0f : settingManager.GetValue<float>(idAdaptMax);
 	adaptationParameters.z = settingManager.GetValue<float>(idAdaptSens);
-	adaptationParameters.w = freezeAdaptation ? 0.0f : std::clamp((adaptationTime > 0.0f) ? (deltaTime / adaptationTime) : 1.0f, 0.0f, 1.0f);
+	adaptationParameters.w = std::clamp((adaptationTime > 0.0f) ? (deltaTime / adaptationTime) : 1.0f, 0.0f, 1.0f);
 
 	SetVectorVariable("AdaptationParameters", &adaptationParameters, sizeof(adaptationParameters));
 }
