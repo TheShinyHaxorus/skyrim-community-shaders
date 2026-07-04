@@ -204,6 +204,8 @@ struct HiZOcclusion : OverlayFeature
 
     // Check if a given geometry was determined to be occluded
     bool IsGeometryOccluded(RE::BSGeometry* geometry) const;
+
+    static bool IsPlayerAttachedGeometry(RE::BSGeometry* geometry, RE::TESObjectREFR* refr);
     
     // Debugging result struct (x = object depth, y = max scene depth)
 

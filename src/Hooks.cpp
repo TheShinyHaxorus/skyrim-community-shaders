@@ -959,7 +959,8 @@ namespace Hooks
 				// 22 culls first-person geometry in view.
 				hiz.stats.renderModeCalls[renderMode].fetch_add(1, std::memory_order_relaxed);
 
-				bool allowCulling = hiz.settings.cullRenderMode[renderMode];
+				bool allowCulling = hiz.settings.cullRenderMode[renderMode] &&
+				                    !HiZOcclusion::IsPlayerAttachedGeometry(geo, refr);
 
 				if (allowCulling) {
 					// Initialize the thread-local registration if this thread is calling the hook for the first time
