@@ -289,6 +289,8 @@ public:
 
 	bool inWorld = false;
 	bool activeReflections = false;
+	bool renderingShadowmaps = false;
+	bool renderingDepthPrepass = false;
 
 	// Cached menu open states, updated once per frame in Reset().
 	// Avoids repeated IsMenuOpen calls (each constructs a BSFixedString).
