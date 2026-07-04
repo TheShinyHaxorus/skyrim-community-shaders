@@ -352,8 +352,6 @@ void EffectManager::ExecuteEffects(RE::BSGraphics::RenderTargetData& a_input, [[
 	D3D11FullStateBackup stateBackup;
 	stateBackup.Save(context);
 
-	auto& settingManager = SettingManager::GetSingleton();
-	settingManager.SetTimeOfDayData(effectContextData.timeOfDay1, effectContextData.timeOfDay2);
 	auto& textureOriginal = a_input;
 
 	// Set our render state
@@ -391,7 +389,6 @@ void EffectManager::ExecuteEffects(RE::BSGraphics::RenderTargetData& a_input, [[
 		globals::profiler->EndPass();
 	}
 
-	settingManager.SetTimeOfDayData(commonData.timeOfDay1, commonData.timeOfDay2);
 	stateBackup.Restore(context);
 	stateBackup.Release();
 }
@@ -763,27 +760,6 @@ void EffectManager::UpdateCommonData()
 		commonData.timeOfDay2[static_cast<int>(TimeOfDay2Index::InteriorDay)] = commonData.eInteriorFactor * commonData.eNightDayFactor;
 		commonData.timeOfDay2[static_cast<int>(TimeOfDay2Index::InteriorNight)] = commonData.eInteriorFactor * (1.0f - commonData.eNightDayFactor);
 	}
-	{
-		auto ui = globals::game::ui;
-		const bool statsMenuOpen = ui && ui->IsMenuOpen(RE::StatsMenu::MENU_NAME);
-		const float deltaTime = (globals::game::deltaTime) ? (*globals::game::deltaTime) : 0.0f;
-		constexpr float fadeTime = 1.0f;  // seconds to fully pin/unpin the context
-		const float step = deltaTime / fadeTime;
-		const float target = statsMenuOpen ? 1.0f : 0.0f;
-		menuContextBlend = std::clamp(menuContextBlend + std::clamp(target - menuContextBlend, -step, step), 0.0f, 1.0f);
-
-		effectContextData = commonData;
-		if (menuContextBlend > 0.0f) {
-			const float t = menuContextBlend;
-			for (int i = 0; i < 4; i++) {
-				effectContextData.timeOfDay1[i] = std::lerp(commonData.timeOfDay1[i], 0.0f, t);
-				float pinned = (i == static_cast<int>(TimeOfDay2Index::Night)) ? 1.0f : 0.0f;
-				effectContextData.timeOfDay2[i] = std::lerp(commonData.timeOfDay2[i], pinned, t);
-			}
-			effectContextData.eNightDayFactor = std::lerp(commonData.eNightDayFactor, 0.0f, t);
-			effectContextData.eInteriorFactor = std::lerp(commonData.eInteriorFactor, 0.0f, t);
-		}
-	}
 }
 
 void EffectManager::UpdateCommonVariablesForEffect(Effect& effect)
@@ -822,10 +798,10 @@ void EffectManager::UpdateCommonVariablesForEffect(Effect& effect)
 
 	effect.SetVectorVariable("Timer", commonData.timer, sizeof(commonData.timer));
 	effect.SetVectorVariable("Weather", commonData.weather, sizeof(commonData.weather));
-	effect.SetVectorVariable("TimeOfDay1", effectContextData.timeOfDay1, sizeof(effectContextData.timeOfDay1));
-	effect.SetVectorVariable("TimeOfDay2", effectContextData.timeOfDay2, sizeof(effectContextData.timeOfDay2));
-	effect.SetVectorVariable("ENightDayFactor", &effectContextData.eNightDayFactor, sizeof(effectContextData.eNightDayFactor));
-	effect.SetVectorVariable("EInteriorFactor", &effectContextData.eInteriorFactor, sizeof(effectContextData.eInteriorFactor));
+	effect.SetVectorVariable("TimeOfDay1", commonData.timeOfDay1, sizeof(commonData.timeOfDay1));
+	effect.SetVectorVariable("TimeOfDay2", commonData.timeOfDay2, sizeof(commonData.timeOfDay2));
+	effect.SetVectorVariable("ENightDayFactor", &commonData.eNightDayFactor, sizeof(commonData.eNightDayFactor));
+	effect.SetVectorVariable("EInteriorFactor", &commonData.eInteriorFactor, sizeof(commonData.eInteriorFactor));
 }
 
 void EffectManager::CopyTexture(ID3D11ShaderResourceView* a_source, ID3D11RenderTargetView* a_dest)

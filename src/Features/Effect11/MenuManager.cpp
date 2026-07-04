@@ -5,9 +5,6 @@
 #include "TextureManager.h"
 #include "Utils/ShaderPatches.h"
 
-#include "Features/Effect11.h"
-#include "Globals.h"
-
 #include <imgui_stdlib.h>
 
 static const char* const timeOfDayNames[] = { "Dawn", "Sunrise", "Day", "Sunset", "Dusk", "Night", "InteriorDay", "InteriorNight" };
@@ -289,10 +286,6 @@ void MenuManager::RenderAllSettings()
 			const auto& categories = categorizedSettings[tabName];
 
 			if (ImGui::BeginTabItem(tabName.c_str())) {
-				if (tabName == "Main") {
-					RenderModSettings();
-				}
-
 				// Add weather control to the Weather tab
 				if (tabName == "Weather") {
 					RenderWeatherControl();
@@ -534,40 +527,4 @@ void MenuManager::RenderSettingRows(const std::string& settingKey, const std::st
 	}
 }
 
-void MenuManager::RenderModSettings()
-{
-	auto& effect11 = globals::features::effect11;
-
-	const bool filtering = !settingsFilter.empty();
-	if (filtering && !ContainsCaseInsensitive("PERK MENU AdaptationTarget", settingsFilter))
-		return;
-
-	if (filtering)
-		ImGui::SetNextItemOpen(true);
-
-	if (ImGui::TreeNodeEx("PERK MENU", ImGuiTreeNodeFlags_DefaultOpen)) {
-		if (ImGui::BeginTable("PERKMENU_table", 2, ImGuiTableFlags_BordersInnerV | ImGuiTableFlags_SizingStretchProp)) {
-			ImGui::TableSetupColumn("Parameter", ImGuiTableColumnFlags_WidthFixed);
-			ImGui::TableSetupColumn("Value", ImGuiTableColumnFlags_WidthStretch);
-
-			ImGui::TableNextRow();
-			ImGui::TableSetColumnIndex(0);
-			ImGui::Text("AdaptationTarget");
-			ImGui::TableSetColumnIndex(1);
-			ImGui::SetNextItemWidth(-FLT_MIN);
-			if (ImGui::DragFloat("##PerkMenuAdaptationTarget", &effect11.settings.statsMenuAdaptationTarget, 0.005f, 0.01f, 2.0f, "%.3f")) {
-				effect11.settings.statsMenuAdaptationTarget = std::clamp(effect11.settings.statsMenuAdaptationTarget, 0.01f, 2.0f);
-			}
-			if (ImGui::IsItemHovered()) {
-				ImGui::SetTooltip(
-					"Scene brightness the skills/perk menu adapts to while it is open.\n"
-					"Raise it if the menu looks too bright, lower it if too dark.\n"
-					"Saved with Community Shaders settings, not with the ENB preset.");
-			}
-
-			ImGui::EndTable();
-		}
-		ImGui::TreePop();
-	}
-}
 

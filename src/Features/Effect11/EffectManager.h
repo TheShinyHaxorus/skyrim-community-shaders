@@ -97,8 +97,6 @@ public:
 		float eNightDayFactor;
 		float eInteriorFactor;
 	} commonData;
-	CommonVariableData effectContextData{};
-	float menuContextBlend = 0.0f;
 	uint32_t frameCount = 0;
 
 	void UpdateCommonData();

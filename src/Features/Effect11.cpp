@@ -19,10 +19,6 @@
 #include "Utils/D3D.h"
 #include "Utils/Game.h"
 
-NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(
-	Effect11::Settings,
-	statsMenuAdaptationTarget);
-
 Effect11::PerFrame Effect11::GetCommonBufferData()
 {
 	CheckCommonData();
@@ -116,16 +112,6 @@ Effect11::PerFrame Effect11::GetCommonBufferData()
 void Effect11::DrawSettings()
 {
 	MenuManager::GetSingleton().RenderImGui();
-}
-
-void Effect11::LoadSettings(json& o_json)
-{
-	settings = o_json;
-}
-
-void Effect11::SaveSettings(json& o_json)
-{
-	o_json = settings;
 }
 
 void Effect11::LoadRaindropTexture()
@@ -503,7 +489,11 @@ void Effect11::CheckCommonData()
 		auto& settingManager = SettingManager::GetSingleton();
 		auto ui = globals::game::ui;
 		bool isMapMenuOpen = ui->IsMenuOpen(RE::MapMenu::MENU_NAME);
-		enableEffect = !isMapMenuOpen && !globals::state->IsMainOrLoadingMenuOpen() &&
+		// The perk menu (StatsMenu) renders its own nebula scene; presets grade
+		// it with the world context it was opened from, so bypass all effect
+		// processing and let it render with original post-processing, like the map.
+		bool isStatsMenuOpen = ui->IsMenuOpen(RE::StatsMenu::MENU_NAME);
+		enableEffect = !isMapMenuOpen && !isStatsMenuOpen && !globals::state->IsMainOrLoadingMenuOpen() &&
 		               settingManager.GetValue<bool>("UseEffect", "GLOBAL");
 
 		auto& effectManager = EffectManager::GetSingleton();

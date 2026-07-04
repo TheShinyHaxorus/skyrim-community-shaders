@@ -16,10 +16,6 @@ protected:
 	void CreateEffectTextures() override;
 
 private:
-	winrt::com_ptr<ID3D11Texture2D> textureNeutral;
-	winrt::com_ptr<ID3D11ShaderResourceView> textureNeutralSRV;
-	float bakedNeutralLuminance = -1.0f;
-	bool EnsureNeutralTexture();
 	uint32_t idForceMinMax = 0xFFFFFFFF;
 	uint32_t idAdaptTime = 0xFFFFFFFF;
 	uint32_t idAdaptMin = 0xFFFFFFFF;
