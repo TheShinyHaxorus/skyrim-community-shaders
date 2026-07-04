@@ -3,23 +3,30 @@
 #include "../SettingManager.h"
 #include "../TextureManager.h"
 
+#include "Utils/D3D.h"
+
 void ENBAdaptation::Execute()
 {
 	auto& textureManager = TextureManager::GetSingleton();
 
-	auto* currentSRV = textureManager.GetDownsampleTextureBlurry();
-	if (!currentSRV) {
-		return;
+	auto ui = globals::game::ui;
+	if (ui && ui->IsMenuOpen(RE::StatsMenu::MENU_NAME) && EnsureNeutralTexture()) {
+		SetShaderResourceVariable("TextureCurrent", textureNeutralSRV.get());
+	} else {
+		auto* currentSRV = textureManager.GetDownsampleTextureBlurry();
+		if (!currentSRV) {
+			return;
+		}
+
+		SetShaderResourceVariable("TextureCurrent", currentSRV);
+
+		if (!textureCurrent.texture)
+			return;
+
+		ExecuteTechnique("Downsample", textureCurrent);
+
+		SetShaderResourceVariable("TextureCurrent", textureCurrent.srv.get());
 	}
-
-	SetShaderResourceVariable("TextureCurrent", currentSRV);
-
-	if (!textureCurrent.texture)
-		return;
-
-	ExecuteTechnique("Downsample", textureCurrent);
-
-	SetShaderResourceVariable("TextureCurrent", textureCurrent.srv.get());
 
 	// Use swap mechanism to determine input/output
 	const char* texturePreviousName = (textureManager.GetTextureSwap() & 1) ? "TextureAdaptationSwap" : "TextureAdaptation";
@@ -70,4 +77,47 @@ void ENBAdaptation::UpdateEffectVariables()
 void ENBAdaptation::CreateEffectTextures()
 {
 	textureCurrent = CreateTexture(16, 16, DXGI_FORMAT_R32_FLOAT, "ENBAdaptation::TextureCurrent");
+}
+
+bool ENBAdaptation::EnsureNeutralTexture()
+{
+	if (textureNeutralSRV)
+		return true;
+
+	auto device = globals::d3d::device;
+	if (!device)
+		return false;
+
+	// Average-scene luminance the perk menu adapts to; the preset's own
+	// sensitivity/min/max settings still shape the final brightness.
+	constexpr float kNeutralLuminance = 0.18f;
+	constexpr uint32_t kSize = 16;
+
+	std::array<float, kSize * kSize> texels;
+	texels.fill(kNeutralLuminance);
+
+	D3D11_TEXTURE2D_DESC desc{};
+	desc.Width = kSize;
+	desc.Height = kSize;
+	desc.MipLevels = 1;
+	desc.ArraySize = 1;
+	desc.Format = DXGI_FORMAT_R32_FLOAT;
+	desc.SampleDesc.Count = 1;
+	desc.Usage = D3D11_USAGE_IMMUTABLE;
+	desc.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+
+	D3D11_SUBRESOURCE_DATA data{};
+	data.pSysMem = texels.data();
+	data.SysMemPitch = kSize * sizeof(float);
+
+	if (FAILED(device->CreateTexture2D(&desc, &data, textureNeutral.put())))
+		return false;
+	Util::SetResourceName(textureNeutral.get(), "ENBAdaptation::TextureNeutral");
+
+	if (FAILED(device->CreateShaderResourceView(textureNeutral.get(), nullptr, textureNeutralSRV.put()))) {
+		textureNeutral = nullptr;
+		return false;
+	}
+	Util::SetResourceName(textureNeutralSRV.get(), "ENBAdaptation::TextureNeutral SRV");
+	return true;
 }
