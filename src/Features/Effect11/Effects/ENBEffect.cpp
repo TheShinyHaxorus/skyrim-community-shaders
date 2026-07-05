@@ -2,6 +2,8 @@
 
 #include "../SettingManager.h"
 #include "../TextureManager.h"
+#include "Features/Effect11.h"
+#include "Globals.h"
 #include "Utils/Game.h"
 
 void ENBEffect::Execute()
@@ -35,35 +37,40 @@ void ENBEffect::UpdateEffectVariables()
 {
 	float4 params01[7]{};
 
-	auto imageSpaceManager = RE::ImageSpaceManager::GetSingleton();
-	if (!imageSpaceManager) {
-		return;
+	auto& effect11 = globals::features::effect11;
+	if (effect11.vanillaTonemapParamsValid) {
+		std::memcpy(params01, effect11.vanillaTonemapParams, sizeof(params01));
+	} else {
+		auto imageSpaceManager = RE::ImageSpaceManager::GetSingleton();
+		if (!imageSpaceManager) {
+			return;
+		}
+
+		auto& data = imageSpaceManager->GetRuntimeData().data;
+		auto& baseData = data.baseData;
+
+		auto& modAmount = data.modAmount;
+		auto& modData = data.modData;
+
+		params01[2].x = baseData.hdr.receiveBloomThreshold;
+		params01[2].y = baseData.hdr.white * RE::GetINISetting("fReinhardWhiteScale:Display")->GetFloat();
+
+		params01[3].x = baseData.cinematic.saturation;
+		params01[3].z = baseData.cinematic.contrast;
+		params01[3].w = baseData.cinematic.brightness;
+
+		params01[4] = { baseData.tint.color.red,
+			baseData.tint.color.green,
+			baseData.tint.color.blue,
+			baseData.tint.amount };
+
+		params01[5] = { modData.data[RE::ImageSpaceModData::kFadeR] * modAmount,
+			modData.data[RE::ImageSpaceModData::kFadeG] * modAmount,
+			modData.data[RE::ImageSpaceModData::kFadeB] * modAmount,
+			modData.data[RE::ImageSpaceModData::kFadeAmount] * modAmount };
+
+		params01[6] = { 1, 1, 1, 1 };
 	}
-
-	auto& data = imageSpaceManager->GetRuntimeData().data;
-	auto& baseData = data.baseData;
-
-	auto& modAmount = data.modAmount;
-	auto& modData = data.modData;
-
-	params01[2].x = baseData.hdr.receiveBloomThreshold;
-	params01[2].y = baseData.hdr.white * RE::GetINISetting("fReinhardWhiteScale:Display")->GetFloat();
-
-	params01[3].x = baseData.cinematic.saturation;
-	params01[3].z = baseData.cinematic.contrast;
-	params01[3].w = baseData.cinematic.brightness;
-
-	params01[4] = { baseData.tint.color.red,
-		baseData.tint.color.green,
-		baseData.tint.color.blue,
-		baseData.tint.amount };
-
-	params01[5] = { modData.data[RE::ImageSpaceModData::kFadeR] * modAmount,
-		modData.data[RE::ImageSpaceModData::kFadeG] * modAmount,
-		modData.data[RE::ImageSpaceModData::kFadeB] * modAmount,
-		modData.data[RE::ImageSpaceModData::kFadeAmount] * modAmount };
-
-	params01[6] = { 1, 1, 1, 1 };
 
 	SetVectorVariable("Params01", &params01, sizeof(params01));
 

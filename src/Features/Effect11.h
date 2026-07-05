@@ -95,6 +95,12 @@ public:
 	};
 
 	bool enableEffect = false;
+	float4 vanillaTonemapParams[7]{};
+	bool vanillaTonemapParamsValid = false;
+	winrt::com_ptr<ID3D11Buffer> tonemapParamsStaging[2];
+	bool tonemapParamsStagingHasData[2]{};
+	uint32_t tonemapParamsSwap = 0;
+	void CaptureVanillaTonemapParams();
 
 	ID3D11PixelShader* raymarchVolumetricRaysPS = nullptr;
 	ID3D11PixelShader* applyVolumetricRaysPS = nullptr;

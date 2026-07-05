@@ -5,6 +5,9 @@
 #include "TextureManager.h"
 #include "Utils/ShaderPatches.h"
 
+#include "Features/Effect11.h"
+#include "Globals.h"
+
 #include <imgui_stdlib.h>
 
 static const char* const timeOfDayNames[] = { "Dawn", "Sunrise", "Day", "Sunset", "Dusk", "Night", "InteriorDay", "InteriorNight" };
@@ -135,6 +138,36 @@ void MenuManager::RenderDebugControl()
 {
 	auto& effectManager = EffectManager::GetSingleton();
 	auto& weatherManager = WeatherManager::GetSingleton();
+
+	if (ImGui::TreeNodeEx("Vanilla Tonemap Constants (Params01)", ImGuiTreeNodeFlags_DefaultOpen)) {
+		auto& effect11 = globals::features::effect11;
+
+		if (!effect11.vanillaTonemapParamsValid) {
+			ImGui::TextColored(ImVec4(1.0f, 0.8f, 0.2f, 1.0f), "Vanilla tonemap not rendered this frame (Effect11 active) - enbeffect.fx uses reconstructed values");
+		}
+
+		static const char* const rowNames[7] = {
+			"[0] Flags", "[1] TimingData", "[2] Param (bloom/white)",
+			"[3] Cinematic (sat/-/con/bri)", "[4] Tint", "[5] Fade", "[6] BlurScale"
+		};
+
+		if (ImGui::BeginTable("Params01Debug", 2, ImGuiTableFlags_Borders | ImGuiTableFlags_SizingStretchProp)) {
+			ImGui::TableSetupColumn("Constant", ImGuiTableColumnFlags_WidthFixed);
+			ImGui::TableSetupColumn("Value", ImGuiTableColumnFlags_WidthStretch);
+			for (int i = 0; i < 7; ++i) {
+				ImGui::TableNextRow();
+				ImGui::TableSetColumnIndex(0);
+				ImGui::Text("%s", rowNames[i]);
+				ImGui::TableSetColumnIndex(1);
+				const auto& v = effect11.vanillaTonemapParams[i];
+				ImGui::Text("%.3f  %.3f  %.3f  %.3f", v.x, v.y, v.z, v.w);
+			}
+			ImGui::EndTable();
+		}
+		ImGui::TreePop();
+	}
+
+	ImGui::Separator();
 
 	// Current time of day values
 	if (ImGui::BeginTable("TimeOfDayValues", 2, ImGuiTableFlags_Borders | ImGuiTableFlags_SizingFixedFit)) {

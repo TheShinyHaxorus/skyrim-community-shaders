@@ -194,7 +194,7 @@ void Effect11::SetupResources()
 
 void Effect11::Reset()
 {
-	// Reset effect state if needed
+	vanillaTonemapParamsValid = false;
 }
 
 void Effect11::ClearShaderCache()
@@ -489,9 +489,6 @@ void Effect11::CheckCommonData()
 		auto& settingManager = SettingManager::GetSingleton();
 		auto ui = globals::game::ui;
 		bool isMapMenuOpen = ui->IsMenuOpen(RE::MapMenu::MENU_NAME);
-		// The perk menu (StatsMenu) renders its own nebula scene; presets grade
-		// it with the world context it was opened from, so bypass all effect
-		// processing and let it render with original post-processing, like the map.
 		bool isStatsMenuOpen = ui->IsMenuOpen(RE::StatsMenu::MENU_NAME);
 		enableEffect = !isMapMenuOpen && !isStatsMenuOpen && !globals::state->IsMainOrLoadingMenuOpen() &&
 		               settingManager.GetValue<bool>("UseEffect", "GLOBAL");
@@ -545,6 +542,58 @@ void Effect11::OnSkyUpdateColors(RE::Sky* a_sky)
 	CheckCommonData();
 	if (enableEffect)
 		OverrideWeather(a_sky);
+}
+
+void Effect11::CaptureVanillaTonemapParams()
+{
+	auto context = globals::d3d::context;
+	auto device = globals::d3d::device;
+	if (!context || !device)
+		return;
+
+	winrt::com_ptr<ID3D11Buffer> constantBuffer;
+	context->PSGetConstantBuffers(2, 1, constantBuffer.put());
+	if (!constantBuffer)
+		return;
+
+	D3D11_BUFFER_DESC srcDesc{};
+	constantBuffer->GetDesc(&srcDesc);
+	if (srcDesc.ByteWidth < sizeof(vanillaTonemapParams))
+		return;
+
+	if (!tonemapParamsStaging[0]) {
+		D3D11_BUFFER_DESC desc{};
+		desc.ByteWidth = sizeof(vanillaTonemapParams);
+		desc.Usage = D3D11_USAGE_STAGING;
+		desc.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
+		for (int i = 0; i < 2; i++) {
+			if (FAILED(device->CreateBuffer(&desc, nullptr, tonemapParamsStaging[i].put()))) {
+				tonemapParamsStaging[0] = nullptr;
+				tonemapParamsStaging[1] = nullptr;
+				return;
+			}
+			Util::SetResourceName(tonemapParamsStaging[i].get(), "Effect11::TonemapParamsStaging%d", i);
+		}
+	}
+
+	const uint32_t writeIdx = tonemapParamsSwap & 1;
+	const uint32_t readIdx = writeIdx ^ 1;
+	tonemapParamsSwap++;
+
+	D3D11_BOX box{ 0, 0, 0, sizeof(vanillaTonemapParams), 1, 1 };
+	context->CopySubresourceRegion(tonemapParamsStaging[writeIdx].get(), 0, 0, 0, 0, constantBuffer.get(), 0, &box);
+	tonemapParamsStagingHasData[writeIdx] = true;
+
+	if (!tonemapParamsStagingHasData[readIdx])
+		return;
+
+	D3D11_MAPPED_SUBRESOURCE mapped{};
+	HRESULT hr = context->Map(tonemapParamsStaging[readIdx].get(), 0, D3D11_MAP_READ, D3D11_MAP_FLAG_DO_NOT_WAIT, &mapped);
+	if (SUCCEEDED(hr)) {
+		std::memcpy(vanillaTonemapParams, mapped.pData, sizeof(vanillaTonemapParams));
+		context->Unmap(tonemapParamsStaging[readIdx].get(), 0);
+		vanillaTonemapParamsValid = true;
+	}
 }
 
 bool Effect11::HandleTonemapRender([[maybe_unused]] RE::RENDER_TARGET a_input, RE::RENDER_TARGET a_output)

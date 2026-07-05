@@ -282,6 +282,8 @@ namespace Effect11Extensions
 					static_cast<RE::RENDER_TARGET>(a4)))
 				return;
 			func(a1, a2, a3, a4, a5);
+			if (globals::features::effect11.loaded)
+				globals::features::effect11.CaptureVanillaTonemapParams();
 		}
 		static inline REL::Relocation<decltype(thunk)> func;
 	};
