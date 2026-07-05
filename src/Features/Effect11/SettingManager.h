@@ -178,6 +178,7 @@ public:
 	// Effect save/load coordination
 	void Load();
 	void Save();
+	bool HasUnsavedChanges() const;
 
 	// Weather ignore settings management
 	void LoadWeatherIgnoreSettings(const std::string& filePath);

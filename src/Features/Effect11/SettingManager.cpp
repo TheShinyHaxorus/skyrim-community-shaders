@@ -1022,6 +1022,28 @@ void SettingManager::Save()
 	SaveAllWeatherSettings();
 }
 
+bool SettingManager::HasUnsavedChanges() const
+{
+	std::shared_lock lock(mutex);
+
+	for (const auto& setting : allSettings)
+		if (!(setting.currentValue == setting.lastSavedValue))
+			return true;
+
+	for (const auto& [name, cat] : categories)
+		if (cat.ignoreWeatherSystem != cat.lastSavedIgnoreWeatherSystem ||
+			cat.ignoreWeatherSystemInterior != cat.lastSavedIgnoreWeatherSystemInterior)
+			return true;
+
+	for (const auto& [weatherID, values] : weatherData) {
+		auto it = lastSavedWeatherData.find(weatherID);
+		if (it == lastSavedWeatherData.end() || it->second != values)
+			return true;
+	}
+
+	return false;
+}
+
 // Explicit template instantiations
 template bool SettingManager::GetValue<bool>(const std::string& key, const std::string& category, bool rawValue);
 template float SettingManager::GetValue<float>(const std::string& key, const std::string& category, bool rawValue);

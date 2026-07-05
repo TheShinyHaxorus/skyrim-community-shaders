@@ -48,6 +48,8 @@ public:
 	void Apply();
 	void Load();
 	void Save();
+	void SaveDirty();
+	bool AnyUnsaved() const;
 
 	void RegisterSettings();
 

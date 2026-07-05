@@ -107,6 +107,14 @@ void MenuManager::RenderSettingsPanel()
 		ImGui::SetTooltip("Load all settings from enbseries.ini, weather files, and effect configurations (no shader reload)");
 	}
 
+	if (settingManager.HasUnsavedChanges() || effectManager.AnyUnsaved()) {
+		ImGui::SameLine();
+		ImGui::TextColored(ImVec4(1.0f, 0.65f, 0.15f, 1.0f), "unsaved changes");
+		if (ImGui::IsItemHovered()) {
+			ImGui::SetTooltip("Settings or effect parameters differ from what is on disk. Click Save to persist them.");
+		}
+	}
+
 	ImGui::SetNextItemWidth(-FLT_MIN);
 	ImGui::InputTextWithHint("##Effect11SettingsFilter", "Search settings...", &settingsFilter);
 	if (ImGui::IsItemHovered()) {
@@ -132,6 +140,20 @@ void MenuManager::RenderWeatherControl()
 
 	ImGui::Text("Current Weather: 0x%X, Outgoing Weather: 0x%X", currentWeatherID, lastWeatherID);
 	ImGui::Text("Weather Blend Factor: %.2f", blendFactor);
+
+	uint32_t editTargetID = blendFactor > 0.5f ? currentWeatherID : lastWeatherID;
+	auto* entry = WeatherManager::GetSingleton().FindWeatherEntry(editTargetID);
+	if (entry) {
+		ImGui::TextColored(ImVec4(0.55f, 0.8f, 1.0f, 1.0f), "Edits target: %s (0x%X)", entry->fileName.c_str(), editTargetID);
+	} else {
+		ImGui::TextColored(ImVec4(0.55f, 0.8f, 1.0f, 1.0f), "Edits target: enbseries.ini (no weather override active)");
+	}
+	if (ImGui::IsItemHovered()) {
+		ImGui::SetTooltip(
+			"Where edits to weather-supported settings are stored right now.\n"
+			"When a listed weather is dominant (blend), edits go to its weather ini;\n"
+			"otherwise they go to the global enbseries.ini values.");
+	}
 }
 
 void MenuManager::RenderDebugControl()
