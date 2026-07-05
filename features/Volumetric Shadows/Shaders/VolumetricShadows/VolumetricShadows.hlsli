@@ -10,6 +10,7 @@ namespace VolumetricShadows
 
 	static const float VSM_MIN_VARIANCE = 0.00001;
 	static const float VSM_BLEEDING_REDUCTION = 0.2;
+	static const float VSM_BLEEDING_REDUCTION_VOLUMETRIC = 0.1;
 
 	// Chebyshev upper bound on P(X >= t)
 	// moments.x = mean(z), moments.y = mean(z^2)
@@ -46,7 +47,7 @@ namespace VolumetricShadows
 			float3 samplePosLS = lerp(endPositionLS, startPositionLS, t);
 
 			float2 moments = SharedShadowMap.SampleLevel(LinearSampler, samplePosLS.xy, 1u - cascadeIndex);
-			float lit = ComputeVSM(moments, samplePosLS.z);
+			float lit = ReduceBleeding(ComputeVSM(moments, samplePosLS.z), VSM_BLEEDING_REDUCTION_VOLUMETRIC);
 
 			// Last to set firstSample is start position
 			firstSample = lit;

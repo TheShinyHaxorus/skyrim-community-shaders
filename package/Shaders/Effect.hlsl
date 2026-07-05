@@ -627,6 +627,16 @@ float3 GetLightingShadow(float3 color, float3 worldPosition, float2 screenPositi
 			shadow += ShadowSampling::GetWorldShadow(samplePositionWS, FrameBuffer::CameraPosAdjust.xyz);
 		}
 		shadow *= rcpSampleCount;
+
+#		if defined(VOLUMETRIC_SHADOWS)
+		if (ShadowSampling::HasDirectionalShadows()) {
+			float vsmRayLength = min(Permutation::EffectRadius * 0.2, 256);
+			float3 vsmStartPosition = worldPosition - viewDirection * vsmRayLength;
+			float3 vsmEndPosition = worldPosition + viewDirection * vsmRayLength;
+			float vsmSurfaceShadow;
+			shadow *= VolumetricShadows::GetVSMShadow3D(vsmStartPosition, vsmEndPosition, noise, 4, vsmSurfaceShadow);
+		}
+#		endif
 	}
 
 	shadowVariance = 1.0 - sqrt(saturate(fwidth(shadow)));
