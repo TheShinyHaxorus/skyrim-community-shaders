@@ -318,6 +318,10 @@ namespace SharedData
 		float RainMotionStretch;
 		float RainMotionTransparency;
 		float RainLightingInfluence;
+
+		float FireIntensity;
+		float FireCurve;
+		float2 EnbPadding;
 	};
 
 	struct TerrainBlendingSettings

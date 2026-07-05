@@ -92,6 +92,10 @@ public:
 		float RainMotionStretch;
 		float RainMotionTransparency;
 		float RainLightingInfluence;
+
+		float FireIntensity;
+		float FireCurve;
+		float2 EnbPadding;
 	};
 
 	bool enableEffect = false;

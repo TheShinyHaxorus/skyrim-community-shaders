@@ -705,7 +705,7 @@ PS_OUTPUT main(PS_INPUT input)
 	float3 propertyColor = Color::Effect(PropertyColor.xyz);
 	float shadowVariance = 1.0;
 
-#	if !defined(IS_VOLUMETRIC_FOG)
+#	if !defined(IS_VOLUMETRIC_FOG) && !defined(GRAYSCALE_TO_COLOR)
 	if (SharedData::enbSettings.Enable && !(Permutation::VertexShaderDescriptor & Permutation::EffectFlags::SkyObject))
 		propertyColor *= SharedData::enbSettings.ParticleIntensity;
 #	endif
@@ -876,11 +876,18 @@ PS_OUTPUT main(PS_INPUT input)
 #		if defined(ADDBLEND)
 #			if defined(EXP_HEIGHT_FOG)
 	float3 blendedColor = lightColor * (1 - vanillaFogFactor) * (1 - expFogFactor);
-	if (SharedData::enbSettings.Enable)
-		blendedColor *= SharedData::enbSettings.LightSpriteIntensity;
 #			else
 	float3 blendedColor = lightColor * (1 - fogFactor);
 #			endif
+	if (SharedData::enbSettings.Enable) {
+		// ENB buckets additive effects by palette technique: grayscale-gradient draws
+		// (fire, candle flames, torches) are FIRE, plain additive glows are LIGHTSPRITE.
+#			if defined(GRAYSCALE_TO_COLOR)
+		blendedColor = pow(max(blendedColor, 0.0), SharedData::enbSettings.FireCurve) * SharedData::enbSettings.FireIntensity;
+#			else
+		blendedColor *= SharedData::enbSettings.LightSpriteIntensity;
+#			endif
+	}
 #		elif defined(MULTBLEND) || defined(MULTBLEND_DECAL)
 #			if defined(EXP_HEIGHT_FOG)
 	float3 blendedColor = lerp(lightColor, 1.0.xxx, saturate(1.5 * vanillaFogFactor).xxx);
