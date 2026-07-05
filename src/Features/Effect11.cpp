@@ -85,6 +85,7 @@ Effect11::PerFrame Effect11::GetCommonBufferData()
 	data.EnableRain = enableEffect && raindropSRV && settingManager.GetValue<bool>("Enable", "RAIN");
 	data.RainMotionStretch = settingManager.GetInterpolatedTimeOfDayValue("MotionStretch", "RAIN");
 	data.RainMotionTransparency = settingManager.GetInterpolatedTimeOfDayValue("MotionTransparency", "RAIN");
+	data.RainLightingInfluence = settingManager.GetInterpolatedTimeOfDayValue("LightingInfluence", "RAIN");
 
 	data.EnableProceduralSun = enableEffect && settingManager.GetValue<bool>("EnableProceduralSun", "EFFECT");
 

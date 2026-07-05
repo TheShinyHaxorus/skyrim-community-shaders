@@ -276,6 +276,7 @@ void EffectManager::RegisterSettings()
 	settingManager.RegisterBoolSetting("Enable", "RAIN", true);
 	settingManager.RegisterTimeOfDaySetting("MotionStretch", "RAIN", 0.28f, 0.0f, 1.0f, 0.01f, true);
 	settingManager.RegisterTimeOfDaySetting("MotionTransparency", "RAIN", 0.1f, 0.0f, 1.0f, 0.01f, true);
+	settingManager.RegisterTimeOfDaySetting("LightingInfluence", "RAIN", 1.0f, 0.0f, 10.0f, 0.01f, true);
 
 	settingManager.RegisterTimeOfDaySetting("Amount", "CLOUDSHADOWS", 0.8f, 0.0f, 4.0f, 0.01f, true);
 
