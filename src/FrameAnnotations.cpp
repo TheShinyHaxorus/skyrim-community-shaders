@@ -2,6 +2,7 @@
 
 #include "State.h"
 #include "Util.h"
+#include "Features/OrderIndependentTransparency.h"
 
 #pragma comment(lib, "dxguid.lib")
 
@@ -41,6 +42,8 @@ namespace FrameAnnotations
 				globals::state->BeginPerfEvent(passName);
 			}
 
+			globals::features::orderIndependentTransparency.SetupGeometry(shader, pass, renderFlags);
+
 			func(shader, pass, renderFlags);
 		}
 
@@ -53,6 +56,8 @@ namespace FrameAnnotations
 		static void thunk(RE::BSShader* shader, RE::BSRenderPass* pass, uint32_t renderFlags)
 		{
 			func(shader, pass, renderFlags);
+
+			globals::features::orderIndependentTransparency.RestoreGeometry(shader, pass, renderFlags);
 
 			if (globals::state->frameAnnotations) {
 				globals::state->EndPerfEvent();
@@ -275,7 +280,7 @@ namespace FrameAnnotations
 	{
 		static void thunk(void* accumulator, uint32_t renderFlags)
 		{
-			globals::state->BeginPerfEvent("Effects");
+			globals::state->BeginPerfEvent("Transparency");
 
 			func(accumulator, renderFlags);
 

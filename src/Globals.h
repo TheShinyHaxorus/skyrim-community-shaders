@@ -40,6 +40,7 @@ struct HDRDisplay;
 struct ScreenshotFeature;
 struct Skin;
 struct Effect11;
+struct OrderIndependentTransparency;
 
 class State;
 class Deferred;
@@ -132,6 +133,7 @@ namespace globals
 		extern TruePBR truePBR;
 		extern Skin skin;
 		extern Effect11 effect11;
+		extern OrderIndependentTransparency orderIndependentTransparency;
 
 	}
 
