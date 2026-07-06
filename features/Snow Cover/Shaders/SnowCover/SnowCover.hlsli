@@ -58,8 +58,9 @@ namespace SnowCover
 	void ApplySnowFoliage(inout float3 color, float3 worldNormal, float3 p, float skylight, float viewDist)
 	{
 		float env_mult = GetEnvironmentalMultiplier(p);
-		float distMult = 1 - smoothstep(10000, 30000, viewDist);
-		float weatherMult = distMult * SharedData::snowCoverSettings.TimeSnowing * max(500, SharedData::snowCoverSettings.SnowingDensity) / 500;
+		// Same as ApplySnowBase: no camera-relative fade, or billboard trees lose weather snow
+		// beyond ~430m while the terrain beneath them stays white.
+		float weatherMult = SharedData::snowCoverSettings.TimeSnowing * max(500, SharedData::snowCoverSettings.SnowingDensity) / 500;
 		float mult = SharedData::snowCoverSettings.MainTint.a * saturate(env_mult);
 		mult = skylight * saturate(mult + weatherMult) * smoothstep(SharedData::snowCoverSettings.minAngle, SharedData::snowCoverSettings.maxAngle, worldNormal.z);
 #	if defined(GRASS)
@@ -82,10 +83,11 @@ namespace SnowCover
 	{
 		// the range in which water level affects snow
 		waterDist = smoothstep(-64, 8, -waterDist - disp);
-		// distance from the camera in which weather has effect, this extends far beyond where lod starts
-		float weatherRange = 1 - smoothstep(20000, 40000 + 1000 * sin(p.z * 0.001 + cos(p.x * p.y * 0.001)), viewDist);
+		// Weather snow is distance-independent: a camera-relative range fade puts a moving snow
+		// front on the LOD rings (loaded cells end ~10k units, the old 20-40k fade band sat
+		// entirely on LOD terrain) and LOD4 never received weather snow at all.
 		// the amount of snow based on weather, TimeSnowing transitions smoothly between -1 in rain and 1 when snowing
-		float weatherMult = weatherRange * pow(SharedData::snowCoverSettings.TimeSnowing, 3) * max(500, SharedData::snowCoverSettings.SnowingDensity) / 500;
+		float weatherMult = pow(SharedData::snowCoverSettings.TimeSnowing, 3) * max(500, SharedData::snowCoverSettings.SnowingDensity) / 500;
 		weatherMult = clamp((weatherMult) * max(SharedData::snowCoverSettings.minAngle, worldNormal.z), -1, 1);
 		// the amount of snow based on season and weather
 		float env_mult = saturate(max((GetEnvironmentalMultiplier(p) + disp*5), weatherMult)) - waterDist;
