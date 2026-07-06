@@ -86,7 +86,6 @@ struct OrderIndependentTransparency : Feature
 	virtual void SetupResources() override;
 	virtual void ClearShaderCache() override;
 
-	virtual bool SupportsVR() override { return true; };
 	virtual bool IsCore() const override { return false; };
 
 	void PreSetStateDirty();

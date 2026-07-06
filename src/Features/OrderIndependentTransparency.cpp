@@ -137,7 +137,7 @@ void OrderIndependentTransparency::PostPostLoad()
 	stl::detour_thunk<Main_RenderWorld_RenderTransparency>(REL::RelocationID(99940, 106585));
 
 	logger::info("[OIT] Hooking Renderer_Flush");
-	// Need RE for SSE/VR
+	// Need RE for SSE
 	if (REL::Module::IsAE())
 	{
 		//REL::Relocation _target{ REL::ID(77247), 0x1A8 };
@@ -261,7 +261,7 @@ void OrderIndependentTransparency::DrawSettings()
 		if (auto _tt = Util::HoverTooltipWrapper()) {
 			ImGui::Text("Force to override the transparent render target on every draw call.\n"
 						"(*) Have a CPU cost, only enable this option if your alpha mesh is disappearing.\n"
-						"(*) This option can only affect AE for now, needs more RE for SSE/VR version.");
+						"(*) This option can only affect AE for now, needs more RE for the SSE version.");
 		}
 		{
 			EnableScope blendedModeScope(settings.Method != Method::OIT_BLENDED);
@@ -725,8 +725,8 @@ void OrderIndependentTransparency::PreSetStateDirty()
 
 	// Force depth to test only (not write)
 	auto shadowState = globals::game::shadowState;
-	GET_INSTANCE_MEMBER(depthStencil, shadowState);
-	GET_INSTANCE_MEMBER(depthStencilDepthMode, shadowState);
+	auto& depthStencil = shadowState->GetRuntimeData().depthStencil;
+	auto& depthStencilDepthMode = shadowState->GetRuntimeData().depthStencilDepthMode;
 
 	// Setup depth write descriptor, depth write will be skipped in capture pass
 	//using enum RE::BSGraphics::DepthStencilDepthMode;
@@ -759,8 +759,8 @@ void OrderIndependentTransparency::PreDrawHack()
 	// Disabling OIT here makes translucent objects bypass capture and show up as overlays in water refraction.
 
 	auto shadowState = globals::game::shadowState;
-	GET_INSTANCE_MEMBER(alphaBlendMode, shadowState);
-	GET_INSTANCE_MEMBER(depthStencilDepthMode, shadowState);
+	auto& alphaBlendMode = shadowState->GetRuntimeData().alphaBlendMode;
+	auto& depthStencilDepthMode = shadowState->GetRuntimeData().depthStencilDepthMode;
 
 	if (alphaBlendMode > 4) [[unlikely]] {
 		winrt::com_ptr<ID3D11BlendState> blend = nullptr;
@@ -849,7 +849,7 @@ void OrderIndependentTransparency::BeginAlphaGroup()
 {
 	EndWater();
 
-	cameraPos = Util::GetAverageEyePosition();
+	cameraPos = Util::GetEyePosition();
 	auto cameraWorld = RE::PlayerCamera::GetSingleton()->cameraRoot->world;
 	cameraWorldInverse = cameraWorld.Invert();
 	inAlphaPass = true;
@@ -1044,7 +1044,7 @@ void OrderIndependentTransparency::EndAlphaGroup()
 		}
 
 		// Set up viewport for fullscreen rendering
-		auto screenSize = globals::state->screenSize;
+		float2 screenSize = { (float)globals::game::graphicsState->screenWidth, (float)globals::game::graphicsState->screenHeight };
 
 		D3D11_VIEWPORT viewport = {};
 		viewport.TopLeftX = 0.0f;
