@@ -72,7 +72,7 @@ bool OrderIndependentTransparency::UpdateShaderDefines()
 	return false;
 }
 
-bool OrderIndependentTransparency::HasShaderDefine(RE::BSShader::Type shaderType)
+bool OrderIndependentTransparency::HasShaderDefine(RE::BSShader::Type /*shaderType*/)
 {
 	return false;
 	// return shaderType == RE::BSShader::Type::Lighting
