@@ -166,6 +166,8 @@ void readHistory(
 	outRemappedAo[pixCoord] = prev_ao;
 	outRemappedIlY[pixCoord] = prev_y;
 	outRemappedIlCoCg[pixCoord] = prev_co_cg;
+#	ifdef GI_SPECULAR
 	outRemappedPrevGISpecular[pixCoord] = prev_gi_specular;
+#	endif
 #endif
 }
