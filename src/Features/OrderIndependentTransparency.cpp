@@ -21,9 +21,10 @@ NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(OrderIndependentTransparency::Se
 
 static void NormalizeSettings(OrderIndependentTransparency::Settings& settings)
 {
-	// Compute-shader resolve is not implemented (csAT/csBlend/csVisualize are never compiled),
-	// so always resolve through the pixel-shader path to avoid a null dispatch.
-	settings.UsePixelShader = true;
+	if (settings.Method == OrderIndependentTransparency::Method::OIT_BLENDED)
+	{
+		settings.UsePixelShader = true;
+	}
 }
 
 std::span<const D3D_SHADER_MACRO> OrderIndependentTransparency::GetShaderDefines() const
@@ -262,11 +263,11 @@ void OrderIndependentTransparency::DrawSettings()
 						"(*) This option can only affect AE for now, needs more RE for the SSE version.");
 		}
 		{
-			EnableScope pixelShaderScope(false);
+			EnableScope blendedModeScope(settings.Method != Method::OIT_BLENDED);
 			ImGui::Checkbox("Use Pixel Shader (*)", &settings.UsePixelShader);
 			if (auto _tt = Util::HoverTooltipWrapper()) {
-				ImGui::Text("OIT always resolves through the pixel-shader path.\n"
-						"(*) The compute-shader resolve path is not currently implemented.");
+				ImGui::Text("Use pixel shader instead of compute shader for OIT resolve.\n"
+						"(*) Weighted blended OIT always resolves through the pixel shader path.");
 			}
 		}
 		if (!settings.UsePixelShader) ImGui::BeginDisabled();
@@ -780,7 +781,7 @@ void OrderIndependentTransparency::PreDrawHack()
 	else if (alphaBlendMode == AlphaBlendMode::kMultiplicative)
 		descriptor |= OITMultiplicativeDescriptor;
 	else if (alphaBlendMode == AlphaBlendMode::kMultiplicativeAlpha)
-		descriptor |= OITMultiplicativeAlphaDescriptor;
+		descriptor |= OITMultiplicativeDescriptor;
 
 	// Setup depth write descriptor, depth write will be skipped in capture pass
 	using enum RE::BSGraphics::DepthStencilDepthMode;
