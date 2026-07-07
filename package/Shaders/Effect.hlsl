@@ -389,12 +389,6 @@ struct PS_OUTPUT
 #	elif defined(NORMALS)
 	float4 NormalGlossiness: SV_Target2;
 #	endif
-#	if defined(OIT) && OIT == 3 && !defined(MOTIONVECTORS_NORMALS)
-	float4 OITRevealage: SV_Target1;
-#	endif
-#	if defined(OIT) && OIT == 3 && !defined(MOTIONVECTORS_NORMALS) && !defined(NORMALS)
-	float4 OITFrontAccum: SV_Target2;
-#	endif
 	float4 Albedo: SV_Target3;
 	float4 Specular: SV_Target4;
 	float4 Reflectance: SV_Target5;
@@ -409,11 +403,6 @@ struct PS_OUTPUT
 	float4 ScreenSpaceNormals: SV_Target2;
 #	else
 	float4 Color2: SV_Target2;
-#	endif
-#	if defined(OIT) && OIT == 3
-	float4 OITFrontAccumalation: SV_Target3;
-	float4 OITAccumalation: SV_Target4;
-	float4 OITRevealage: SV_Target5;
 #	endif
 };
 #endif
@@ -516,10 +505,6 @@ void ExtractEffectLighting(float3 inputColor, out float3 dirColor, out float3 am
 	dirColor = dirLightColorAmb;
 	ambientColor = ambientColorAmb;
 }
-
-#	if defined(OIT)
-#		include "OIT/OITCapture.hlsli"
-#	endif
 
 #	if defined(LIGHTING)
 float3 GetLightingColor(float3 msPosition, float3 worldPosition, float2 screenPosition, inout float shadowVariance)
@@ -658,9 +643,6 @@ float3 GetLightingShadow(float3 color, float3 worldPosition, float2 screenPositi
 }
 #	endif
 
-#if defined(OIT)
-[earlydepthstencil]
-#endif
 PS_OUTPUT main(PS_INPUT input)
 {
 	PS_OUTPUT psout = (PS_OUTPUT)0;
@@ -984,19 +966,6 @@ PS_OUTPUT main(PS_INPUT input)
 		psout.Diffuse.xyz = Color::LinearToSrgb(psout.Diffuse.xyz);
 	}
 #	endif
-#if defined(OIT)
-#if OIT == 3 && !defined(DEFERRED)
-	WBOITResult oit = OIT_CaptureWBOIT(int2(input.Position.xy), psout.Diffuse, input.Position.z);
-	psout.OITFrontAccumalation = oit.accumFront;
-	psout.OITAccumalation = oit.accumAll;
-	psout.OITRevealage = oit.revealage;
-#else
-	psout.Diffuse = OIT_Capture(int2(input.Position.xy), psout.Diffuse, input.Position.z);
-#if !defined(MOTIONVECTORS_NORMALS)
-	psout.Color2 = psout.Diffuse;
-#endif
-#endif
-#endif
 	return psout;
 }
 #endif

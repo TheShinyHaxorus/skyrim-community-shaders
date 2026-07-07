@@ -17,7 +17,6 @@
 #include "Features/LightLimitFix.h"
 #include "Features/Skin.h"
 #include "Features/SkySync.h"
-#include "Features/OrderIndependentTransparency.h"
 #include "Features/Upscaling.h"
 #include "Features/VolumetricLighting.h"
 
@@ -384,7 +383,6 @@ HRESULT WINAPI hk_D3D11CreateDeviceAndSwapChain(
 
 void Hooks::BSGraphics_SetDirtyStates::thunk(bool isCompute)
 {
-	globals::features::orderIndependentTransparency.PreSetStateDirty();
 	func(isCompute);
 	globals::state->Draw();
 }

@@ -18,7 +18,6 @@
 #include "Features/LODBlending.h"
 #include "Features/LightLimitFix.h"
 #include "Features/LinearLighting.h"
-#include "Features/OrderIndependentTransparency.h"
 #include "Features/PerformanceOverlay.h"
 #include "Features/RemoteControl.h"
 #include "Features/RenderDoc.h"
@@ -100,7 +99,6 @@ namespace globals
 		TruePBR truePBR{};
 		Skin skin{};
 		Effect11 effect11{};
-		OrderIndependentTransparency orderIndependentTransparency{};
 
 		namespace llf
 		{

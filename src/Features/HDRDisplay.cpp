@@ -15,7 +15,6 @@
 #include <dxgi1_4.h>
 #include <dxgi1_6.h>
 #include <imgui.h>
-#include "OrderIndependentTransparency.h"
 
 #define I18N_KEY_PREFIX "feature.hdr_display."
 
@@ -933,7 +932,7 @@ namespace
 	{
 		static void WINAPI thunk(ID3D11DeviceContext* This, ID3D11BlendState* pBlendState, const FLOAT BlendFactor[4], UINT SampleMask)
 		{
-			if (pBlendState && !globals::features::orderIndependentTransparency.inAlphaPass) {
+			if (pBlendState) {
 				auto& hdr = globals::features::hdrDisplay;
 				const bool d3d11HdrCapture = hdr.loaded && hdr.settings.enableHDR && hdr.uiTexture;
 				const bool fgCapture = globals::features::upscaling.d3d12SwapChainActive;
