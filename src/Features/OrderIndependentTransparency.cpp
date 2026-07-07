@@ -4,6 +4,7 @@
 #include "Upscaling.h"
 #include "Features/TerrainBlending.h"
 #include "Deferred.h"
+#pragma optimize("", off)
 NLOHMANN_JSON_SERIALIZE_ENUM(OrderIndependentTransparency::Method,
 	{ 
 		{ OrderIndependentTransparency::Method::OIT_DISABLED, "Disabled" },
@@ -74,7 +75,7 @@ bool OrderIndependentTransparency::UpdateShaderDefines()
 
 bool OrderIndependentTransparency::HasShaderDefine(RE::BSShader::Type shaderType)
 {
-	return false;
+	return shaderType != shaderType;
 	// return shaderType == RE::BSShader::Type::Lighting
 		//|| shaderType == RE::BSShader::Type::Water
 		//|| shaderType == RE::BSShader::Type::Grass
@@ -358,9 +359,8 @@ void OrderIndependentTransparency::RestoreDefaultSettings()
 {
 	settings = {};
 	NormalizeSettings(settings);
-	featureCB.AlphaThreshold = settings.AlphaThreshold;
-	featureCB.DepthThreshold = settings.DepthThreshold;
-	featureCB.Flags = settings.CaptureMultiplicativeLayer ? 1 : 0;
+	featureCB.AlphaThreshold = 0.f;
+	featureCB.Flags = 1;
 }
 
 void SetupRenderTarget(RE::RENDER_TARGET target, D3D11_TEXTURE2D_DESC texDesc, D3D11_SHADER_RESOURCE_VIEW_DESC srvDesc, D3D11_RENDER_TARGET_VIEW_DESC rtvDesc, D3D11_UNORDERED_ACCESS_VIEW_DESC uavDesc, DXGI_FORMAT format, uint bindFlags);
