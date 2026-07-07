@@ -100,13 +100,6 @@ public:
 	float4 OcclusionDir;
 	uint frameCount = 0;
 
-	// Static-camera occlusion skip: the probe grid is anchored to the camera cell, so once the probes
-	// converge and the camera stays in the same cell, the occlusion map (and its Utility draws) is frozen.
-	static constexpr uint OcclusionConvergenceFrames = 16;
-	int lastOccCell[3] = { 0, 0, 0 };
-	bool haveLastOccCell = false;
-	uint occlusionConvergedFrames = 0;
-
 	/** @brief Clears the accumulation frames array to force a full rebuild of skylighting probes. */
 	void ResetSkylighting();
 

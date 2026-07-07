@@ -516,28 +516,6 @@ void Skylighting::RenderOcclusion()
 					float elapsedMs = std::chrono::duration<float, std::milli>(std::chrono::system_clock::now() - lastUpdateTimer).count();
 					if (elapsedMs < settings.OcclusionUpdateInterval)
 						return;
-
-					// Skip re-rendering while the camera stays in one probe cell and the probes have converged.
-					auto eyePos = Util::GetEyePosition();
-					int cell[3] = {
-						(int)round(eyePos.x / (occlusionDistance / probeArrayDims[0])),
-						(int)round(eyePos.y / (occlusionDistance / probeArrayDims[1])),
-						(int)round(eyePos.z / (occlusionDistance * 0.5f / probeArrayDims[2]))
-					};
-					if (haveLastOccCell && cell[0] == lastOccCell[0] && cell[1] == lastOccCell[1] && cell[2] == lastOccCell[2]) {
-						if (occlusionConvergedFrames >= OcclusionConvergenceFrames)
-							return;
-						occlusionConvergedFrames++;
-					} else {
-						lastOccCell[0] = cell[0];
-						lastOccCell[1] = cell[1];
-						lastOccCell[2] = cell[2];
-						haveLastOccCell = true;
-						occlusionConvergedFrames = 0;
-					}
-				} else {
-					haveLastOccCell = false;
-					occlusionConvergedFrames = 0;
 				}
 				lastUpdateTimer = std::chrono::system_clock::now();
 
