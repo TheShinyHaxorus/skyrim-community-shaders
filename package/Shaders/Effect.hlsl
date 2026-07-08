@@ -870,12 +870,11 @@ PS_OUTPUT main(PS_INPUT input)
 	float3 blendedColor = lightColor * (1 - fogFactor);
 #			endif
 	if (SharedData::enbSettings.Enable) {
-		// ENB buckets additive effects by palette technique: grayscale-gradient draws
-		// (fire, candle flames, torches) are FIRE, plain additive glows are LIGHTSPRITE.
-#			if defined(GRAYSCALE_TO_COLOR)
-		blendedColor = pow(max(blendedColor, 0.0), SharedData::enbSettings.FireCurve) * SharedData::enbSettings.FireIntensity;
-#			else
+		// ENB classifies by object properties: additive draws are FIRE; additive soft-particle (Soft_Effect) glows are LIGHTSPRITE.
+#			if defined(SOFT) && !defined(GRAYSCALE_TO_COLOR)
 		blendedColor *= SharedData::enbSettings.LightSpriteIntensity;
+#			else
+		blendedColor = pow(max(blendedColor, 0.0), SharedData::enbSettings.FireCurve) * SharedData::enbSettings.FireIntensity;
 #			endif
 	}
 #		elif defined(MULTBLEND) || defined(MULTBLEND_DECAL)
