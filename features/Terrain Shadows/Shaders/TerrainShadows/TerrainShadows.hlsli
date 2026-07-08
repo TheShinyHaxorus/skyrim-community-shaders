@@ -21,8 +21,11 @@ namespace TerrainShadows
 	{
 		if (!SharedData::terraOccSettings.EnableTerrainShadow)
 			return 1.0;
-		float2 shadowHeight = GetTerrainZ(ShadowHeightTexture.SampleLevel(samp, GetTerrainShadowUV(worldPos.xy), 0));
+		float2 rawHeight = ShadowHeightTexture.SampleLevel(samp, GetTerrainShadowUV(worldPos.xy), 0);
+		// channels are equal on lit ridge/peak texels; the naive penumbra divide is then 0/0 -> saturate(NaN) flickers black
+		if (rawHeight.x - rawHeight.y < 1e-4)
+			return 1.0;
+		float2 shadowHeight = GetTerrainZ(rawHeight);
 		return saturate((worldPos.z - shadowHeight.y) / (shadowHeight.x - shadowHeight.y));
-		;
 	}
 }
