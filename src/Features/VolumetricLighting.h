@@ -46,6 +46,9 @@ public:
 	virtual void RestoreDefaultSettings() override;
 	/** @brief Draws the ImGui settings panel for volumetric lighting configuration. */
 	virtual void DrawSettings() override;
+
+	virtual std::span<const QualityPreset> GetQualityPresets() const override;
+
 	/** @brief Handles post-data-load initialization. */
 	virtual void DataLoaded() override;
 	/** @brief Resolves game engine addresses and patches the raymarch dispatch loop. */

@@ -37,6 +37,30 @@ void VolumetricLighting::DrawSettings()
 		DrawVolumetricLightingSettings(settings.InteriorQuality, settings.InteriorCustomSize, true, inInterior);
 }
 
+namespace
+{
+	void ApplyVLTier(Feature* f, Feature::QualityLevel level)
+	{
+		auto* vl = static_cast<VolumetricLighting*>(f);
+		const int q = static_cast<int>(level);  // QualityLevel::Low=0, Medium=1, High=2 — matches VL's 0-2 range
+		vl->settings.ExteriorEnabled = true;
+		vl->settings.InteriorEnabled = true;
+		vl->settings.ExteriorQuality = q;
+		vl->settings.InteriorQuality = q;
+	}
+
+	static constexpr std::array<Feature::QualityPreset, 3> kVLPresets = { {
+		{ Feature::QualityLevel::Low, "Low", "Lowest VL resolution for best performance.", &ApplyVLTier },
+		{ Feature::QualityLevel::Medium, "Medium", "Balanced VL quality and performance.", &ApplyVLTier },
+		{ Feature::QualityLevel::High, "High", "Highest VL resolution.", &ApplyVLTier },
+	} };
+}
+
+std::span<const Feature::QualityPreset> VolumetricLighting::GetQualityPresets() const
+{
+	return kVLPresets;
+}
+
 void VolumetricLighting::DrawVolumetricLightingSettings(int32_t& quality, TextureSize& customSize, const bool isInterior, const bool inLocationType)
 {
 	auto& [Width, Height, Depth] = FetchCurrentSizeInUnits(isInterior);

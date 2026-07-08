@@ -32,6 +32,8 @@ public:
 	/** @brief Draws the ImGui settings UI with quality presets, visual parameters, and denoising options. */
 	virtual void DrawSettings() override;
 
+	virtual std::span<const QualityPreset> GetQualityPresets() const override;
+
 	virtual void LoadSettings(json& o_json) override;
 	virtual void SaveSettings(json& o_json) override;
 

@@ -132,6 +132,8 @@ void MessageHandler(SKSE::MessagingInterface::Message* message)
 				}
 
 				Feature::ForEachLoadedFeature("DataLoaded", [](Feature* feature) { feature->DataLoaded(); });
+
+				globals::basicMenu->Register();
 			}
 
 			break;

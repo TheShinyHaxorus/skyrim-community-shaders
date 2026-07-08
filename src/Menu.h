@@ -522,8 +522,18 @@ public:
 			thumbstickX(0.0f),
 			thumbstickY(0.0f) {}
 
+		explicit KeyEvent(const RE::MouseMoveEvent* a_event) :
+			keyCode(0),
+			device(a_event->GetDevice()),
+			eventType(a_event->GetEventType()),
+			value(0),
+			heldDownSecs(0),
+			thumbstickX(static_cast<float>(a_event->mouseInputX)),
+			thumbstickY(static_cast<float>(a_event->mouseInputY))
+		{}
+
 		explicit KeyEvent(const RE::ThumbstickEvent* a_event) :
-			keyCode(0),  // For thumbstick events, keyCode/value are replaced by x/y floats
+			keyCode(a_event->GetIDCode()),  // 0x0B = left stick, 0x0C = right stick
 			device(a_event->GetDevice()),
 			eventType(a_event->GetEventType()),
 			value(0),
@@ -575,4 +585,65 @@ private:
 	void ProcessInputEventQueue();
 	bool IsCapturingHotkeyInput() const;
 	winrt::com_ptr<IDXGIAdapter3> dxgiAdapter3;
+};
+
+// GFxFunctionHandler that wraps the Flash SystemPage.onCategoryButtonPress so the
+// in-game journal's "COMMUNITY SHADERS" entry routes back to BasicMenu.
+class CSItemPressHandler : public RE::GFxFunctionHandler
+{
+public:
+	explicit CSItemPressHandler(std::int32_t a_csIndex) :
+		csIndex(a_csIndex) {}
+	void Call(Params& a_params) override;
+
+private:
+	std::int32_t csIndex;
+};
+
+// Transparent right-side panel exposing quality presets for the heaviest features
+// (upscaling, screen-space GI, volumetric lighting). Opens via a "COMMUNITY SHADERS"
+// entry injected into the journal system page. Fully keyboard/controller navigable.
+class BasicMenu : public RE::BSTEventSink<RE::MenuOpenCloseEvent>
+{
+public:
+	static BasicMenu* GetSingleton();
+
+	void Register();
+	void Draw();
+
+	bool IsActive() const { return active; }
+	void Activate();
+	void Deactivate();
+	void AddMouseMoveDelta(std::int32_t a_deltaX, std::int32_t a_deltaY);
+
+private:
+	BasicMenu() = default;
+
+	// Journal menu injection
+	bool SetupJournalMenu();
+	RE::BSEventNotifyControl ProcessEvent(const RE::MenuOpenCloseEvent* a_evn, RE::BSTEventSource<RE::MenuOpenCloseEvent>*) override;
+
+	void DrawQualityControls();
+	void DrawVRAM();
+	void DrawInputHints();
+
+	// Custom outlined button widget (ported from FUCK, MIT License)
+	// a_width: explicit button width, or 0 for auto-sizing
+	static bool DrawButton(const char* a_label, float a_width = 0.0f);
+
+	// Input mode: auto-switches based on last device used
+	enum class InputMode
+	{
+		kMouseKeyboard,
+		kGamepad
+	};
+
+	// State
+	bool active = false;
+	bool firstFrame = false;
+	InputMode inputMode = InputMode::kMouseKeyboard;
+	ImVec2 mousePos = { -FLT_MAX, -FLT_MAX };
+	bool mouseMoved = false;
+	bool openedCursorMenu = false;
+	bool hadNoMouseCursorChange = false;
 };

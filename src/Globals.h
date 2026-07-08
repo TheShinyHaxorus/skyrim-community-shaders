@@ -49,6 +49,7 @@ class RemoteControl;
 class Menu;
 class WeatherManager;
 class SceneSettingsManager;
+class BasicMenu;
 
 namespace SIE
 {
@@ -244,6 +245,7 @@ namespace globals
 	extern State* state;
 	extern Deferred* deferred;
 	extern Menu* menu;
+	extern BasicMenu* basicMenu;
 	extern SIE::ShaderCache* shaderCache;
 	extern Profiler* profiler;
 	extern WeatherManager* weatherManager;

@@ -15,6 +15,56 @@
 
 struct Feature
 {
+	// Generic named-preset entry. The enum type E is feature-specific; the surrounding
+	// shape is shared so different features can route through one ApplyPreset dispatch.
+	template <typename E>
+	struct Preset
+	{
+		E id;
+		std::string_view label;
+		std::string_view description;
+		// apply receives the preset id so one shared thunk can dispatch all entries
+		// of an enum. nullptr apply is a no-op (e.g. a "Custom" sentinel).
+		void (*apply)(Feature*, E) = nullptr;
+		// Optional VR variant; falls back to apply when null.
+		void (*vrApply)(Feature*, E) = nullptr;
+	};
+
+	// Quality tiers for the in-game basic menu. Authors declare a sparse subset;
+	// missing tiers are silently skipped.
+	enum class QualityLevel : uint8_t
+	{
+		Low,
+		Medium,
+		High,
+		Ultra
+	};
+	using QualityPreset = Preset<QualityLevel>;
+
+	// Apply a preset, picking vrApply on VR when available.
+	template <typename E>
+	static void ApplyPreset(Feature* feature, const Preset<E>& preset)
+	{
+		if (preset.vrApply && REL::Module::IsVR())
+			preset.vrApply(feature, preset.id);
+		else if (preset.apply)
+			preset.apply(feature, preset.id);
+	}
+
+	// Apply a quality tier without going through ImGui (basic menu, scripts).
+	// Returns false if the feature does not expose that tier.
+	bool ApplyQualityPreset(QualityLevel level)
+	{
+		auto presets = GetQualityPresets();
+		for (const auto& p : presets) {
+			if (p.id == level) {
+				ApplyPreset(this, p);
+				return true;
+			}
+		}
+		return false;
+	}
+
 	// For global settings search
 	struct SettingSearchEntry
 	{
@@ -156,6 +206,13 @@ public:
 
 	/** @brief Draws the UI shown when this feature failed to load. */
 	virtual void DrawUnloadedUI();
+
+	/**
+	 * Quality preset list for the in-game basic menu.
+	 * Default: empty — feature isn't affected by Low/Medium/High preset buttons.
+	 * Override to return a span over a `static constexpr std::array<QualityPreset, N>`.
+	 */
+	virtual std::span<const QualityPreset> GetQualityPresets() const { return {}; }
 
 	/** @brief Per-frame work executed before the reflections pass. */
 	virtual void ReflectionsPrepass() {};
