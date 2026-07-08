@@ -266,13 +266,11 @@ PS_OUTPUT main(PS_INPUT input)
 #		endif
 
 #		if defined(DITHER)
-	float2 noiseGradUv = float2(0.125, 0.125) * input.Position.xy;
-	float noiseGrad = TexNoiseGradSampler.Sample(SampNoiseGradSampler, noiseGradUv).x * 0.03125 - 0.0078125;
-	noiseGrad *= 10.0;
+	// Zero-mean analytic dither; ISHDR applies the final 8-bit TPDF dither downstream.
+	float skyDither = (Random::InterleavedGradientNoise(input.Position.xy) - 0.5) * (3.0 / 255.0);
 
 #			ifdef TEX
-	psout.Color.xyz = Color::Sky(input.Color.xyz) * baseColor.xyz + skyScale;
-	psout.Color.xyz *= 1.0 + noiseGrad;
+	psout.Color.xyz = Color::Sky(input.Color.xyz) * baseColor.xyz + skyScale + skyDither;
 	psout.Color.w = baseColor.w * input.Color.w;
 #			else
 	float3 skyGradientColor = input.Color.xyz;
@@ -281,8 +279,7 @@ PS_OUTPUT main(PS_INPUT input)
 		float gradientPosition = pow(1.0 - saturate(viewDirection.z), SharedData::enbSettings.ProceduralGradientWeightCurve);
 		skyGradientColor = lerp(input.SkyBlendColor2.xyz, input.SkyBlendColor0.xyz, gradientPosition);
 	}
-	psout.Color.xyz = Color::Sky(skyGradientColor) + skyScale;
-	psout.Color.xyz *= 1.0 + noiseGrad;
+	psout.Color.xyz = Color::Sky(skyGradientColor) + skyScale + skyDither;
 	psout.Color.w = input.Color.w;
 #			endif  // TEX
 
