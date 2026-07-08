@@ -1,6 +1,5 @@
 // Particle-light recognition + injection, split from LightLimitFix.cpp to keep the
-// core clustering pipeline focused. Adapted from open-shaders to this branch's
-// scalar (non-VR-array) LightData / eye-position model.
+// core clustering pipeline focused.
 
 #include "Features/LightLimitFix.h"
 
