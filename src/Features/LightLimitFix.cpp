@@ -11,7 +11,7 @@
 
 #define I18N_KEY_PREFIX "feature.light_limit_fix."
 
-// Only contact-shadow fields persist; debug visualization toggles reset each launch.
+// Contact-shadow + particle-light fields persist; debug visualization toggles reset each launch.
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(
 	LightLimitFix::Settings,
 	EnableContactShadows,
@@ -20,7 +20,19 @@ NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(
 	ContactShadowStride,
 	ContactShadowThickness,
 	ContactShadowDepthFade,
-	ContactShadowMinIntensity)
+	ContactShadowMinIntensity,
+	EnableParticleLights,
+	EnableParticleLightsCulling,
+	EnableParticleLightsDetection,
+	EnableParticleLightsOptimization,
+	ParticleLightsSaturation,
+	ParticleBrightness,
+	ParticleRadius,
+	BillboardBrightness,
+	BillboardRadius,
+	ParticleClusterThreshold,
+	MaxParticlesPerEmitter,
+	MaxParticleDistance)
 
 static constexpr uint CLUSTER_MAX_LIGHTS = 128;
 static constexpr uint MAX_LIGHTS = 1024;
@@ -89,6 +101,85 @@ void LightLimitFix::DrawSettings()
 					"`1 - (lightDist/radius)^2` at the pixel is below this threshold. "
 					"Strict lights are always raymarched regardless of this threshold. "
 					"Higher = larger perf win, may drop subtle shadows from weak lights at their reach edge."));
+		}
+
+		ImGui::TreePop();
+	}
+
+	///////////////////////////////
+	ImGui::SeparatorText(T(TKEY("particle_lights_header"), "Particle Lights"));
+
+	ImGui::TextWrapped("%s",
+		T(TKEY("particle_lights_intro"),
+			"Turns configured particle effects (candles, braziers, torches, magic) into dynamic lights. "
+			"Requires a particle-light config pack shipping Data\\ParticleLights\\*.ini (e.g. Embers HD, "
+			"Lanterns of Skyrim); with no pack installed this section has no effect.\n"
+			"When Effect11 (ENB) is enabled, these lights are graded by its point-light curve so fire tracks weather."));
+	ImGui::Spacing();
+
+	ImGui::Checkbox(T(TKEY("enable_particle_lights"), "Enable Particle Lights"), &settings.EnableParticleLights);
+	if (auto _tt = Util::HoverTooltipWrapper()) {
+		ImGui::Text("%s", T(TKEY("enable_particle_lights_tooltip"), "Master toggle for the particle-light feature."));
+	}
+
+	if (settings.EnableParticleLights && ImGui::TreeNode(T(TKEY("particle_performance"), "Performance##particles"))) {
+		constexpr float kClusterMin = 8.0f, kClusterMax = 128.0f;
+		constexpr int kMaxPerEmitterMin = 32, kMaxPerEmitterMax = 2048;
+		constexpr float kMaxDistanceMin = 1000.0f, kMaxDistanceMax = 20000.0f;
+
+		ImGui::Checkbox(T(TKEY("enable_particle_culling"), "Enable Culling"), &settings.EnableParticleLightsCulling);
+		if (auto _tt = Util::HoverTooltipWrapper()) {
+			ImGui::Text("%s", T(TKEY("enable_particle_culling_tooltip"), "Significantly improves performance by not rendering empty textures. Only disable if you are encountering issues."));
+		}
+
+		ImGui::Checkbox(T(TKEY("enable_particle_detection"), "Enable Detection"), &settings.EnableParticleLightsDetection);
+		if (auto _tt = Util::HoverTooltipWrapper()) {
+			ImGui::Text("%s", T(TKEY("enable_particle_detection_tooltip"), "Adds particle lights to the player light level so that NPCs detect them for stealth and gameplay."));
+		}
+
+		ImGui::Checkbox(T(TKEY("enable_particle_optimization"), "Enable Optimization"), &settings.EnableParticleLightsOptimization);
+		if (auto _tt = Util::HoverTooltipWrapper()) {
+			ImGui::Text("%s", T(TKEY("enable_particle_optimization_tooltip"), "Merges vertices which are close enough to each other to improve performance."));
+		}
+
+		ImGui::SliderFloat(T(TKEY("particle_cluster_threshold"), "Cluster Threshold"), &settings.ParticleClusterThreshold, kClusterMin, kClusterMax, "%.1f", ImGuiSliderFlags_AlwaysClamp);
+		if (auto _tt = Util::HoverTooltipWrapper()) {
+			ImGui::Text("%s", T(TKEY("particle_cluster_threshold_tooltip"), "Distance+radius similarity threshold for merging particles into one light.\nHigher = more merging, better performance, blurrier lights."));
+		}
+
+		ImGui::SliderInt(T(TKEY("max_particles_per_emitter"), "Max Particles per Emitter"), &settings.MaxParticlesPerEmitter, kMaxPerEmitterMin, kMaxPerEmitterMax);
+		if (auto _tt = Util::HoverTooltipWrapper()) {
+			ImGui::Text("%s", T(TKEY("max_particles_per_emitter_tooltip"), "Maximum number of particles sampled per emitter per frame.\nHigher = closer to the real particle system but more CPU work."));
+		}
+
+		ImGui::SliderFloat(T(TKEY("max_particle_distance"), "Max Particle Distance"), &settings.MaxParticleDistance, kMaxDistanceMin, kMaxDistanceMax, "%.0f", ImGuiSliderFlags_AlwaysClamp);
+		if (auto _tt = Util::HoverTooltipWrapper()) {
+			ImGui::Text("%s", T(TKEY("max_particle_distance_tooltip"), "Particle lights beyond this distance from the camera are skipped entirely.\nLower = better performance, but distant effects won't contribute light."));
+		}
+
+		ImGui::TreePop();
+	}
+
+	if (settings.EnableParticleLights && ImGui::TreeNode(T(TKEY("particle_appearance"), "Appearance##particles"))) {
+		ImGui::SliderFloat(T(TKEY("particle_saturation"), "Saturation"), &settings.ParticleLightsSaturation, 1.0f, 2.0f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
+		if (auto _tt = Util::HoverTooltipWrapper()) {
+			ImGui::Text("%s", T(TKEY("particle_saturation_tooltip"), "Color saturation of particle/billboard lights. 1.0 = source color; higher = more vivid."));
+		}
+		ImGui::SliderFloat(T(TKEY("particle_brightness"), "Particle Brightness"), &settings.ParticleBrightness, 0.0f, 10.0f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
+		if (auto _tt = Util::HoverTooltipWrapper()) {
+			ImGui::Text("%s", T(TKEY("particle_brightness_tooltip"), "Intensity multiplier for particle-system emitters (fire, sparks, magic)."));
+		}
+		ImGui::SliderFloat(T(TKEY("particle_radius"), "Particle Radius"), &settings.ParticleRadius, 0.0f, 10.0f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
+		if (auto _tt = Util::HoverTooltipWrapper()) {
+			ImGui::Text("%s", T(TKEY("particle_radius_tooltip"), "Radius multiplier for particle-system emitters. Larger = light reaches further."));
+		}
+		ImGui::SliderFloat(T(TKEY("billboard_brightness"), "Billboard Brightness"), &settings.BillboardBrightness, 0.0f, 10.0f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
+		if (auto _tt = Util::HoverTooltipWrapper()) {
+			ImGui::Text("%s", T(TKEY("billboard_brightness_tooltip"), "Intensity multiplier for billboard (single-quad) emitters such as candle flames."));
+		}
+		ImGui::SliderFloat(T(TKEY("billboard_radius"), "Billboard Radius"), &settings.BillboardRadius, 0.0f, 10.0f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
+		if (auto _tt = Util::HoverTooltipWrapper()) {
+			ImGui::Text("%s", T(TKEY("billboard_radius_tooltip"), "Radius multiplier for billboard emitters. Larger = light reaches further."));
 		}
 
 		ImGui::TreePop();
@@ -263,6 +354,29 @@ void LightLimitFix::LoadSettings(json& o_json)
 void LightLimitFix::SaveSettings(json& o_json)
 {
 	o_json = settings;
+}
+
+void LightLimitFix::Reset()
+{
+	// Recycle last frame's particle-light node refs, then swap the freshly-queued set in.
+	std::lock_guard<std::mutex> queueLock{ particleLightsQueueMutex };
+
+	for (auto& particleLight : currentParticleLights) {
+		if (!particleLight.node)
+			continue;
+
+		if (!particleLight.billboard) {
+			if (const auto particleSystem = static_cast<RE::NiParticleSystem*>(particleLight.node)) {
+				if (auto particleData = particleSystem->GetParticlesRuntimeData().particleData.get())
+					particleData->DecRefCount();
+			}
+		}
+		particleLight.node->DecRefCount();
+	}
+	currentParticleLights.clear();
+	std::swap(currentParticleLights, queuedParticleLights);
+	// References are keyed by transient pass geometry pointers; rebuild every frame to avoid stale entries.
+	particleLightsReferences.clear();
 }
 
 RE::NiNode* GetParentRoomNode(RE::NiAVObject* object)
@@ -445,6 +559,7 @@ bool LightLimitFix::IsGlobalLight(RE::BSLight* a_light)
 
 void LightLimitFix::PostPostLoad()
 {
+	particleLights.GetConfigs();
 	Hooks::Install();
 }
 
@@ -566,6 +681,8 @@ void LightLimitFix::UpdateLights()
 	for (auto& e : shadowSceneNode->GetRuntimeData().activeShadowLights) {
 		addLight(e);
 	}
+
+	ProcessQueuedParticleLights(lightsData);
 
 	auto context = globals::d3d::context;
 

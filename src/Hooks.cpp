@@ -918,6 +918,46 @@ namespace Hooks
 		static inline REL::Relocation<decltype(thunk)> func;
 	};
 
+	// Returns true when LightLimitFix wants to cull this render pass because the geometry was
+	// recognized as a particle light marked with `Cull = true` in its INI config. The SEH guard
+	// fails open so a transient bad render-pass pointer cannot crash a render-thread hook.
+	bool ShouldSkipRenderPassForParticleLights(RE::BSRenderPass* a_pass, uint32_t a_technique)
+	{
+#if defined(_MSC_VER)
+		__try
+#endif
+		{
+			return globals::features::lightLimitFix.loaded &&
+			       !globals::features::lightLimitFix.CheckParticleLights(a_pass, a_technique);
+		}
+#if defined(_MSC_VER)
+		__except (1) {
+			return false;
+		}
+#endif
+	}
+
+	void BSBatchRenderer_RenderPassImmediately1::thunk(RE::BSRenderPass* pass, uint32_t technique, bool alphaTest, uint32_t renderFlags)
+	{
+		if (ShouldSkipRenderPassForParticleLights(pass, technique))
+			return;
+		func(pass, technique, alphaTest, renderFlags);
+	}
+
+	void BSBatchRenderer_RenderPassImmediately2::thunk(RE::BSRenderPass* pass, uint32_t technique, bool alphaTest, uint32_t renderFlags)
+	{
+		if (ShouldSkipRenderPassForParticleLights(pass, technique))
+			return;
+		func(pass, technique, alphaTest, renderFlags);
+	}
+
+	void BSBatchRenderer_RenderPassImmediately3::thunk(RE::BSRenderPass* pass, uint32_t technique, bool alphaTest, uint32_t renderFlags)
+	{
+		if (ShouldSkipRenderPassForParticleLights(pass, technique))
+			return;
+		func(pass, technique, alphaTest, renderFlags);
+	}
+
 	void Sky_UpdateColors::thunk(RE::Sky* sky, float a_delta)
 	{
 		func(sky, a_delta);
@@ -1036,6 +1076,11 @@ namespace Hooks
 		}
 
 		stl::write_thunk_call<BSLightingShader_SetupGeometry_GeometrySetupConstantPointLights>(REL::RelocationID(100565, 107300).address() + REL::Relocate(0x523, 0xB0E));
+
+		logger::info("Hooking BSBatchRenderer::RenderPassImmediately for particle lights");
+		stl::write_thunk_call<BSBatchRenderer_RenderPassImmediately1>(REL::RelocationID(100877, 107673).address() + REL::Relocate(0x1E5, 0x1EE));
+		stl::write_thunk_call<BSBatchRenderer_RenderPassImmediately2>(REL::RelocationID(100852, 107642).address() + REL::Relocate(0x29E, 0x28F));
+		stl::write_thunk_call<BSBatchRenderer_RenderPassImmediately3>(REL::RelocationID(100871, 107667).address() + REL::Relocate(0xEE, 0xED));
 	}
 
 	void InstallEarlyHooks()
