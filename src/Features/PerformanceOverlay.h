@@ -280,6 +280,7 @@ struct PerformanceOverlay : OverlayFeature
 		bool ShowDrawCalls = true;
 		bool ShowCSPasses = true;
 		bool ShowVRAM = true;
+		bool ShowFullDedicatedVRAM = false;  // Use adapter's fixed dedicated VRAM as the total instead of the dynamic DXGI budget
 		bool ShowFPS = true;
 		bool ShowPreFGFrameTimeGraph = true;
 		bool ShowPostFGFrameTimeGraph = true;

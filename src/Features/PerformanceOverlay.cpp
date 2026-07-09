@@ -107,6 +107,7 @@ NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(
 	ShowInOverlay,
 	ShowDrawCalls,
 	ShowVRAM,
+	ShowFullDedicatedVRAM,
 	ShowCSPasses,
 	ShowFPS,
 	ShowPreFGFrameTimeGraph,
@@ -159,6 +160,14 @@ void PerformanceOverlay::DrawSettings()
 		ImGui::Checkbox(T(TKEY("show_fps"), "Show FPS Counter"), &this->settings.ShowFPS);
 		ImGui::Checkbox(T(TKEY("show_draw_calls"), "Show Draw Calls"), &this->settings.ShowDrawCalls);
 		ImGui::Checkbox(T(TKEY("show_vram"), "Show VRAM Usage"), &this->settings.ShowVRAM);
+		if (this->settings.ShowVRAM) {
+			ImGui::Indent();
+			ImGui::Checkbox(T(TKEY("vram_show_dedicated"), "Show Full Dedicated VRAM"), &this->settings.ShowFullDedicatedVRAM);
+			if (auto _tt = Util::HoverTooltipWrapper()) {
+				ImGui::Text("%s", T(TKEY("vram_show_dedicated_tooltip"), "When enabled, the progress bar total is your GPU's full dedicated VRAM (a fixed value).\nWhen disabled, the total is the DXGI memory budget, which the OS shrinks under system-wide\nmemory pressure - so it can read lower than your installed VRAM and fluctuate (e.g. rising in interiors)."));
+			}
+			ImGui::Unindent();
+		}
 		ImGui::Checkbox(T(TKEY("show_cs_passes"), "Show CS Render Passes"), &this->settings.ShowCSPasses);
 
 		bool isFrameGenerationActive = globals::features::upscaling.IsFrameGenerationActive();
@@ -509,7 +518,17 @@ void PerformanceOverlay::DrawVRAM()
 	if (SUCCEEDED(hr) && videoMemoryInfo.Budget > 0) {
 		float currentGpuUsage = videoMemoryInfo.CurrentUsage / (1024.f * 1024.f * 1024.f);
 		float totalGpuMemory = videoMemoryInfo.Budget / (1024.f * 1024.f * 1024.f);
-		float percent = currentGpuUsage / totalGpuMemory;
+
+		// Optionally report the adapter's full dedicated VRAM (a fixed value) as the total,
+		// instead of the dynamic DXGI budget which the OS shrinks under memory pressure.
+		if (this->settings.ShowFullDedicatedVRAM) {
+			DXGI_ADAPTER_DESC adapterDesc{};
+			if (SUCCEEDED(dxgiAdapter3->GetDesc(&adapterDesc)) && adapterDesc.DedicatedVideoMemory > 0) {
+				totalGpuMemory = adapterDesc.DedicatedVideoMemory / (1024.f * 1024.f * 1024.f);
+			}
+		}
+
+		float percent = (totalGpuMemory > 0.f) ? (currentGpuUsage / totalGpuMemory) : 0.f;
 
 		// Center the VRAM text
 		ImGui::Text(T(TKEY("vram_usage"), "VRAM Usage:"));
