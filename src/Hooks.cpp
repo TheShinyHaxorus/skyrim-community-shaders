@@ -453,29 +453,6 @@ struct BSShaderRenderTargets_Create
 
 struct BSInputDeviceManager_PollInputDevices
 {
-	static void ProcessBasicMenuCursorInput(RE::InputEvent* const* a_events)
-	{
-		if (!a_events || !*a_events)
-			return;
-
-		const auto ui = RE::UI::GetSingleton();
-		const auto cursorMenu = ui ? ui->GetMenu<RE::CursorMenu>(RE::CursorMenu::MENU_NAME) : nullptr;
-		if (!cursorMenu)
-			return;
-		auto* cursorHandler = cursorMenu->AsMenuEventHandler();
-		if (!cursorHandler)
-			return;
-
-		for (auto it = *a_events; it; it = it->next) {
-			if (it->GetDevice() != RE::INPUT_DEVICES::INPUT_DEVICE::kMouse ||
-				it->GetEventType() != RE::INPUT_EVENT_TYPE::kMouseMove)
-				continue;
-
-			if (auto* mouseMove = it->AsMouseMoveEvent())
-				cursorHandler->ProcessMouseMove(mouseMove);
-		}
-	}
-
 	static void thunk(RE::BSTEventSource<RE::InputEvent*>* a_dispatcher, RE::InputEvent* const* a_events)
 	{
 		// Reflex sleep/cap runs here by design: this executes before rendering work for the frame.
@@ -497,18 +474,9 @@ struct BSInputDeviceManager_PollInputDevices
 			}
 		}
 
-		const bool basicMenuActive = globals::basicMenu->IsActive();
-
-		// Block ALL input (including gamepad) when BasicMenu is active so the
-		// game doesn't process d-pad/stick input while navigating the UI.
-		if (basicMenuActive) {
-			ProcessBasicMenuCursorInput(a_events);
-			blockedDevice = true;
-		}
-
-		if (blockedDevice && (menu->ShouldSwallowInput() || basicMenuActive)) {
+		if (blockedDevice && menu->ShouldSwallowInput()) {  //the menu is open, eat all keypresses
 			// During active flying preview, let input reach the game for movement/camera
-			if (!basicMenuActive && menu->IsPreviewFlying()) {
+			if (menu->IsPreviewFlying()) {
 				func(a_dispatcher, a_events);
 				return;
 			}

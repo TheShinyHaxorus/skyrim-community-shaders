@@ -164,7 +164,6 @@ namespace globals
 	State* state = nullptr;
 	Deferred* deferred = nullptr;
 	Menu* menu = nullptr;
-	BasicMenu* basicMenu = nullptr;
 	SIE::ShaderCache* shaderCache = nullptr;
 	WeatherManager* weatherManager = nullptr;
 	SceneSettingsManager* sceneSettingsManager = nullptr;
@@ -177,7 +176,6 @@ namespace globals
 		shaderCache = &SIE::ShaderCache::Instance();
 		state = State::GetSingleton();
 		menu = Menu::GetSingleton();
-		basicMenu = BasicMenu::GetSingleton();
 		deferred = Deferred::GetSingleton();
 		weatherManager = WeatherManager::GetSingleton();
 		sceneSettingsManager = SceneSettingsManager::GetSingleton();

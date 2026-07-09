@@ -183,8 +183,6 @@ void OverlayRenderer::RenderOverlay(
 		if (menu.IsEnabled) {
 			drawSettings();
 		}
-	} else if (auto* basic = BasicMenu::GetSingleton(); basic->IsActive()) {
-		basic->Draw();
 	} else {
 		ImGui::GetIO().MouseDrawCursor = false;
 	}
@@ -209,7 +207,6 @@ bool OverlayRenderer::ShouldSkipRendering()
 	return !(shaderCache->IsCompiling() ||
 			 Menu::GetSingleton()->IsEnabled ||
 			 EditorWindow::GetSingleton()->open ||
-			 BasicMenu::GetSingleton()->IsActive() ||
 			 abTestingManager->IsEnabled() ||
 			 (failed && !hide) ||
 			 effectFailed ||
