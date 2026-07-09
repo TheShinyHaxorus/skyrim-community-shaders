@@ -1110,6 +1110,8 @@
     "feature.perf_overlay.toggle_with": "Toggle with ",
     "feature.perf_overlay.update_interval": "Update Interval",
     "feature.perf_overlay.vram_not_available": "VRAM Usage: Not available",
+    "feature.perf_overlay.vram_show_dedicated": "Show Full Dedicated VRAM",
+    "feature.perf_overlay.vram_show_dedicated_tooltip": "When enabled, the progress bar total is your GPU's full dedicated VRAM (a fixed value).\nWhen disabled, the total is the DXGI memory budget, which the OS shrinks under system-wide\nmemory pressure - so it can read lower than your installed VRAM and fluctuate (e.g. rising in interiors).",
     "feature.perf_overlay.vram_usage": "VRAM Usage:",
     "feature.performance_overlay.description": "Real-time performance monitoring system that displays FPS, frame times, draw calls, VRAM usage, and detailed shader performance analysis.",
     "feature.performance_overlay.key_feature_1": "Real-time FPS and frame time monitoring with configurable update intervals",
