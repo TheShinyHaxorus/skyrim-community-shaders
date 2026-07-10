@@ -929,7 +929,7 @@ namespace Hooks
 #endif
 		{
 			if (globals::features::snowCover.loaded)
-				globals::features::snowCover.CheckFireSource(a_pass);
+				globals::features::snowCover.CheckFireSource(a_pass, a_technique);
 
 			return globals::features::lightLimitFix.loaded &&
 			       !globals::features::lightLimitFix.CheckParticleLights(a_pass, a_technique);
