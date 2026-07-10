@@ -1005,7 +1005,7 @@
     "feature.light_limit_fix.particle_cluster_threshold": "Cluster Threshold",
     "feature.light_limit_fix.particle_cluster_threshold_tooltip": "Distance+radius similarity threshold for merging particles into one light.\nHigher = more merging, better performance, blurrier lights.",
     "feature.light_limit_fix.particle_lights_header": "Particle Lights",
-    "feature.light_limit_fix.particle_lights_intro": "Turns configured particle effects (candles, braziers, torches, magic) into dynamic lights. Requires a particle-light config pack shipping Data\\ParticleLights\\*.ini (e.g. Embers HD, Lanterns of Skyrim); with no pack installed this section has no effect.\nWhen Effect11 (ENB) is enabled, these lights are graded by its point-light curve so fire tracks weather.",
+    "feature.light_limit_fix.particle_lights_intro": "Turns configured particle effects (candles, braziers, torches, magic) into dynamic lights. Standard ENB Light meshes work out of the box; extra config packs shipping Data\\ParticleLights\\*.ini (e.g. Embers HD, Lanterns of Skyrim) extend coverage.\nWhen Effect11 (ENB) is enabled, these lights are graded by its point-light curve so fire tracks weather.",
     "feature.light_limit_fix.particle_performance": "Performance##particles",
     "feature.light_limit_fix.particle_radius": "Particle Radius",
     "feature.light_limit_fix.particle_radius_tooltip": "Radius multiplier for particle-system emitters. Larger = light reaches further.",

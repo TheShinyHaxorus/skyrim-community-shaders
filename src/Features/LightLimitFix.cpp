@@ -113,8 +113,8 @@ void LightLimitFix::DrawSettings()
 	ImGui::TextWrapped("%s",
 		T(TKEY("particle_lights_intro"),
 			"Turns configured particle effects (candles, braziers, torches, magic) into dynamic lights. "
-			"Requires a particle-light config pack shipping Data\\ParticleLights\\*.ini (e.g. Embers HD, "
-			"Lanterns of Skyrim); with no pack installed this section has no effect.\n"
+			"Standard ENB Light meshes work out of the box; extra config packs shipping "
+			"Data\\ParticleLights\\*.ini (e.g. Embers HD, Lanterns of Skyrim) extend coverage.\n"
 			"When Effect11 (ENB) is enabled, these lights are graded by its point-light curve so fire tracks weather."));
 	ImGui::Spacing();
 
