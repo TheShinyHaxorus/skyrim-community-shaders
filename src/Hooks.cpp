@@ -13,10 +13,11 @@
 #include "Features/Effect11.h"
 #include "Features/HDRDisplay.h"
 #include "Features/InteriorSun.h"
-#include "Features/ScreenshotFeature.h"
 #include "Features/LightLimitFix.h"
+#include "Features/ScreenshotFeature.h"
 #include "Features/Skin.h"
 #include "Features/SkySync.h"
+#include "Features/SnowCover.h"
 #include "Features/Upscaling.h"
 #include "Features/VolumetricLighting.h"
 #include "Features/WaterEffects.h"
@@ -64,7 +65,7 @@ void DumpShader(const REX::BSShader* thisClass, const ShaderType* shader, const 
 		}
 	}
 
-	if (FILE* file; fopen_s(&file, dumpDir.c_str(), "wb") == 0) {
+	if (FILE * file; fopen_s(&file, dumpDir.c_str(), "wb") == 0) {
 		fwrite(dxbcData, 1, dxbcLen, file);
 		fclose(file);
 	}
@@ -468,8 +469,8 @@ struct BSInputDeviceManager_PollInputDevices
 
 			if (*a_events) {
 				if (auto device = (*a_events)->GetDevice()) {
-						// Block all devices except gamepad when menu is open
-						blockedDevice = (device != RE::INPUT_DEVICES::INPUT_DEVICE::kGamepad);
+					// Block all devices except gamepad when menu is open
+					blockedDevice = (device != RE::INPUT_DEVICES::INPUT_DEVICE::kGamepad);
 				}
 			}
 		}
@@ -918,15 +919,18 @@ namespace Hooks
 		static inline REL::Relocation<decltype(thunk)> func;
 	};
 
-	// Returns true when LightLimitFix wants to cull this render pass because the geometry was
-	// recognized as a particle light marked with `Cull = true` in its INI config. The SEH guard
+	// Lets features inspect an effect-shader draw, and returns true when LightLimitFix wants to cull it
+	// because the geometry is a particle light marked with `Cull = true` in its INI config. The SEH guard
 	// fails open so a transient bad render-pass pointer cannot crash a render-thread hook.
-	bool ShouldSkipRenderPassForParticleLights(RE::BSRenderPass* a_pass, uint32_t a_technique)
+	bool ShouldSkipRenderPass(RE::BSRenderPass* a_pass, uint32_t a_technique)
 	{
 #if defined(_MSC_VER)
 		__try
 #endif
 		{
+			if (globals::features::snowCover.loaded)
+				globals::features::snowCover.CheckFireSource(a_pass);
+
 			return globals::features::lightLimitFix.loaded &&
 			       !globals::features::lightLimitFix.CheckParticleLights(a_pass, a_technique);
 		}
@@ -939,21 +943,21 @@ namespace Hooks
 
 	void BSBatchRenderer_RenderPassImmediately1::thunk(RE::BSRenderPass* pass, uint32_t technique, bool alphaTest, uint32_t renderFlags)
 	{
-		if (ShouldSkipRenderPassForParticleLights(pass, technique))
+		if (ShouldSkipRenderPass(pass, technique))
 			return;
 		func(pass, technique, alphaTest, renderFlags);
 	}
 
 	void BSBatchRenderer_RenderPassImmediately2::thunk(RE::BSRenderPass* pass, uint32_t technique, bool alphaTest, uint32_t renderFlags)
 	{
-		if (ShouldSkipRenderPassForParticleLights(pass, technique))
+		if (ShouldSkipRenderPass(pass, technique))
 			return;
 		func(pass, technique, alphaTest, renderFlags);
 	}
 
 	void BSBatchRenderer_RenderPassImmediately3::thunk(RE::BSRenderPass* pass, uint32_t technique, bool alphaTest, uint32_t renderFlags)
 	{
-		if (ShouldSkipRenderPassForParticleLights(pass, technique))
+		if (ShouldSkipRenderPass(pass, technique))
 			return;
 		func(pass, technique, alphaTest, renderFlags);
 	}
