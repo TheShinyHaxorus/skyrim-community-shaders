@@ -34,6 +34,7 @@ NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(
 	MaxParticlesPerEmitter,
 	MaxParticleDistance)
 
+// MUST match MAX_CLUSTER_LIGHTS in Shaders/LightLimitFix/Common.hlsli (see note there).
 static constexpr uint CLUSTER_MAX_LIGHTS = 128;
 static constexpr uint MAX_LIGHTS = 1024;
 

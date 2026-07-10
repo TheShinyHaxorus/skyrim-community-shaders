@@ -536,13 +536,6 @@ void LightLimitFix::AddCachedParticleLights(eastl::vector<LightData>& lightsData
 
 	light.fade *= dimmer;
 
-	// Grade through Effect11's ENB point-light curve, as regular lights are in UpdateLights.
-	{
-		auto& enbpp = globals::features::effect11;
-		if (enbpp.enableEffect)
-			enbpp.OverridePointLightColor(light.color);
-	}
-
 	const float luminanceScale = light.fade;
 	if ((light.color.x + light.color.y + light.color.z) * luminanceScale > 1e-4 && light.radius > 1e-4) {
 		light.invRadius = 1.f / light.radius;
@@ -590,6 +583,10 @@ void LightLimitFix::ProcessQueuedParticleLights(eastl::vector<LightData>& lights
 	for (const auto& particleLight : currentParticleLights) {
 		if (!particleLight.node)
 			continue;
+
+		float3 baseColor{ particleLight.color.red, particleLight.color.green, particleLight.color.blue };
+		if (auto& enbpp = globals::features::effect11; enbpp.enableEffect)
+			enbpp.OverridePointLightColor(baseColor);
 
 		if (!particleLight.billboard) {
 			auto particleSystem = static_cast<RE::NiParticleSystem*>(particleLight.node);
@@ -649,11 +646,7 @@ void LightLimitFix::ProcessQueuedParticleLights(eastl::vector<LightData>& lights
 					}
 
 					float alpha = particleLight.color.alpha;
-					float3 color{
-						particleLight.color.red,
-						particleLight.color.green,
-						particleLight.color.blue
-					};
+					float3 color = baseColor;
 					if (particleRuntimeData.color) {
 						alpha *= particleRuntimeData.color[p].alpha;
 						color.x *= particleRuntimeData.color[p].red;
@@ -674,9 +667,7 @@ void LightLimitFix::ProcessQueuedParticleLights(eastl::vector<LightData>& lights
 		} else {
 			LightData light{};
 
-			light.color.x = particleLight.color.red;
-			light.color.y = particleLight.color.green;
-			light.color.z = particleLight.color.blue;
+			light.color = baseColor;
 
 			light.color = Saturation(light.color, settings.ParticleLightsSaturation);
 
