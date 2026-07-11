@@ -180,10 +180,6 @@ void EffectManager::RegisterSettings()
 	settingManager.RegisterFloatSetting("AdaptationMin", "ADAPTATION", 0.1f, 0.0f, 65536.0f, 0.01f, false);
 	settingManager.RegisterFloatSetting("AdaptationMax", "ADAPTATION", 10.0f, 0.0f, 65536.0f, 0.01f, false);
 
-	settingManager.RegisterBoolSetting("EnableNeutralMenus", "MENUS", true, false);
-	settingManager.RegisterFloatSetting("NeutralLuminance", "MENUS", 0.18f, 0.01f, 1.0f, 0.01f, false);
-	settingManager.RegisterFloatSetting("TransitionTime", "MENUS", 0.75f, 0.05f, 5.0f, 0.01f, false);
-
 	settingManager.RegisterTimeOfDaySetting("Amount", "BLOOM", 0.1f, 0.0f, 10.0f, 0.01f, true);
 
 	settingManager.RegisterTimeOfDaySetting("Amount", "LENS", 1.0f, 0.0f, 10.0f, 0.01f, true);
@@ -340,9 +336,6 @@ void EffectManager::RegisterSettings()
 
 	ids.brightness = settingManager.GetSettingID("Brightness", "COLORCORRECTION");
 	ids.gammaCurve = settingManager.GetSettingID("GammaCurve", "COLORCORRECTION");
-
-	ids.menuNeutralEnable = settingManager.GetSettingID("EnableNeutralMenus", "MENUS");
-	ids.menuTransitionTime = settingManager.GetSettingID("TransitionTime", "MENUS");
 }
 
 void EffectManager::ExecuteEffect(EffectBase& a_effect, uint32_t enableSettingID)
@@ -804,45 +797,6 @@ void EffectManager::UpdateCommonData()
 		commonData.timeOfDay2[static_cast<int>(TimeOfDay2Index::InteriorDay)] = commonData.eInteriorFactor * commonData.eNightDayFactor;
 		commonData.timeOfDay2[static_cast<int>(TimeOfDay2Index::InteriorNight)] = commonData.eInteriorFactor * (1.0f - commonData.eNightDayFactor);
 	}
-
-	UpdateMenuNeutralBlend();
-
-	// Ease full-screen menus toward the preset's neutral daytime-exterior grading
-	if (menuNeutralBlend > 0.0f) {
-		const float b = menuNeutralBlend;
-		auto pin = [b](float& v, float target) { v += (target - v) * b; };
-		pin(commonData.timeOfDay1[static_cast<int>(TimeOfDay1Index::Dawn)], 0.0f);
-		pin(commonData.timeOfDay1[static_cast<int>(TimeOfDay1Index::Sunrise)], 0.0f);
-		pin(commonData.timeOfDay1[static_cast<int>(TimeOfDay1Index::Day)], 1.0f);
-		pin(commonData.timeOfDay1[static_cast<int>(TimeOfDay1Index::Sunset)], 0.0f);
-		pin(commonData.timeOfDay2[static_cast<int>(TimeOfDay2Index::Dusk)], 0.0f);
-		pin(commonData.timeOfDay2[static_cast<int>(TimeOfDay2Index::Night)], 0.0f);
-		pin(commonData.timeOfDay2[static_cast<int>(TimeOfDay2Index::InteriorDay)], 0.0f);
-		pin(commonData.timeOfDay2[static_cast<int>(TimeOfDay2Index::InteriorNight)], 0.0f);
-		pin(commonData.eNightDayFactor, 1.0f);
-		pin(commonData.eInteriorFactor, 0.0f);
-	}
-}
-
-void EffectManager::UpdateMenuNeutralBlend()
-{
-	auto& settingManager = SettingManager::GetSingleton();
-	auto ui = globals::game::ui;
-	auto state = globals::state;
-
-	bool menuActive = ui && state &&
-	                  settingManager.GetValue<bool>(ids.menuNeutralEnable) &&
-	                  (state->IsMainOrLoadingMenuOpen(ui) || ui->IsMenuOpen(RE::StatsMenu::MENU_NAME));
-
-	// Wall-clock delta so the ease still advances while the game is paused
-	auto now = std::chrono::steady_clock::now();
-	float delta = std::chrono::duration<float>(now - menuBlendLastTick).count();
-	menuBlendLastTick = now;
-	delta = std::clamp(delta, 0.0f, 0.1f);
-
-	float transitionTime = std::max(0.05f, settingManager.GetValue<float>(ids.menuTransitionTime));
-	float step = delta / transitionTime;
-	menuNeutralBlend = std::clamp(menuNeutralBlend + (menuActive ? step : -step), 0.0f, 1.0f);
 }
 
 void EffectManager::UpdateCommonVariablesForEffect(Effect& effect)
