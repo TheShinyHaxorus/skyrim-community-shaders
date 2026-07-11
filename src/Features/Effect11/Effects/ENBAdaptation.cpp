@@ -1,7 +1,9 @@
 #include "ENBAdaptation.h"
 
+#include "../EffectManager.h"
 #include "../SettingManager.h"
 #include "../TextureManager.h"
+#include "Utils/D3D.h"
 
 void ENBAdaptation::Execute()
 {
@@ -10,6 +12,13 @@ void ENBAdaptation::Execute()
 	auto* currentSRV = textureManager.GetDownsampleTextureBlurry();
 	if (!currentSRV) {
 		return;
+	}
+
+	// While a full-screen menu is up, measure a constant luminance instead of the scene
+	if (EffectManager::GetSingleton().GetMenuNeutralBlend() > 0.0f && idsCached) {
+		EnsureNeutralTexture(SettingManager::GetSingleton().GetValue<float>(idNeutralLuminance));
+		if (neutralSRV)
+			currentSRV = neutralSRV.get();
 	}
 
 	SetShaderResourceVariable("TextureCurrent", currentSRV);
@@ -50,6 +59,7 @@ void ENBAdaptation::UpdateEffectVariables()
 		idAdaptMin = settingManager.GetSettingID("AdaptationMin", "ADAPTATION");
 		idAdaptMax = settingManager.GetSettingID("AdaptationMax", "ADAPTATION");
 		idAdaptSens = settingManager.GetSettingID("AdaptationSensitivity", "ADAPTATION");
+		idNeutralLuminance = settingManager.GetSettingID("NeutralLuminance", "MENUS");
 		idsCached = true;
 	}
 
@@ -70,4 +80,49 @@ void ENBAdaptation::UpdateEffectVariables()
 void ENBAdaptation::CreateEffectTextures()
 {
 	textureCurrent = CreateTexture(16, 16, DXGI_FORMAT_R32_FLOAT, "ENBAdaptation::TextureCurrent");
+}
+
+void ENBAdaptation::EnsureNeutralTexture(float value)
+{
+	if (neutralSRV && value == bakedNeutralLuminance)
+		return;
+
+	neutralTexture = nullptr;
+	neutralSRV = nullptr;
+
+	constexpr uint32_t size = 16;
+	float texels[size * size * 4]{};
+	for (uint32_t i = 0; i < size * size; i++) {
+		texels[i * 4 + 0] = value;
+		texels[i * 4 + 1] = value;
+		texels[i * 4 + 2] = value;
+		texels[i * 4 + 3] = 1.0f;
+	}
+
+	D3D11_TEXTURE2D_DESC desc{};
+	desc.Width = size;
+	desc.Height = size;
+	desc.MipLevels = 1;
+	desc.ArraySize = 1;
+	desc.Format = DXGI_FORMAT_R32G32B32A32_FLOAT;
+	desc.SampleDesc.Count = 1;
+	desc.Usage = D3D11_USAGE_IMMUTABLE;
+	desc.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+
+	D3D11_SUBRESOURCE_DATA initData{};
+	initData.pSysMem = texels;
+	initData.SysMemPitch = size * 4 * sizeof(float);
+
+	auto device = globals::d3d::device;
+	if (!device || FAILED(device->CreateTexture2D(&desc, &initData, neutralTexture.put())))
+		return;
+	Util::SetResourceName(neutralTexture.get(), "ENBAdaptation::NeutralLuminance");
+
+	if (FAILED(device->CreateShaderResourceView(neutralTexture.get(), nullptr, neutralSRV.put()))) {
+		neutralTexture = nullptr;
+		return;
+	}
+	Util::SetResourceName(neutralSRV.get(), "ENBAdaptation::NeutralLuminance SRV");
+
+	bakedNeutralLuminance = value;
 }

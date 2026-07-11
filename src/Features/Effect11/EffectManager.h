@@ -1,5 +1,7 @@
 #pragma once
 
+#include <chrono>
+
 #include "Effects/ENBAdaptation.h"
 #include "Effects/ENBBloom.h"
 #include "Effects/ENBEffect.h"
@@ -122,9 +124,15 @@ public:
 
 		uint32_t brightness = 0xFFFFFFFF;
 		uint32_t gammaCurve = 0xFFFFFFFF;
+
+		uint32_t menuNeutralEnable = 0xFFFFFFFF;
+		uint32_t menuTransitionTime = 0xFFFFFFFF;
 	} ids;
 
 	const CommonVariableData& GetCommonData() const { return commonData; }
+
+	float GetMenuNeutralBlend() const { return menuNeutralBlend; }
+	void UpdateMenuNeutralBlend();
 
 	bool IsInitialized() const { return initialized; }
 
@@ -147,4 +155,6 @@ public:
 
 private:
 	bool initialized = false;
+	float menuNeutralBlend = 0.0f;
+	std::chrono::steady_clock::time_point menuBlendLastTick{};
 };
