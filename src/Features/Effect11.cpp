@@ -493,9 +493,7 @@ void Effect11::CheckCommonData()
 		auto& settingManager = SettingManager::GetSingleton();
 		auto ui = globals::game::ui;
 		bool isMapMenuOpen = ui->IsMenuOpen(RE::MapMenu::MENU_NAME);
-		bool isStatsMenuOpen = ui->IsMenuOpen(RE::StatsMenu::MENU_NAME);
-		enableEffect = !isMapMenuOpen && !isStatsMenuOpen && !globals::state->IsMainOrLoadingMenuOpen() &&
-		               settingManager.GetValue<bool>("UseEffect", "GLOBAL");
+		enableEffect = !isMapMenuOpen && settingManager.GetValue<bool>("UseEffect", "GLOBAL");
 
 		auto& effectManager = EffectManager::GetSingleton();
 		auto& weatherManager = WeatherManager::GetSingleton();
@@ -600,7 +598,7 @@ void Effect11::CaptureVanillaTonemapParams()
 	}
 }
 
-bool Effect11::HandleTonemapRender([[maybe_unused]] RE::RENDER_TARGET a_input, RE::RENDER_TARGET a_output)
+bool Effect11::HandleTonemapRender(RE::RENDER_TARGET a_input, RE::RENDER_TARGET a_output)
 {
 	CheckCommonData();
 
@@ -610,7 +608,9 @@ bool Effect11::HandleTonemapRender([[maybe_unused]] RE::RENDER_TARGET a_input, R
 	if (enableEffect && !settingManager.GetValue<bool>("UseOriginalPostProcessing", "EFFECT")) {
 		auto renderer = globals::game::renderer;
 		auto& renderTargets = renderer->GetRuntimeData().renderTargets;
-		effectManager.ExecuteEffects(renderTargets[RE::RENDER_TARGETS::kMAIN], renderTargets[a_output]);
+		bool validInput = a_input > RE::RENDER_TARGETS::kNONE && a_input < RE::RENDER_TARGETS::kTOTAL && renderTargets[a_input].SRV;
+		auto& input = validInput ? renderTargets[a_input] : renderTargets[RE::RENDER_TARGETS::kMAIN];
+		effectManager.ExecuteEffects(input, renderTargets[a_output]);
 		return true;
 	}
 	return false;
