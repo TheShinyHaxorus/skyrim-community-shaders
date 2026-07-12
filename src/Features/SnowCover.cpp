@@ -4,9 +4,14 @@
 #include "Util.h"
 #include "Utils/FileSystem.h"
 #include <DDSTextureLoader.h>
+#include <algorithm>
+#include <array>
+#include <cctype>
 #include <cstdlib>
 #include <cstring>
+#include <ranges>
 #include <string.h>
+#include <string_view>
 
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(
 	SnowCover::UserSettings,
@@ -41,7 +46,7 @@ void SnowCover::DrawSettings()
 	if (auto _tt = Util::HoverTooltipWrapper()) {
 		ImGui::Text(
 			"Clears snow around campfires, torches and braziers.\n"
-			"Fires are recognised the same way Effect11 does it: additive draws that are not soft glows.");
+			"Fires are recognised as additive flame draws using fire-themed textures.");
 	}
 	if (settings.EnableFireMelt) {
 		ImGui::SliderFloat("Fire Melt Radius", &settings.FireRadiusScale, 0.5f, 8.0f, "%.1fx");
@@ -294,6 +299,28 @@ void SnowCover::CheckFireSource(RE::BSRenderPass* a_pass, uint32_t a_descriptor)
 	const bool soft = a_descriptor & static_cast<uint32_t>(EffectFlags::Soft);
 	const bool grayscale = a_descriptor & static_cast<uint32_t>(EffectFlags::GrayscaleToColor);
 	if (!addBlend || (soft && !grayscale))
+		return;
+
+	// Impact effects (arrow hits, weapon strikes, blood, sparks) are additive too; only
+	// draws whose textures are actually fire-themed may melt snow.
+	const auto* material = static_cast<const RE::BSEffectShaderMaterial*>(a_pass->shaderProperty->material);
+	if (!material)
+		return;
+	static constexpr auto isFireTexture = [](const char* a_path) {
+		if (!a_path || !*a_path)
+			return false;
+		const std::string_view path{ a_path };
+		static constexpr std::array<std::string_view, 4> tokens{ "fire", "flame", "ember", "candle" };
+		for (const auto token : tokens) {
+			auto found = std::ranges::search(path, token, [](char a, char b) {
+				return std::tolower(static_cast<unsigned char>(a)) == b;
+			});
+			if (!found.empty())
+				return true;
+		}
+		return false;
+	};
+	if (!isFireTexture(material->sourceTexturePath.c_str()) && !isFireTexture(material->greyscaleTexturePath.c_str()))
 		return;
 
 	if (!globals::game::shadowState)
