@@ -176,8 +176,6 @@ void SampleSSRTracedSpecular(uint2 pixCoord, out float3 specularRadiance, out fl
 		diffuseColor = max(0.0, diffuseColor - directionalAmbientColor);
 
 		if (SharedData::ssgiSettings.DiffuseMult > 0) {
-			linDiffuseColor = Color::IrradianceToLinear(diffuseColor);
-			linDiffuseColor *= sqrt(multiBounceSSGIAo);
 			linDiffuseColor += ssgiIl * linAlbedo;
 		} else {
 			float3 linDirectionalAmbientColor = Color::IrradianceToLinear(directionalAmbientColor);
