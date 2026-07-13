@@ -829,6 +829,19 @@ void SettingManager::LoadSettingFromFile(const std::string& filePath, const std:
 		{
 			TimeOfDayValue timeOfDayValue = std::get<TimeOfDayValue>(setting.defaultValue);
 
+			// ENB stores some keys (e.g. [RAIN] MotionStretch) unsuffixed; seed every period from it.
+			{
+				char plainBuffer[256];
+				if (GetPrivateProfileStringA(section.c_str(), key.c_str(), "", plainBuffer, sizeof(plainBuffer), filePath.c_str()) > 0) {
+					float plainParsed;
+					if (TryParseFloat(plainBuffer, plainParsed)) {
+						float clamped = std::clamp(plainParsed, setting.minValue, setting.maxValue);
+						for (int i = 0; i < 8; ++i)
+							timeOfDayValue.values[i] = clamped;
+					}
+				}
+			}
+
 			for (int i = 0; i < 8; ++i) {
 				std::string fullKey = key + timeOfDayNames[i];
 				char buffer[256];
@@ -846,6 +859,30 @@ void SettingManager::LoadSettingFromFile(const std::string& filePath, const std:
 	case SettingType::ColorTimeOfDay:
 		{
 			ColorTimeOfDayValue colorTimeOfDayValue = std::get<ColorTimeOfDayValue>(setting.defaultValue);
+
+			{
+				char plainBuffer[256];
+				if (GetPrivateProfileStringA(section.c_str(), key.c_str(), "", plainBuffer, sizeof(plainBuffer), filePath.c_str()) > 0) {
+					std::string plainValueStr(plainBuffer);
+					std::stringstream plainStream(plainValueStr);
+					std::string plainItem;
+					std::vector<float> plainComponents;
+					bool plainOk = true;
+					while (std::getline(plainStream, plainItem, ',')) {
+						float plainParsed;
+						if (TryParseFloat(plainItem, plainParsed))
+							plainComponents.push_back(std::clamp(plainParsed, setting.minValue, setting.maxValue));
+						else {
+							plainOk = false;
+							break;
+						}
+					}
+					if (plainOk && plainComponents.size() == 3) {
+						for (int i = 0; i < 8; ++i)
+							colorTimeOfDayValue.values[i] = { plainComponents[0], plainComponents[1], plainComponents[2] };
+					}
+				}
+			}
 
 			for (int i = 0; i < 8; ++i) {
 				std::string fullKey = key + timeOfDayNames[i];

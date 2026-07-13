@@ -210,8 +210,9 @@ void ExtendedEffect::ApplyWeatherBlending(float blendFactor, uint32_t currentWea
 	if (weatherData.empty())
 		return;
 
-	auto currentIt = weatherData.find(currentWeatherID);
-	auto lastIt = weatherData.find(lastWeatherID);
+	auto& weatherManager = WeatherManager::GetSingleton();
+	auto currentIt = weatherManager.FindWeatherEntry(currentWeatherID) ? weatherData.find(currentWeatherID) : weatherData.end();
+	auto lastIt = weatherManager.FindWeatherEntry(lastWeatherID) ? weatherData.find(lastWeatherID) : weatherData.end();
 
 	if (currentIt == weatherData.end() && lastIt == weatherData.end())
 		return;
@@ -408,6 +409,9 @@ bool ExtendedEffect::ShouldSkipBaseIniWrite(const UIVariable& uiVar) const
 
 	auto& cd = EffectManager::GetSingleton().commonData;
 	uint32_t dominantID = static_cast<uint32_t>(cd.weather[2] > 0.5f ? cd.weather[0] : cd.weather[1]);
+
+	if (!WeatherManager::GetSingleton().FindWeatherEntry(dominantID))
+		return false;
 
 	auto it = weatherData.find(dominantID);
 	if (it == weatherData.end())
