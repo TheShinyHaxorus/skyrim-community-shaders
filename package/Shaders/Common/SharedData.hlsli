@@ -31,8 +31,8 @@ namespace SharedData
 		uint FrameCountAlwaysActive;
 		bool InInterior;  // If the current cell is an interior
 		bool HasDirectionalShadows;
-		bool InMapMenu;            // If the world/local map is open (note that the renderer is still deferred here)
-		bool HideSky;              // HideSky flag in WorldSpace, e.g. Blackreach
+		bool InMapMenu;           // If the world/local map is open (note that the renderer is still deferred here)
+		bool HideSky;             // HideSky flag in WorldSpace, e.g. Blackreach
 		float MipBias;             // Offset to mip level for TAA sharpness
 		float DefaultWaterHeight;  // Worldspace water plane, camera-relative Z; -FLT_MAX outside exteriors
 		float3 pad0;
@@ -480,22 +480,6 @@ namespace SharedData
 		uint2 pad;
 	};
 
-	struct SSGISettings
-	{
-		float DiffuseMult;
-		uint DebugMode;
-		uint pad0;
-		uint pad1;
-	};
-
-	struct SSRSettings
-	{
-		uint Enabled;
-		float SpecularMult;
-		uint pad0;
-		uint pad1;
-	};
-
 	cbuffer FeatureData : register(b6)
 	{
 		GrassLightingSettings grassLightingSettings;
@@ -520,8 +504,6 @@ namespace SharedData
 		VanillaFresnelSettings vanillaFresnelSettings;
 		SnowCoverSettings snowCoverSettings;
 		UnifiedWaterSettings unifiedWaterSettings;
-		SSGISettings ssgiSettings;
-		SSRSettings ssrSettings;
 	};
 
 	Texture2D<float4> DepthTexture : register(t17);
