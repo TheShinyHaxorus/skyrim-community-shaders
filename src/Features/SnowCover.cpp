@@ -4,7 +4,6 @@
 #include "Util.h"
 #include "Utils/FileSystem.h"
 #include <DDSTextureLoader.h>
-#include <DirectXPackedVector.h>
 #include <algorithm>
 #include <array>
 #include <cctype>
@@ -20,7 +19,6 @@ NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(
 	EnableExpensiveFoliage,
 	AffectHavok,
 	SnowHeightOffset,
-	EnableWaterHeightMap,
 	EnableFireMelt,
 	FireRadiusScale,
 	FireInnerScale,
@@ -37,12 +35,6 @@ void SnowCover::DrawSettings()
 	ImGui::Checkbox("Enable Nicer Foliage", (bool*)&settings.EnableExpensiveFoliage);
 	if (auto _tt = Util::HoverTooltipWrapper()) {
 		ImGui::Text("Uses one more texture sample to put snow on edges of tree lods and grass.");
-	}
-	ImGui::Checkbox("Water Height Map", (bool*)&settings.EnableWaterHeightMap);
-	if (auto _tt = Util::HoverTooltipWrapper()) {
-		ImGui::Text(
-			"Keeps snow off riverbeds, creek beds and pond bottoms.\n"
-			"The game reports only one water height per cell, which misses placed water like rivers and streams.");
 	}
 	ImGui::Checkbox("Melt Snow Near Fire", (bool*)&settings.EnableFireMelt);
 	if (auto _tt = Util::HoverTooltipWrapper()) {
@@ -361,236 +353,6 @@ void SnowCover::CheckFireSource(RE::BSRenderPass* a_pass, uint32_t a_descriptor)
 	}
 }
 
-void SnowCover::RasterizeWaterTriangle(const RE::NiPoint3& a_v0, const RE::NiPoint3& a_v1, const RE::NiPoint3& a_v2, float a_originX, float a_originY, float a_texelSize)
-{
-	const float edge0X = a_v1.x - a_v0.x, edge0Y = a_v1.y - a_v0.y;
-	const float edge1X = a_v2.x - a_v0.x, edge1Y = a_v2.y - a_v0.y;
-
-	const float area = edge0X * edge1Y - edge0Y * edge1X;
-	if (!std::isfinite(area) || std::abs(area) < WATER_TRIANGLE_MIN_AREA)
-		return;
-	const float invArea = 1.0f / area;
-
-	const float minX = std::min({ a_v0.x, a_v1.x, a_v2.x });
-	const float maxX = std::max({ a_v0.x, a_v1.x, a_v2.x });
-	const float minY = std::min({ a_v0.y, a_v1.y, a_v2.y });
-	const float maxY = std::max({ a_v0.y, a_v1.y, a_v2.y });
-	if (maxX < a_originX || minX > a_originX + WATER_MAP_EXTENT || maxY < a_originY || minY > a_originY + WATER_MAP_EXTENT)
-		return;
-
-	const int32_t lastTexel = static_cast<int32_t>(WATER_MAP_RES) - 1;
-	const int32_t x0 = std::clamp(static_cast<int32_t>(std::floor((minX - a_originX) / a_texelSize)), 0, lastTexel);
-	const int32_t x1 = std::clamp(static_cast<int32_t>(std::floor((maxX - a_originX) / a_texelSize)), 0, lastTexel);
-	const int32_t y0 = std::clamp(static_cast<int32_t>(std::floor((minY - a_originY) / a_texelSize)), 0, lastTexel);
-	const int32_t y1 = std::clamp(static_cast<int32_t>(std::floor((maxY - a_originY) / a_texelSize)), 0, lastTexel);
-
-	for (int32_t y = y0; y <= y1; ++y) {
-		const float worldY = a_originY + (static_cast<float>(y) + 0.5f) * a_texelSize;
-		for (int32_t x = x0; x <= x1; ++x) {
-			const float worldX = a_originX + (static_cast<float>(x) + 0.5f) * a_texelSize;
-
-			const float pointX = worldX - a_v0.x, pointY = worldY - a_v0.y;
-			const float bary1 = (pointX * edge1Y - pointY * edge1X) * invArea;
-			const float bary2 = (edge0X * pointY - edge0Y * pointX) * invArea;
-			const float bary0 = 1.0f - bary1 - bary2;
-			if (bary0 < -WATER_TRIANGLE_EDGE_TOLERANCE || bary1 < -WATER_TRIANGLE_EDGE_TOLERANCE || bary2 < -WATER_TRIANGLE_EDGE_TOLERANCE)
-				continue;
-
-			const float height = bary0 * a_v0.z + bary1 * a_v1.z + bary2 * a_v2.z;
-			float& texel = waterHeightCPU[static_cast<size_t>(y) * WATER_MAP_RES + static_cast<size_t>(x)];
-			texel = std::max(texel, height);
-		}
-	}
-}
-
-bool SnowCover::RasterizeWaterSurface(RE::TESWaterObject* a_waterObject, float a_originX, float a_originY, float a_texelSize)
-{
-	auto* shape = a_waterObject->shape.get();
-	if (!shape)
-		return false;
-
-	auto* rendererData = shape->GetGeometryRuntimeData().rendererData;
-	if (!rendererData || !rendererData->rawVertexData || !rendererData->rawIndexData)
-		return false;
-
-	const auto& triShapeData = shape->GetTrishapeRuntimeData();
-	const uint32_t triangleCount = triShapeData.triangleCount;
-	const uint32_t vertexCount = triShapeData.vertexCount;
-	if (triangleCount == 0 || vertexCount == 0)
-		return false;
-
-	auto vertexDesc = rendererData->vertexDesc;
-	if (!vertexDesc.HasFlag(RE::BSGraphics::Vertex::Flags::VF_VERTEX))
-		return false;
-
-	uint64_t rawDesc = 0;
-	std::memcpy(&rawDesc, &vertexDesc, sizeof(rawDesc));
-	const uint32_t stride = static_cast<uint32_t>(rawDesc & 0xF) * 4;
-	const uint32_t positionOffset = vertexDesc.GetAttributeOffset(RE::BSGraphics::Vertex::Attribute::VA_POSITION);
-	const bool fullPrecision = vertexDesc.HasFlag(RE::BSGraphics::Vertex::Flags::VF_FULLPREC);
-	const uint32_t positionSize = fullPrecision ? 3 * sizeof(float) : 3 * sizeof(uint16_t);
-	if (stride == 0 || stride > WATER_MAX_VERTEX_STRIDE || stride > vertexDesc.GetSize() || positionOffset + positionSize > stride)
-		return false;
-
-	const auto& worldBound = shape->worldBound;
-	if (!(worldBound.radius > 0.0f))
-		return false;
-
-	if (worldBound.center.x + worldBound.radius < a_originX || worldBound.center.x - worldBound.radius > a_originX + WATER_MAP_EXTENT ||
-		worldBound.center.y + worldBound.radius < a_originY || worldBound.center.y - worldBound.radius > a_originY + WATER_MAP_EXTENT)
-		return true;
-
-	const auto* vertexData = rendererData->rawVertexData;
-	const auto& world = shape->world;
-
-	auto readVertex = [&](uint32_t a_index) {
-		const uint8_t* vertex = vertexData + static_cast<size_t>(a_index) * stride + positionOffset;
-		RE::NiPoint3 position;
-		if (fullPrecision) {
-			float xyz[3];
-			std::memcpy(xyz, vertex, sizeof(xyz));
-			position = { xyz[0], xyz[1], xyz[2] };
-		} else {
-			uint16_t xyz[3];
-			std::memcpy(xyz, vertex, sizeof(xyz));
-			position = { DirectX::PackedVector::XMConvertHalfToFloat(xyz[0]),
-				DirectX::PackedVector::XMConvertHalfToFloat(xyz[1]),
-				DirectX::PackedVector::XMConvertHalfToFloat(xyz[2]) };
-		}
-		return world * position;
-	};
-
-	const float boundLimit = worldBound.radius * WATER_BOUND_TOLERANCE;
-	const uint32_t probeStep = std::max(1u, vertexCount / WATER_VERTEX_PROBE_COUNT);
-	for (uint32_t vertex = 0; vertex < vertexCount; vertex += probeStep) {
-		const auto position = readVertex(vertex);
-		if (!std::isfinite(position.x) || !std::isfinite(position.y) || !std::isfinite(position.z) ||
-			worldBound.center.GetDistance(position) > boundLimit)
-			return false;
-	}
-
-	const auto* indexData = rendererData->rawIndexData;
-	for (uint32_t triangle = 0; triangle < triangleCount; ++triangle) {
-		const uint32_t index0 = indexData[triangle * 3 + 0];
-		const uint32_t index1 = indexData[triangle * 3 + 1];
-		const uint32_t index2 = indexData[triangle * 3 + 2];
-		if (index0 >= vertexCount || index1 >= vertexCount || index2 >= vertexCount)
-			return false;
-		RasterizeWaterTriangle(readVertex(index0), readVertex(index1), readVertex(index2), a_originX, a_originY, a_texelSize);
-	}
-
-	return true;
-}
-
-bool SnowCover::RasterizeWaterBounds(RE::TESWaterObject* a_waterObject, float a_originX, float a_originY, float a_texelSize)
-{
-	const auto& plane = a_waterObject->plane;
-	const bool planeUsable = std::abs(plane.normal.z) > WATER_MAP_FLAT_NORMAL_Z;
-
-	bool processed = false;
-	for (const auto& bound : a_waterObject->multiBounds) {
-		if (!bound)
-			continue;
-		processed = true;
-
-		const auto center = bound->center;
-		const auto size = bound->size;  // half extents
-		const float minX = center.x - size.x, maxX = center.x + size.x;
-		const float minY = center.y - size.y, maxY = center.y + size.y;
-		const float minZ = center.z - size.z, maxZ = center.z + size.z;
-
-		if (maxX < a_originX || minX > a_originX + WATER_MAP_EXTENT || maxY < a_originY || minY > a_originY + WATER_MAP_EXTENT)
-			continue;
-
-		const int32_t lastTexel = static_cast<int32_t>(WATER_MAP_RES) - 1;
-		const int32_t x0 = std::clamp(static_cast<int32_t>(std::floor((minX - a_originX) / a_texelSize)), 0, lastTexel);
-		const int32_t x1 = std::clamp(static_cast<int32_t>(std::floor((maxX - a_originX) / a_texelSize)), 0, lastTexel);
-		const int32_t y0 = std::clamp(static_cast<int32_t>(std::floor((minY - a_originY) / a_texelSize)), 0, lastTexel);
-		const int32_t y1 = std::clamp(static_cast<int32_t>(std::floor((maxY - a_originY) / a_texelSize)), 0, lastTexel);
-
-		for (int32_t y = y0; y <= y1; ++y) {
-			const float worldY = a_originY + (static_cast<float>(y) + 0.5f) * a_texelSize;
-			if (worldY < minY || worldY > maxY)
-				continue;
-			for (int32_t x = x0; x <= x1; ++x) {
-				const float worldX = a_originX + (static_cast<float>(x) + 0.5f) * a_texelSize;
-				if (worldX < minX || worldX > maxX)
-					continue;
-
-				// The clamp keeps a degenerate plane from escaping its own bound.
-				float height = center.z;
-				if (planeUsable) {
-					const float solved = (plane.constant - plane.normal.x * worldX - plane.normal.y * worldY) / plane.normal.z;
-					if (std::isfinite(solved))
-						height = std::clamp(solved, minZ, maxZ);
-				}
-
-				float& texel = waterHeightCPU[static_cast<size_t>(y) * WATER_MAP_RES + static_cast<size_t>(x)];
-				texel = std::max(texel, height);
-			}
-		}
-	}
-
-	return processed;
-}
-
-// SharedData::WaterData holds one height per cell and so cannot see placed water refs (rivers, creeks).
-void SnowCover::UpdateWaterHeightMap()
-{
-	if (!waterHeightMap || !settings.EnableWaterHeightMap || !wsettings.EnableSnowCover || Util::IsInterior()) {
-		waterMapValid = false;
-		return;
-	}
-
-	auto waterSystem = RE::TESWaterSystem::GetSingleton();
-	const uint32_t objectCount = waterSystem ? waterSystem->waterObjects.size() : 0;
-
-	const auto eye = Util::GetEyePosition();
-	int32_t cellX = 0;
-	int32_t cellY = 0;
-	Util::WorldToCell(eye, cellX, cellY);
-
-	const bool stale = !waterMapValid || cellX != waterMapCellX || cellY != waterMapCellY || objectCount != waterMapObjectCount;
-	if (!stale && ++waterMapAge < WATER_MAP_REFRESH_TICKS)
-		return;
-	waterMapAge = 0;
-
-	// Snapped to the cell grid, not the camera, so the map does not shimmer as the player walks.
-	const float originX = static_cast<float>(cellX - 2) * 4096.0f;
-	const float originY = static_cast<float>(cellY - 2) * 4096.0f;
-	constexpr float texelSize = WATER_MAP_EXTENT / static_cast<float>(WATER_MAP_RES);
-
-	std::fill(waterHeightCPU.begin(), waterHeightCPU.end(), WATER_MAP_UNMAPPED);
-
-	bool complete = waterSystem != nullptr;
-	if (waterSystem) {
-		for (const auto& waterObject : waterSystem->waterObjects) {
-			if (!waterObject)
-				continue;
-			if (!RasterizeWaterSurface(waterObject.get(), originX, originY, texelSize) &&
-				!RasterizeWaterBounds(waterObject.get(), originX, originY, texelSize))
-				complete = false;
-		}
-	}
-
-	D3D11_MAPPED_SUBRESOURCE mapped{};
-	auto context = globals::d3d::context;
-	if (FAILED(context->Map(waterHeightMap->resource.get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped))) {
-		waterMapValid = false;
-		return;
-	}
-	auto* dst = static_cast<uint8_t*>(mapped.pData);
-	for (uint32_t row = 0; row < WATER_MAP_RES; ++row)
-		memcpy(dst + static_cast<size_t>(row) * mapped.RowPitch, &waterHeightCPU[static_cast<size_t>(row) * WATER_MAP_RES], WATER_MAP_RES * sizeof(float));
-	context->Unmap(waterHeightMap->resource.get(), 0);
-
-	waterMapCellX = cellX;
-	waterMapCellY = cellY;
-	waterMapObjectCount = objectCount;
-	waterMapValid = true;
-	waterMapComplete = complete;
-}
-
 SnowCover::PerFrame SnowCover::GetCommonBufferData()
 {
 	Reload();
@@ -641,14 +403,6 @@ SnowCover::PerFrame SnowCover::GetCommonBufferData()
 	perFrame.TimeSnowing = timeSnowing;
 	perFrame.SeasonalAltitude = GetSeasonalAltitude();
 
-	UpdateWaterHeightMap();
-	perFrame.WaterMapOrigin = waterMapValid ?
-	                              float2(static_cast<float>(waterMapCellX - 2) * 4096.0f, static_cast<float>(waterMapCellY - 2) * 4096.0f) :
-	                              float2(0.0f, 0.0f);
-	perFrame.WaterMapInvExtent = 1.0f / WATER_MAP_EXTENT;
-	perFrame.WaterMapMode = !waterMapValid ? WATER_MAP_MODE_OFF :
-	                                         (waterMapComplete ? WATER_MAP_MODE_AUTHORITATIVE : WATER_MAP_MODE_PARTIAL);
-
 	perFrame.FireCount = 0;
 	if (settings.EnableFireMelt && globals::game::shadowState) {
 		std::lock_guard lock{ fireSourcesMutex };
@@ -681,27 +435,6 @@ void SnowCover::SetupResources()
 	Reload();
 	if (auto calendar = RE::Calendar::GetSingleton())
 		lastHour = calendar->GetHour();
-
-	waterHeightCPU.assign(static_cast<size_t>(WATER_MAP_RES) * WATER_MAP_RES, WATER_MAP_UNMAPPED);
-
-	D3D11_TEXTURE2D_DESC desc{};
-	desc.Width = WATER_MAP_RES;
-	desc.Height = WATER_MAP_RES;
-	desc.MipLevels = 1;
-	desc.ArraySize = 1;
-	desc.Format = DXGI_FORMAT_R32_FLOAT;
-	desc.SampleDesc.Count = 1;
-	desc.Usage = D3D11_USAGE_DYNAMIC;
-	desc.BindFlags = D3D11_BIND_SHADER_RESOURCE;
-	desc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
-
-	waterHeightMap = std::make_unique<Texture2D>(desc, "SnowCover::WaterHeightMap");
-
-	D3D11_SHADER_RESOURCE_VIEW_DESC srvDesc{};
-	srvDesc.Format = desc.Format;
-	srvDesc.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D;
-	srvDesc.Texture2D.MipLevels = 1;
-	waterHeightMap->CreateSRV(srvDesc);
 }
 
 const char* GetWorldspace()
@@ -931,9 +664,6 @@ void SnowCover::Prepass()
 		for (size_t i = 0; i < views.size(); ++i)
 			srvs[i] = views[i].get();
 		globals::d3d::context->PSSetShaderResources(FIRST_SRV_SLOT, (uint)views.size(), srvs);
-
-		ID3D11ShaderResourceView* waterMapSrv = waterHeightMap ? waterHeightMap->srv.get() : nullptr;
-		globals::d3d::context->PSSetShaderResources(WATER_MAP_SRV_SLOT, 1, &waterMapSrv);
 	}
 }
 

@@ -29,21 +29,6 @@ namespace Util
 		Dest.m[2][3] = Source.translate.z;
 	}
 
-	// Fallback past the 5x5 WaterData grid (all terrain LOD), where no per-cell water height exists.
-	float TryGetDefaultWaterHeight()
-	{
-		if (globals::game::shadowState && !IsInterior()) {
-			if (auto tes = RE::TES::GetSingleton()) {
-				if (auto worldSpace = tes->GetRuntimeData2().worldSpace) {
-					const float height = worldSpace->GetDefaultWaterHeight();
-					if (std::isfinite(height))
-						return height - GetEyePosition().z;
-				}
-			}
-		}
-		return -FLT_MAX;
-	}
-
 	float4 TryGetWaterData(float offsetX, float offsetY)
 	{
 		if (globals::game::shadowState) {

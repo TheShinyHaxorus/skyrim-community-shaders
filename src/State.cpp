@@ -1039,7 +1039,7 @@ void State::UpdateSharedData([[maybe_unused]] bool a_inWorld, [[maybe_unused]] b
 			}
 		}
 
-		data.DefaultWaterHeight = Util::TryGetDefaultWaterHeight();
+		data.WaterSystemHeight = -RE::NI_INFINITY;
 
 		data.InInterior = Util::IsInterior();
 		data.HasDirectionalShadows = HasDirectionalShadows();

@@ -34,22 +34,7 @@ private:
 	static constexpr float DEFAULT_WINTER_HEIGHT_OFFSET = -20000.0f;        // how high snow is in winter (in game units)
 	static constexpr uint DEFAULT_PEAK_SUMMER_MONTH = 6;
 	static constexpr uint DEFAULT_PEAK_WINTER_MONTH = 0;
-	static constexpr uint32_t FIRST_SRV_SLOT = 38;      // t38-t44, see SnowCover.hlsli
-	static constexpr uint32_t WATER_MAP_SRV_SLOT = 46;  // t45 is ScreenSpaceShadows
-	static constexpr uint32_t WATER_MAP_RES = 512;
-	static constexpr float WATER_MAP_EXTENT = 5.0f * 4096.0f;  // the 5x5 loaded cell grid
-	static constexpr float WATER_MAP_UNMAPPED = -1e30f;
-	static constexpr float WATER_MAP_FLAT_NORMAL_Z = 0.5f;
-	static constexpr uint32_t WATER_MAP_REFRESH_TICKS = 360;  // UpdateSharedData runs several times a frame
-
-	static constexpr float WATER_MAP_MODE_OFF = 0.0f;
-	static constexpr float WATER_MAP_MODE_PARTIAL = 1.0f;
-	static constexpr float WATER_MAP_MODE_AUTHORITATIVE = 2.0f;
-	static constexpr uint32_t WATER_MAX_VERTEX_STRIDE = 64;
-	static constexpr uint32_t WATER_VERTEX_PROBE_COUNT = 8;
-	static constexpr float WATER_BOUND_TOLERANCE = 1.5f;
-	static constexpr float WATER_TRIANGLE_MIN_AREA = 1.0f;
-	static constexpr float WATER_TRIANGLE_EDGE_TOLERANCE = 1e-4f;
+	static constexpr uint32_t FIRST_SRV_SLOT = 38;  // t38-t44, see SnowCover.hlsli
 
 	static constexpr uint32_t MAX_FIRE_SOURCES = 16;
 	static constexpr uint32_t FIRE_SEEN_GRACE_TICKS = 4;    // tolerate a few culled frames before fading out
@@ -72,7 +57,7 @@ public:
 		uint EnableExpensiveFoliage = 1;
 		float SnowHeightOffset = 0.0f;
 		uint AffectHavok = 0;
-		uint EnableWaterHeightMap = 1;
+		uint pad0 = 0;
 
 		uint EnableFireMelt = 1;
 		float FireRadiusScale = 3.0f;
@@ -130,10 +115,6 @@ public:
 		float SnowingDensity;
 		float SeasonalAltitude;
 
-		float2 WaterMapOrigin;
-		float WaterMapInvExtent;
-		float WaterMapMode;  // WATER_MAP_MODE_*
-
 		UserSettings settings;
 		WorldSettings wsettings;
 
@@ -142,7 +123,7 @@ public:
 		float4 FireSources[MAX_FIRE_SOURCES];  // xyz = world position, w = melt radius
 	};
 	static_assert(sizeof(PerFrame) % 16 == 0);
-	static_assert(sizeof(PerFrame) == 480);
+	static_assert(sizeof(PerFrame) == 464);
 
 	UserSettings settings;
 	WorldSettings wsettings;
@@ -152,24 +133,10 @@ public:
 
 	std::array<winrt::com_ptr<ID3D11ShaderResourceView>, 7> views;
 
-	std::unique_ptr<Texture2D> waterHeightMap;
-	std::vector<float> waterHeightCPU;
-	int32_t waterMapCellX = 0;
-	int32_t waterMapCellY = 0;
-	uint32_t waterMapObjectCount = 0;
-	uint32_t waterMapAge = 0;
-	bool waterMapValid = false;
-	bool waterMapComplete = false;
-
-	void UpdateWaterHeightMap();
-	bool RasterizeWaterSurface(RE::TESWaterObject* a_waterObject, float a_originX, float a_originY, float a_texelSize);
-	bool RasterizeWaterBounds(RE::TESWaterObject* a_waterObject, float a_originX, float a_originY, float a_texelSize);
-	void RasterizeWaterTriangle(const RE::NiPoint3& a_v0, const RE::NiPoint3& a_v1, const RE::NiPoint3& a_v2, float a_originX, float a_originY, float a_texelSize);
-
 	struct FireSource
 	{
 		RE::NiPoint3 position;
-		float radius;         // full melt radius while lit
+		float radius;           // full melt radius while lit
 		float strength = 0.0f;  // eased 0..1 so melt grows in and recedes out smoothly
 		uint32_t lastSeenTick;
 	};

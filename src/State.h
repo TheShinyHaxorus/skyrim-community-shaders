@@ -351,7 +351,7 @@ public:
 		uint InMapMenu;
 		uint HideSky;
 		float MipBias;
-		float DefaultWaterHeight;  // Worldspace default water plane, camera-relative Z; -FLT_MAX outside exteriors
+		float WaterSystemHeight;  // TES::GetWaterHeight in camera-relative Z; -NI_INFINITY when no water body found
 		float3 pad0;
 		float4 AmbientSHR;
 		float4 AmbientSHG;

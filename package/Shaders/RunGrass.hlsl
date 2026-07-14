@@ -476,8 +476,7 @@ PS_OUTPUT main(PS_INPUT input, bool frontFace : SV_IsFrontFace)
 			}
 		}
 		float3 snowWorldPos = input.WorldPosition.xyz + FrameBuffer::CameraPosAdjust.xyz;
-		float snowWaterHeight = SharedData::GetWaterData(input.WorldPosition.xyz, SharedData::DefaultWaterHeight).w;
-		snowOcclusion *= saturate(SnowCover::GetWaterDistance(snowWorldPos, input.WorldPosition.z, snowWaterHeight));
+		snowOcclusion *= saturate(input.WorldPosition.z - SharedData::GetWaterData(input.WorldPosition.xyz).w);
 		SnowCover::ApplySnowFoliage(baseColor.xyz, float3(input.TexCoord.xy, normal.z * 0.5 + 0.5), snowWorldPos, snowOcclusion, length(viewPosition.xyz), 1.0);
 	}
 #		endif
