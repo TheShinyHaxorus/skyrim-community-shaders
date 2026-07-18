@@ -501,11 +501,6 @@ void SubsurfaceScattering::BSLightingShader_SetupSkin(RE::BSRenderPass* a_pass)
 	auto state = globals::state;
 
 	if (deferred->deferredPass) {
-		if (a_pass->shaderProperty->flags.any(RE::BSShaderProperty::EShaderPropertyFlag::kDecal, RE::BSShaderProperty::EShaderPropertyFlag::kDynamicDecal))
-			state->permutationData.ExtraShaderDescriptor |= (uint)State::ExtraShaderDescriptors::IsDecal;
-		else
-			state->permutationData.ExtraShaderDescriptor &= ~(uint)State::ExtraShaderDescriptors::IsDecal;
-
 		if (a_pass->shaderProperty->flags.any(RE::BSShaderProperty::EShaderPropertyFlag::kFace, RE::BSShaderProperty::EShaderPropertyFlag::kFaceGenRGBTint)) {
 			bool isBeastRace = true;
 

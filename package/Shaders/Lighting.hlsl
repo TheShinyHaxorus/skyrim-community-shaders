@@ -3615,9 +3615,7 @@ PS_OUTPUT main(PS_INPUT input, bool frontFace : SV_IsFrontFace)
 	float masksZ = Color::RGBToYCoCg(directionalAmbientColor).x;
 
 #		if defined(SSS) && defined(SKIN)
-	// Decals (blood) must not register as scattering skin
-	float sssMaskAmount = (Permutation::ExtraShaderDescriptor & Permutation::ExtraFlags::IsDecal) ? 0.0 : saturate(baseColor.a);
-	psout.Masks = float4(sssMaskAmount, !(Permutation::ExtraShaderDescriptor & Permutation::ExtraFlags::IsBeastRace), masksZ, psout.Diffuse.w);
+	psout.Masks = float4(saturate(baseColor.a), !(Permutation::ExtraShaderDescriptor & Permutation::ExtraFlags::IsBeastRace), masksZ, psout.Diffuse.w);
 #		else
 	psout.Masks = float4(0, 0, masksZ, psout.Diffuse.w);
 #		endif

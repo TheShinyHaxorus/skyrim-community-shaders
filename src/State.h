@@ -272,8 +272,7 @@ public:
 		IsSun = 1 << 4,
 		SuppressExternalEmittance = 1 << 5,
 		IsEye = 1 << 6,
-		NoSnow = 1 << 7,
-		IsDecal = 1 << 8
+		NoSnow = 1 << 7
 	};
 
 	enum class ExtraFeatureDescriptors : uint32_t
