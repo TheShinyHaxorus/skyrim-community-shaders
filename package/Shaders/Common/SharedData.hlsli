@@ -331,7 +331,18 @@ namespace SharedData
 
 		float FireIntensity;
 		float FireCurve;
-		float2 EnbPadding;
+		uint EnableWater;
+		float WaterWavesAmplitude;
+
+		float WaterMuddiness;
+		float WaterSunLightingMultiplier;
+		float WaterSunSpecularMultiplier;
+		float WaterFresnelMin;
+
+		float WaterFresnelMax;
+		float WaterFresnelMultiplier;
+		float WaterReflectionAmount;
+		float EnbPadding;
 	};
 
 	struct TerrainBlendingSettings

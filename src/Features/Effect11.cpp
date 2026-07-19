@@ -90,6 +90,16 @@ Effect11::PerFrame Effect11::GetCommonBufferData()
 	data.FireIntensity = settingManager.GetInterpolatedTimeOfDayValue("Intensity", "FIRE");
 	data.FireCurve = settingManager.GetInterpolatedTimeOfDayValue("Curve", "FIRE");
 
+	data.EnableWater = enableEffect && settingManager.GetValue<bool>("EnableWater", "EFFECT");
+	data.WaterWavesAmplitude = settingManager.GetInterpolatedTimeOfDayValue("WavesAmplitude", "WATER");
+	data.WaterMuddiness = settingManager.GetValue<float>("Muddiness", "WATER");
+	data.WaterSunLightingMultiplier = settingManager.GetValue<float>("SunLightingMultiplier", "WATER");
+	data.WaterSunSpecularMultiplier = settingManager.GetValue<float>("SunSpecularMultiplier", "WATER");
+	data.WaterFresnelMin = settingManager.GetValue<float>("FresnelMin", "WATER");
+	data.WaterFresnelMax = settingManager.GetValue<float>("FresnelMax", "WATER");
+	data.WaterFresnelMultiplier = settingManager.GetValue<float>("FresnelMultiplier", "WATER");
+	data.WaterReflectionAmount = settingManager.GetValue<float>("ReflectionAmount", "WATER");
+
 	data.EnableProceduralSun = enableEffect && settingManager.GetValue<bool>("EnableProceduralSun", "EFFECT");
 
 	{
@@ -366,6 +376,14 @@ void Effect11::OverrideWeather(RE::Sky* a_sky)
 		a_sky->fogFar /= fogAmountMultiplier;
 	}
 
+	if (settingManager.GetValue<bool>("EnableWater", "EFFECT")) {
+		auto& waterColor = colors[(uint)RE::TESWeather::ColorTypes::kWaterMultiplier];
+
+		auto waterColorF3 = NiToF3(waterColor);
+		waterColorF3 = Intensity(waterColorF3, settingManager.GetInterpolatedTimeOfDayValue("Brightness", "WATER"));
+		waterColor = F3ToNi(waterColorF3);
+	}
+
 	const bool enableSky = enableEffect && settingManager.GetValue<bool>("Enable", "SKY");
 
 	if (enableSky) {
@@ -635,7 +653,6 @@ void Effect11::ModifySky(RE::BSRenderPass* Pass)
 	}
 }
 
-
 void Effect11::ModifyParticle(RE::BSRenderPass* Pass)
 {
 	if (!enableEffect || !raindropSRV)
@@ -651,7 +668,6 @@ void Effect11::ModifyParticle(RE::BSRenderPass* Pass)
 	ID3D11Buffer* cbs[] = { globals::state->sharedDataCB->CB(), globals::state->featureDataCB->CB() };
 	context->VSSetConstantBuffers(5, 2, cbs);
 }
-
 
 void Effect11::ParticleShaderHacks()
 {

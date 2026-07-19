@@ -27,7 +27,7 @@ EffectManager& EffectManager::GetSingleton()
 uint32_t EffectManager::GetFailedEffectCount() const
 {
 	uint32_t count = 0;
-	const Effect* allEffects[] = { &enbBloom, &enbLens, &enbAdaptation, &enbEffect, &enbEffectPostPass };
+	const Effect* allEffects[] = { &enbDepthOfField, &enbBloom, &enbLens, &enbAdaptation, &enbEffect, &enbEffectPostPass };
 	for (const auto* effect : allEffects)
 		if (effect->IsFilePresent() && !effect->GetErrors().empty())
 			count++;
@@ -37,7 +37,7 @@ uint32_t EffectManager::GetFailedEffectCount() const
 std::vector<std::string> EffectManager::GetAllErrors() const
 {
 	std::vector<std::string> result;
-	const Effect* allEffects[] = { &enbBloom, &enbLens, &enbAdaptation, &enbEffect, &enbEffectPostPass };
+	const Effect* allEffects[] = { &enbDepthOfField, &enbBloom, &enbLens, &enbAdaptation, &enbEffect, &enbEffectPostPass };
 	for (const auto* effect : allEffects)
 		if (effect->IsFilePresent() && !effect->GetErrors().empty())
 			for (const auto& err : effect->GetErrors())
@@ -86,13 +86,13 @@ void EffectManager::Initialize()
 	} else {
 		initialized = true;
 	}
-
 }
 
 void EffectManager::Apply()
 {
 	globals::features::effect11.LoadRaindropTexture();
 
+	enbDepthOfField.Apply();
 	enbBloom.Apply();
 	enbLens.Apply();
 	enbAdaptation.Apply();
@@ -100,7 +100,7 @@ void EffectManager::Apply()
 	enbEffectPostPass.Apply();
 
 #ifdef ENABLE_ENB_EXTENDER
-	EffectBase* allEffects[] = { &enbBloom, &enbLens, &enbAdaptation, &enbEffect, &enbEffectPostPass };
+	EffectBase* allEffects[] = { &enbDepthOfField, &enbBloom, &enbLens, &enbAdaptation, &enbEffect, &enbEffectPostPass };
 	for (auto* effect : allEffects) {
 		if (effect->IsCompiled())
 			effect->LoadWeatherData();
@@ -110,7 +110,7 @@ void EffectManager::Apply()
 
 void EffectManager::Load()
 {
-	Effect* allEffects[] = { &enbBloom, &enbLens, &enbAdaptation, &enbEffect, &enbEffectPostPass };
+	Effect* allEffects[] = { &enbDepthOfField, &enbBloom, &enbLens, &enbAdaptation, &enbEffect, &enbEffectPostPass };
 	for (auto* effect : allEffects) {
 		effect->lastIniWriteTime = {};
 		effect->Load();
@@ -120,6 +120,7 @@ void EffectManager::Load()
 
 void EffectManager::Save()
 {
+	enbDepthOfField.Save();
 	enbBloom.Save();
 	enbLens.Save();
 	enbAdaptation.Save();
@@ -129,7 +130,7 @@ void EffectManager::Save()
 
 void EffectManager::SaveDirty()
 {
-	Effect* allEffects[] = { &enbBloom, &enbLens, &enbAdaptation, &enbEffect, &enbEffectPostPass };
+	Effect* allEffects[] = { &enbDepthOfField, &enbBloom, &enbLens, &enbAdaptation, &enbEffect, &enbEffectPostPass };
 	for (auto* effect : allEffects)
 		if (effect->uiDirty)
 			effect->Save();
@@ -137,7 +138,7 @@ void EffectManager::SaveDirty()
 
 bool EffectManager::AnyUnsaved() const
 {
-	const Effect* allEffects[] = { &enbBloom, &enbLens, &enbAdaptation, &enbEffect, &enbEffectPostPass };
+	const Effect* allEffects[] = { &enbDepthOfField, &enbBloom, &enbLens, &enbAdaptation, &enbEffect, &enbEffectPostPass };
 	for (const auto* effect : allEffects)
 		if (effect->uiDirty)
 			return true;
@@ -154,6 +155,8 @@ void EffectManager::RegisterSettings()
 	settingManager.RegisterBoolSetting("EnableAdaptation", "EFFECT", false, false);
 	settingManager.RegisterBoolSetting("EnableBloom", "EFFECT", false, false);
 	settingManager.RegisterBoolSetting("EnableLens", "EFFECT", false, false);
+	settingManager.RegisterBoolSetting("EnableDepthOfField", "EFFECT", false, false);
+	settingManager.RegisterBoolSetting("EnableWater", "EFFECT", false, false);
 	settingManager.RegisterBoolSetting("EnablePostPassShader", "EFFECT", false, false);
 	settingManager.RegisterBoolSetting("EnableProceduralSun", "EFFECT", false, false);
 	settingManager.RegisterBoolSetting("EnableCloudShadows", "EFFECT", false, false);
@@ -179,6 +182,19 @@ void EffectManager::RegisterSettings()
 	settingManager.RegisterBoolSetting("ForceMinMaxValues", "ADAPTATION", false, false);
 	settingManager.RegisterFloatSetting("AdaptationMin", "ADAPTATION", 0.1f, 0.0f, 65536.0f, 0.01f, false);
 	settingManager.RegisterFloatSetting("AdaptationMax", "ADAPTATION", 10.0f, 0.0f, 65536.0f, 0.01f, false);
+
+	settingManager.RegisterFloatSetting("FocusingTime", "DEPTHOFFIELD", 1.0f, 0.1f, 10.0f, 0.01f, false);
+	settingManager.RegisterFloatSetting("ApertureTime", "DEPTHOFFIELD", 1.0f, 0.1f, 10.0f, 0.01f, false);
+
+	settingManager.RegisterTimeOfDaySetting("Brightness", "WATER", 1.0f, 0.0f, 10.0f, 0.01f, true);
+	settingManager.RegisterTimeOfDaySetting("WavesAmplitude", "WATER", 1.0f, 0.0f, 4.0f, 0.01f, true);
+	settingManager.RegisterFloatSetting("Muddiness", "WATER", 1.0f, 0.0f, 1.0f, 0.01f, false);
+	settingManager.RegisterFloatSetting("SunLightingMultiplier", "WATER", 1.0f, 0.0f, 1.0f, 0.01f, false);
+	settingManager.RegisterFloatSetting("SunSpecularMultiplier", "WATER", 1.0f, 0.0f, 1.0f, 0.01f, false);
+	settingManager.RegisterFloatSetting("FresnelMin", "WATER", 1.0f, 0.0f, 1.0f, 0.01f, false);
+	settingManager.RegisterFloatSetting("FresnelMax", "WATER", 1.0f, 0.0f, 1.0f, 0.01f, false);
+	settingManager.RegisterFloatSetting("FresnelMultiplier", "WATER", 1.0f, 0.0f, 4.0f, 0.01f, false);
+	settingManager.RegisterFloatSetting("ReflectionAmount", "WATER", 1.0f, 0.0f, 1.0f, 0.01f, false);
 
 	settingManager.RegisterTimeOfDaySetting("Amount", "BLOOM", 0.1f, 0.0f, 10.0f, 0.01f, true);
 
@@ -308,6 +324,7 @@ void EffectManager::RegisterSettings()
 	settingManager.SetCategoryTab("GAMEVOLUMETRICRAYS", "Weather");
 	settingManager.SetCategoryTab("SUNGLARE", "Weather");
 	settingManager.SetCategoryTab("CLOUDSHADOWS", "Weather");
+	settingManager.SetCategoryTab("WATER", "Weather");
 
 	settingManager.SetCategoryExteriorOnly("RAIN", true);
 	settingManager.SetCategoryExteriorOnly("SKYLIGHTING", true);
@@ -319,6 +336,7 @@ void EffectManager::RegisterSettings()
 	settingManager.SetCategoryExteriorOnly("GAMEVOLUMETRICRAYS", true);
 
 	// Cache IDs for performance
+	ids.useDepthOfField = settingManager.GetSettingID("EnableDepthOfField", "EFFECT");
 	ids.useBloom = settingManager.GetSettingID("EnableBloom", "EFFECT");
 	ids.useLens = settingManager.GetSettingID("EnableLens", "EFFECT");
 	ids.useAdaptation = settingManager.GetSettingID("EnableAdaptation", "EFFECT");
@@ -408,6 +426,8 @@ void EffectManager::ExecuteEffects(RE::BSGraphics::RenderTargetData& a_input, [[
 	globals::profiler->EndPass();
 
 	auto& textureManager = TextureManager::GetSingleton();
+
+	ExecuteEffect(enbDepthOfField, ids.useDepthOfField);
 
 	textureManager.UpdateDownsampledTexture(textureOriginal.SRV);
 
@@ -987,7 +1007,7 @@ void EffectManager::ReloadShaders()
 
 void EffectManager::RenderEffectsList()
 {
-	Effect* allEffects[] = { &enbBloom, &enbLens, &enbAdaptation, &enbEffect, &enbEffectPostPass };
+	Effect* allEffects[] = { &enbDepthOfField, &enbBloom, &enbLens, &enbAdaptation, &enbEffect, &enbEffectPostPass };
 
 	std::vector<Effect*> compiledEffects;
 	for (auto* effect : allEffects)
