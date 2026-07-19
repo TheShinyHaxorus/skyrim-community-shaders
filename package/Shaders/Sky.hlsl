@@ -248,13 +248,6 @@ PS_OUTPUT main(PS_INPUT input)
 		skyScale = 0.0f;
 	}
 
-#			if defined(CLOUD_SHADOWS)
-	if (HDRSun::IsHdrSunActive()) {
-		float cloudMult = CloudShadows::GetCloudShadowMult(input.WorldPosition.xyz, SampBaseSampler);
-		baseColor.xyz *= cloudMult;
-		baseColor.w *= cloudMult;
-	}
-#			endif
 #		endif
 
 #		if defined(TEX)
