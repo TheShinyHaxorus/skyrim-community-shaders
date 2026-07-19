@@ -48,6 +48,17 @@ public:
 	Texture2D* texCubemapCloudOccCopy = nullptr;
 	Texture2D* texSelfShadowCopy = nullptr;
 
+	bool enableTemporalSmoothing = true;
+	Texture2D* texCloudOccAccum = nullptr;
+	ID3D11ShaderResourceView* cloudOccCopyArraySRV = nullptr;
+	ID3D11ComputeShader* temporalBlendCS = nullptr;
+	ID3D11Buffer* temporalBlendCB = nullptr;
+	bool temporalBlendUnavailable = false;
+	bool accumPrimed = false;
+	std::chrono::steady_clock::time_point lastAccumUpdate{};
+
+	ID3D11ShaderResourceView* BlendOcclusionHistory();
+
 	UINT cubemapMipLevels = 1;
 	int currentLayerForDraw = 0;
 
