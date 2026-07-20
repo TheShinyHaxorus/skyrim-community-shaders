@@ -21,7 +21,7 @@ on:
             mod_filename:
                 description: "Filename used for the Nexus mod upload"
                 required: false
-                default: "Community Shaders"
+                default: "Bottled Shaders"
             dry_run:
                 description: "If true, do not upload to Nexus; only report the planned upload"
                 required: false
@@ -58,7 +58,7 @@ on:
             mod_filename:
                 required: false
                 type: string
-                default: "Community Shaders"
+                default: "Bottled Shaders"
             dry_run:
                 required: false
                 type: string

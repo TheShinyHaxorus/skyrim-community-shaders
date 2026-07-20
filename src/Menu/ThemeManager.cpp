@@ -942,7 +942,7 @@ void ThemeManager::CreateDefaultThemeFiles()
 	"DisplayName": "Default Theme",
 	"Description": "Default community shaders theme",
 	"Version": "1.0",
-	"Author": "Community Shaders",
+	"Author": "Bottled Shaders",
 	"Theme": {
 		"UseSimplePalette": true,
 		"Palette": {

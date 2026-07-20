@@ -93,7 +93,8 @@ namespace Util::IconLoader
 		const bool useMonochrome = menu->GetSettings().Theme.UseMonochromeIcons;
 		const bool useMonochromeLogo = menu->GetSettings().Theme.UseMonochromeLogo;
 		const char* iconFolder = useMonochrome ? "Action Icons\\Monochrome" : "Action Icons";
-		const char* logoPath = useMonochromeLogo ? "Community Shaders Logo\\Monochrome\\cs-logo.png" : "Community Shaders Logo\\cs-logo.png";
+		const char* logoPath = useMonochromeLogo ? "Bottled Shaders Logo\\Monochrome\\bottled-shaders-logo.png" : "Bottled Shaders Logo\\bottled-shaders-logo.png";
+		const char* emblemPath = useMonochromeLogo ? "Bottled Shaders Logo\\Monochrome\\bottled-shaders-emblem.png" : "Bottled Shaders Logo\\bottled-shaders-emblem.png";
 
 		return {
 			{ std::string(iconFolder) + "\\save-settings.png", &menu->uiIcons.saveSettings.texture, &menu->uiIcons.saveSettings.size },
@@ -101,6 +102,7 @@ namespace Util::IconLoader
 			{ std::string(iconFolder) + "\\clear-cache.png", &menu->uiIcons.clearCache.texture, &menu->uiIcons.clearCache.size },
 			{ std::string(iconFolder) + "\\delete.png", &menu->uiIcons.deleteSettings.texture, &menu->uiIcons.deleteSettings.size },
 			{ logoPath, &menu->uiIcons.logo.texture, &menu->uiIcons.logo.size },
+			{ emblemPath, &menu->uiIcons.logoEmblem.texture, &menu->uiIcons.logoEmblem.size },
 			{ std::string(iconFolder) + "\\restore-settings.png", &menu->uiIcons.featureSettingRevert.texture, &menu->uiIcons.featureSettingRevert.size },
 			{ std::string(iconFolder) + "\\discord.png", &menu->uiIcons.discord.texture, &menu->uiIcons.discord.size },
 			{ std::string(iconFolder) + "\\apply-to-game.png", &menu->uiIcons.applyToGame.texture, &menu->uiIcons.applyToGame.size },

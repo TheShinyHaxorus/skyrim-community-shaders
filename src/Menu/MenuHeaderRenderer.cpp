@@ -26,7 +26,7 @@ void MenuHeaderRenderer::RenderHeader(bool isDocked, bool showLogo, bool canShow
 
 	auto versionStr = Util::GetFormattedVersion(Plugin::VERSION);
 	auto expectedTag = std::format("v{}", versionStr);
-	auto title = Plugin::BUILD_DESCRIBE == expectedTag ? std::format("Community Shaders {}", versionStr) : std::format("Community Shaders {} [{}]", versionStr, Plugin::BUILD_DESCRIBE);
+	auto title = Plugin::BUILD_DESCRIBE == expectedTag ? std::format("Bottled Shaders {}", versionStr) : std::format("Bottled Shaders {} [{}]", versionStr, Plugin::BUILD_DESCRIBE);
 	auto actionIcons = BuildActionIcons(canShowIcons, uiIcons);
 
 	if (isDocked) {
@@ -55,12 +55,16 @@ void MenuHeaderRenderer::RenderHeader(bool isDocked, bool showLogo, bool canShow
 			const float textScaleFactor = baseTextScale * uiScale;
 			const float logoSize = baseIconSize * uiScale;  // Match action icon size
 
+			// Inline header uses the emblem-only crop (no wordmark); the full lockup is reserved for the watermark.
+			ID3D11ShaderResourceView* inlineLogoTex = uiIcons.logoEmblem.texture ? uiIcons.logoEmblem.texture : uiIcons.logo.texture;
+			const ImVec2 inlineLogoSrcSize = uiIcons.logoEmblem.texture ? uiIcons.logoEmblem.size : uiIcons.logo.size;
+
 			if (centerHeader) {
 				// Calculate the width of the content
 				float contentWidth = 0.0f;
 
 				if (showLogo) {
-					float logoAspectRatio = uiIcons.logo.size.x / uiIcons.logo.size.y;
+					float logoAspectRatio = inlineLogoSrcSize.x / inlineLogoSrcSize.y;
 					contentWidth = (logoSize * logoAspectRatio) + ImGui::GetStyle().ItemSpacing.x;
 				}
 
@@ -83,7 +87,7 @@ void MenuHeaderRenderer::RenderHeader(bool isDocked, bool showLogo, bool canShow
 
 			// Always display logo if texture is available
 			if (showLogo) {
-				float logoAspectRatio = uiIcons.logo.size.x / uiIcons.logo.size.y;
+				float logoAspectRatio = inlineLogoSrcSize.x / inlineLogoSrcSize.y;
 				ImVec2 logoSizeVec(logoSize * logoAspectRatio, logoSize);
 
 				// Determine tint color for logo
@@ -97,7 +101,7 @@ void MenuHeaderRenderer::RenderHeader(bool isDocked, bool showLogo, bool canShow
 				{
 					RoleFontGuard titleFont(Menu::FontRole::Title);
 					Util::DrawAlignedTextWithLogo(
-						uiIcons.logo.texture,
+						inlineLogoTex,
 						logoSizeVec,
 						title.c_str(),
 						textScaleFactor,

@@ -57,7 +57,7 @@ public:
 	enum class FontRole : std::uint8_t
 	{
 		Body = 0,    // Default UI text
-		Title,       // Large title text (e.g., "Community Shaders" header)
+		Title,       // Large title text (e.g., "Bottled Shaders" header)
 		Heading,     // Section headers (tabs, category labels)
 		Subheading,  // Subsection headers (feature names, separators)
 		Subtext,     // Smaller secondary text (descriptions, about content)
@@ -235,7 +235,8 @@ public:
 		UIIcon loadSettings;
 		UIIcon deleteSettings;
 		UIIcon clearCache;
-		UIIcon logo;                  // New logo icon
+		UIIcon logo;                  // Full logo lockup (watermark / home page)
+		UIIcon logoEmblem;            // Emblem-only crop for the small inline header slot
 		UIIcon search;                // Search icon for search bars
 		UIIcon featureSettingRevert;  // Feature revert settings icon
 		UIIcon applyToGame;           // Apply changes to game icon (CS editor)
@@ -295,7 +296,7 @@ public:
 		bool UseSimplePalette = false;      // DEPRECATED: No longer affects behavior. UI now shows both Simple and Advanced controls.
 		bool ShowActionIcons = true;        // whether to show action buttons as icons
 		bool UseMonochromeIcons = false;    // whether to use monochrome (white) action icons with text color tinting
-		bool UseMonochromeLogo = false;     // whether to use monochrome CS logo
+		bool UseMonochromeLogo = false;     // whether to use monochrome logo
 		bool ShowFooter = true;             // whether to show the footer with game version/GPU info
 		bool CenterHeader = false;          // whether to center the header title and logo
 		float TooltipHoverDelay = 0.5f;     // tooltip hover delay in seconds
