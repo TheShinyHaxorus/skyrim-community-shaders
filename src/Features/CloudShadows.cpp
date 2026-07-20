@@ -6,8 +6,6 @@
 #include "State.h"
 #include "Utils/D3D.h"
 
-#include <d3dcompiler.h>
-
 #define I18N_KEY_PREFIX "feature.cloud_shadows."
 
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(
@@ -16,12 +14,6 @@ NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(
 
 void CloudShadows::DrawSettings()
 {
-	ImGui::Checkbox(T(TKEY("temporal_smoothing"), "Temporal Smoothing"), &enableTemporalSmoothing);
-	if (auto _tt = Util::HoverTooltipWrapper()) {
-		ImGui::Text("%s", T(TKEY("temporal_smoothing_tooltip"),
-							  "Smooths the cloud occlusion cubemap over time. The cubemap updates one face per frame, so shadows and cloud scattering can visibly flash when the sun sits behind a cloud edge; smoothing spreads those steps over a few frames."));
-	}
-
 	if (globals::features::effect11.loaded) {
 		auto& enb = globals::features::effect11;
 		if (enb.enableEffect) {
@@ -42,20 +34,16 @@ void CloudShadows::DrawSettings()
 void CloudShadows::LoadSettings(json& o_json)
 {
 	settings = o_json;
-	if (o_json.contains("EnableTemporalSmoothing") && o_json["EnableTemporalSmoothing"].is_boolean())
-		enableTemporalSmoothing = o_json["EnableTemporalSmoothing"];
 }
 
 void CloudShadows::SaveSettings(json& o_json)
 {
 	o_json = settings;
-	o_json["EnableTemporalSmoothing"] = enableTemporalSmoothing;
 }
 
 void CloudShadows::RestoreDefaultSettings()
 {
 	settings = {};
-	enableTemporalSmoothing = true;
 }
 
 CloudShadows::Settings CloudShadows::GetCommonBufferData()
@@ -245,127 +233,6 @@ void CloudShadows::ModifySky(RE::BSRenderPass* Pass)
 	}
 }
 
-void CloudShadows::ReflectionsPrepass()
-{
-}
-
-ID3D11ShaderResourceView* CloudShadows::BlendOcclusionHistory()
-{
-	ID3D11ShaderResourceView* fallback = texCubemapCloudOccCopy->srv.get();
-
-	if (!enableTemporalSmoothing || temporalBlendUnavailable || !texCloudOccAccum || !cloudOccCopyArraySRV) {
-		accumPrimed = false;
-		return fallback;
-	}
-
-	auto device = globals::d3d::device;
-	auto context = globals::d3d::context;
-
-	if (!temporalBlendCS) {
-		static const char shaderSource[] = R"(
-Texture2DArray<float> Src : register(t0);
-RWTexture2DArray<float> Accum : register(u0);
-cbuffer BlendCB : register(b0)
-{
-	float BlendFactor;
-	float Width;
-	float Height;
-	float pad;
-}
-[numthreads(8, 8, 1)]
-void main(uint3 id : SV_DispatchThreadID)
-{
-	int2 maxCoord = int2(int(Width) - 1, int(Height) - 1);
-	float sum = 0.0;
-	float weightSum = 0.0;
-	[unroll] for (int y = -1; y <= 1; y++) {
-		[unroll] for (int x = -1; x <= 1; x++) {
-			int2 p = clamp(int2(id.xy) + int2(x, y), int2(0, 0), maxCoord);
-			float w = (x == 0 ? 2.0 : 1.0) * (y == 0 ? 2.0 : 1.0);
-			sum += Src[uint3(p, id.z)] * w;
-			weightSum += w;
-		}
-	}
-	Accum[id] = lerp(Accum[id], sum / weightSum, BlendFactor);
-}
-)";
-		winrt::com_ptr<ID3DBlob> csBlob, errorBlob;
-		HRESULT hr = D3DCompile(shaderSource, sizeof(shaderSource) - 1, "CloudShadowsTemporalBlendCS", nullptr, nullptr,
-			"main", "cs_5_0", 0, 0, csBlob.put(), errorBlob.put());
-		if (FAILED(hr)) {
-			logger::error("[Cloud Shadows] Failed to compile temporal blend shader: {}",
-				errorBlob ? static_cast<char*>(errorBlob->GetBufferPointer()) : "unknown error");
-			temporalBlendUnavailable = true;
-			return fallback;
-		}
-		hr = device->CreateComputeShader(csBlob->GetBufferPointer(), csBlob->GetBufferSize(), nullptr, &temporalBlendCS);
-		if (FAILED(hr)) {
-			logger::error("[Cloud Shadows] Failed to create temporal blend shader");
-			temporalBlendUnavailable = true;
-			return fallback;
-		}
-		Util::SetResourceName(temporalBlendCS, "CloudShadows::TemporalBlendCS");
-	}
-
-	if (!temporalBlendCB) {
-		D3D11_BUFFER_DESC cbDesc{};
-		cbDesc.ByteWidth = 16;
-		cbDesc.Usage = D3D11_USAGE_DYNAMIC;
-		cbDesc.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
-		cbDesc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
-		if (FAILED(device->CreateBuffer(&cbDesc, nullptr, &temporalBlendCB))) {
-			logger::error("[Cloud Shadows] Failed to create temporal blend constant buffer");
-			temporalBlendUnavailable = true;
-			return fallback;
-		}
-		Util::SetResourceName(temporalBlendCB, "CloudShadows::TemporalBlendCB");
-	}
-
-	auto now = std::chrono::steady_clock::now();
-	float deltaMs = std::chrono::duration<float, std::milli>(now - lastAccumUpdate).count();
-	lastAccumUpdate = now;
-
-	constexpr float halfLifeMs = 100.0f;
-	float blendFactor = 1.0f;
-	if (accumPrimed && deltaMs < 1000.0f)
-		blendFactor = 1.0f - std::exp2f(-deltaMs / halfLifeMs);
-
-	D3D11_MAPPED_SUBRESOURCE mapped{};
-	if (FAILED(context->Map(temporalBlendCB, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped))) {
-		accumPrimed = false;
-		return fallback;
-	}
-	auto* cbData = static_cast<float*>(mapped.pData);
-	cbData[0] = blendFactor;
-	cbData[1] = static_cast<float>(texCloudOccAccum->desc.Width);
-	cbData[2] = static_cast<float>(texCloudOccAccum->desc.Height);
-	cbData[3] = 0.0f;
-	context->Unmap(temporalBlendCB, 0);
-
-	ID3D11ShaderResourceView* nullSRV = nullptr;
-	context->PSSetShaderResources(25, 1, &nullSRV);
-	context->CSSetShaderResources(25, 1, &nullSRV);
-
-	ID3D11UnorderedAccessView* uav = texCloudOccAccum->uav.get();
-	context->CSSetUnorderedAccessViews(0, 1, &uav, nullptr);
-	context->CSSetShaderResources(0, 1, &cloudOccCopyArraySRV);
-	context->CSSetConstantBuffers(0, 1, &temporalBlendCB);
-	context->CSSetShader(temporalBlendCS, nullptr, 0);
-
-	const auto& desc = texCloudOccAccum->desc;
-	context->Dispatch((desc.Width + 7) / 8, (desc.Height + 7) / 8, 6);
-
-	ID3D11UnorderedAccessView* nullUAV = nullptr;
-	ID3D11Buffer* nullCB = nullptr;
-	context->CSSetUnorderedAccessViews(0, 1, &nullUAV, nullptr);
-	context->CSSetShaderResources(0, 1, &nullSRV);
-	context->CSSetConstantBuffers(0, 1, &nullCB);
-	context->CSSetShader(nullptr, nullptr, 0);
-
-	accumPrimed = true;
-	return texCloudOccAccum->srv.get();
-}
-
 void CloudShadows::EarlyPrepass()
 {
 	if (previouslyRenderedSide >= 0) {
@@ -381,7 +248,7 @@ void CloudShadows::EarlyPrepass()
 
 	context->CopyResource(texCubemapCloudOccCopy->resource.get(), texCloudShadowLayers[kMaxCloudLayers - 1]->resource.get());
 
-	ID3D11ShaderResourceView* srv = BlendOcclusionHistory();
+	ID3D11ShaderResourceView* srv = texCubemapCloudOccCopy->srv.get();
 	context->PSSetShaderResources(25, 1, &srv);
 	context->CSSetShaderResources(25, 1, &srv);
 }
@@ -423,47 +290,6 @@ void CloudShadows::SetupResources()
 
 		texSelfShadowCopy = new Texture2D(texDesc, "CloudShadows::SelfShadowCopy");
 		texSelfShadowCopy->CreateSRV(srvDesc);
-
-		{
-			UINT formatSupport = 0;
-			if (FAILED(device->CheckFormatSupport(DXGI_FORMAT_R32_FLOAT, &formatSupport)) ||
-				!(formatSupport & D3D11_FORMAT_SUPPORT_SHADER_SAMPLE) ||
-				!(formatSupport & D3D11_FORMAT_SUPPORT_TYPED_UNORDERED_ACCESS_VIEW)) {
-				logger::warn("[Cloud Shadows] R32_FLOAT sampling/UAV unsupported, temporal smoothing disabled");
-				temporalBlendUnavailable = true;
-			} else {
-				D3D11_TEXTURE2D_DESC accumDesc = texDesc;
-				accumDesc.Format = DXGI_FORMAT_R32_FLOAT;
-				accumDesc.MipLevels = 1;
-				accumDesc.BindFlags = D3D11_BIND_SHADER_RESOURCE | D3D11_BIND_UNORDERED_ACCESS;
-				accumDesc.MiscFlags = D3D11_RESOURCE_MISC_TEXTURECUBE;
-				texCloudOccAccum = new Texture2D(accumDesc, "CloudShadows::CloudOccAccum");
-
-				D3D11_SHADER_RESOURCE_VIEW_DESC accumSrvDesc = srvDesc;
-				accumSrvDesc.Format = DXGI_FORMAT_R32_FLOAT;
-				accumSrvDesc.TextureCube.MostDetailedMip = 0;
-				accumSrvDesc.TextureCube.MipLevels = 1;
-				texCloudOccAccum->CreateSRV(accumSrvDesc);
-
-				D3D11_UNORDERED_ACCESS_VIEW_DESC accumUavDesc{};
-				accumUavDesc.Format = DXGI_FORMAT_R32_FLOAT;
-				accumUavDesc.ViewDimension = D3D11_UAV_DIMENSION_TEXTURE2DARRAY;
-				accumUavDesc.Texture2DArray.MipSlice = 0;
-				accumUavDesc.Texture2DArray.FirstArraySlice = 0;
-				accumUavDesc.Texture2DArray.ArraySize = 6;
-				texCloudOccAccum->CreateUAV(accumUavDesc);
-
-				D3D11_SHADER_RESOURCE_VIEW_DESC copyArraySrvDesc{};
-				copyArraySrvDesc.Format = texDesc.Format;
-				copyArraySrvDesc.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2DARRAY;
-				copyArraySrvDesc.Texture2DArray.MostDetailedMip = 0;
-				copyArraySrvDesc.Texture2DArray.MipLevels = 1;
-				copyArraySrvDesc.Texture2DArray.FirstArraySlice = 0;
-				copyArraySrvDesc.Texture2DArray.ArraySize = 6;
-				DX::ThrowIfFailed(device->CreateShaderResourceView(texCubemapCloudOccCopy->resource.get(), &copyArraySrvDesc, &cloudOccCopyArraySRV));
-				Util::SetResourceName(cloudOccCopyArraySRV, "CloudShadows::CubemapCloudOccCopy Array SRV");
-			}
-		}
 	}
 	{
 		D3D11_BLEND_DESC blendDesc = {};

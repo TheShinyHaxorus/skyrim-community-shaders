@@ -48,17 +48,6 @@ public:
 	Texture2D* texCubemapCloudOccCopy = nullptr;
 	Texture2D* texSelfShadowCopy = nullptr;
 
-	bool enableTemporalSmoothing = true;
-	Texture2D* texCloudOccAccum = nullptr;
-	ID3D11ShaderResourceView* cloudOccCopyArraySRV = nullptr;
-	ID3D11ComputeShader* temporalBlendCS = nullptr;
-	ID3D11Buffer* temporalBlendCB = nullptr;
-	bool temporalBlendUnavailable = false;
-	bool accumPrimed = false;
-	std::chrono::steady_clock::time_point lastAccumUpdate{};
-
-	ID3D11ShaderResourceView* BlendOcclusionHistory();
-
 	UINT cubemapMipLevels = 1;
 	int currentLayerForDraw = 0;
 
@@ -93,9 +82,7 @@ public:
 	int FindCloudLayer(RE::BSRenderPass* Pass);
 	void ModifySky(RE::BSRenderPass* Pass);
 
-	/** @brief Copies the cloud occlusion cubemap and binds it as a shader resource for the reflections prepass. */
-	virtual void ReflectionsPrepass() override;
-	/** @brief Binds the cloud occlusion cubemap as a shader resource for the early prepass. */
+	/** @brief Copies the cloud occlusion cubemap, smooths it, and binds it as a shader resource for the early prepass. */
 	virtual void EarlyPrepass() override;
 
 	/** @brief Installs the BSSkyShader hooks after all plugins have loaded. */
