@@ -1,6 +1,6 @@
-# Translating Bottled Shaders
+# Translating Community Shaders
 
-Bottled Shaders supports multiple languages through a JSON-based translation system.
+Community Shaders supports multiple languages through a JSON-based translation system.
 This document explains how to contribute translations.
 
 ## For Translators (No Coding Required)
@@ -39,8 +39,8 @@ Weblate provides:
         "version": "1.0.0",
         "authors": ["Your Name"]
     },
-    "menu.home.welcome": "欢迎使用 Bottled Shaders {version}",
-    "menu.faq.q1": "什么是 Bottled Shaders？",
+    "menu.home.welcome": "欢迎使用 Community Shaders {version}",
+    "menu.faq.q1": "什么是 Community Shaders？",
     ...
 }
 ```
@@ -135,4 +135,4 @@ weather_editor.<item>           — Weather editor
 ## CJK Font Support
 
 CJK languages (Chinese, Japanese, Korean) require fonts with appropriate glyph coverage.
-Bottled Shaders uses system CJK fonts by default.
+Community Shaders uses system CJK fonts by default.

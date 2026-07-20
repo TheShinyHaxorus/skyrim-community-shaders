@@ -66,7 +66,7 @@ void HomePageRenderer::RenderWelcomeSection()
 	auto versionStr = Util::GetFormattedVersion(Plugin::VERSION);
 	auto expectedTag = std::format("v{}", versionStr);
 	auto* i18n = I18n::GetSingleton();
-	std::string titleWithVersion = Plugin::BUILD_DESCRIBE == expectedTag ? i18n->Format("menu.home.welcome", { { "version", versionStr } }, "Welcome to Bottled Shaders {version}") : i18n->Format("menu.home.welcome_dev", { { "version", versionStr }, { "build", std::string(Plugin::BUILD_DESCRIBE) } }, "Welcome to Bottled Shaders {version} [{build}]");
+	std::string titleWithVersion = Plugin::BUILD_DESCRIBE == expectedTag ? i18n->Format("menu.home.welcome", { { "version", versionStr } }, "Welcome to Community Shaders {version}") : i18n->Format("menu.home.welcome_dev", { { "version", versionStr }, { "build", std::string(Plugin::BUILD_DESCRIBE) } }, "Welcome to Community Shaders {version} [{build}]");
 	ImVec2 titleSize = ImGui::CalcTextSize(titleWithVersion.c_str());
 	ImGui::SetCursorPosX((windowSize.x - titleSize.x) * 0.5f);
 	ImGui::Text("%s", titleWithVersion.c_str());
@@ -83,7 +83,7 @@ void HomePageRenderer::RenderWelcomeSection()
 
 	// Intro text - centered
 	const char* introText = T("menu.home.intro",
-		"Bottled Shaders provides advanced graphics enhancements for Skyrim.\n"
+		"Community Shaders provides advanced graphics enhancements for Skyrim.\n"
 		"This comprehensive collection of features brings modern rendering techniques\n"
 		"to enhance your visual experience.");
 	ImVec2 introSize = ImGui::CalcTextSize(introText);
@@ -190,9 +190,9 @@ void HomePageRenderer::RenderFAQSection()
 	ImGui::Separator();
 
 	// FAQ items with collapsible headers
-	if (ImGui::CollapsingHeader(T("menu.faq.q1", "What is Bottled Shaders?"))) {
+	if (ImGui::CollapsingHeader(T("menu.faq.q1", "What is Community Shaders?"))) {
 		ImGui::TextWrapped("%s", T("menu.faq.a1",
-									 "Bottled Shaders is a comprehensive graphics enhancement framework for Skyrim that "
+									 "Community Shaders is a comprehensive graphics enhancement framework for Skyrim that "
 									 "provides advanced lighting, materials, and visual effects. It's designed to be modular, "
 									 "allowing you to enable only the features you want while maintaining good performance."));
 	}
@@ -225,20 +225,20 @@ void HomePageRenderer::RenderFAQSection()
 									 "tab also includes upscaling options that can improve performance."));
 	}
 
-	if (ImGui::CollapsingHeader(T("menu.faq.q6", "Is Bottled Shaders compatible with ENB?"))) {
+	if (ImGui::CollapsingHeader(T("menu.faq.q6", "Is Community Shaders compatible with ENB?"))) {
 		ImGui::TextWrapped("%s", T("menu.faq.a6",
-									 "No, Bottled Shaders is not compatible with ENB. Bottled Shaders will automatically "
+									 "No, Community Shaders is not compatible with ENB. Community Shaders will automatically "
 									 "disable itself if ENB is detected."));
 	}
 
 	if (ImGui::CollapsingHeader(T("menu.faq.q7", "The menu hotkey isn't working!"))) {
 		ImGui::TextWrapped("%s", T("menu.faq.a7",
-									 "By default, Bottled Shaders uses the END key to open this menu. If your keyboard "
+									 "By default, Community Shaders uses the END key to open this menu. If your keyboard "
 									 "doesn't have an END key or it's not working, you can change it in the General > Keybindings tab. "
 									 "You can also edit the hotkey in the JSON configuration files."));
 	}
 
-	if (ImGui::CollapsingHeader(T("menu.faq.q8", "I would like to help develop Bottled Shaders."))) {
+	if (ImGui::CollapsingHeader(T("menu.faq.q8", "I would like to help develop Community Shaders."))) {
 		ImGui::TextWrapped("%s", T("menu.faq.a8",
 									 "We're always looking for talented developers to join the team! Check out our GitHub wiki "
 									 "for contribution guidelines and join our Discord server to connect with the development team. "
@@ -246,9 +246,9 @@ void HomePageRenderer::RenderFAQSection()
 									 "always something to contribute."));
 	}
 
-	if (ImGui::CollapsingHeader(T("menu.faq.q9", "Is Bottled Shaders open source?"))) {
+	if (ImGui::CollapsingHeader(T("menu.faq.q9", "Is Community Shaders open source?"))) {
 		ImGui::TextWrapped("%s", T("menu.faq.a9",
-									 "Yes! Bottled Shaders is completely open source and available on GitHub. You can view "
+									 "Yes! Community Shaders is completely open source and available on GitHub. You can view "
 									 "the source code, report issues, suggest features, and contribute to the project. "
 									 "The project is licensed under GPL, ensuring it remains free and open for everyone."
 									 " Branding materials and assets (icons, nexus branding, typography, etc) are not covered by the GPL Licence."
@@ -402,7 +402,7 @@ void HomePageRenderer::RenderFirstTimeSetupDialog()
 
 	auto menu = Menu::GetSingleton();
 
-	// Render Bottled Shaders logo as background watermark with proper aspect ratio
+	// Render CS logo as background watermark with proper aspect ratio
 	if (menu && menu->uiIcons.logo.texture) {
 		ImVec2 windowPos = ImGui::GetWindowPos();
 		ImVec2 windowSize = ImGui::GetWindowSize();
@@ -445,7 +445,7 @@ void HomePageRenderer::RenderFirstTimeSetupDialog()
 
 	// Version text - two lines, both centered (reduced spacing between lines)
 	const char* versionLine1 = T("menu.setup.new_install_line1", "This appears to be a new install, update, or");
-	const char* versionLine2 = T("menu.setup.new_install_line2", "reinstallation of Bottled Shaders.");
+	const char* versionLine2 = T("menu.setup.new_install_line2", "reinstallation of Community Shaders.");
 
 	centerText(versionLine1);
 	ImGui::Text("%s", versionLine1);

@@ -1,6 +1,6 @@
 # New Feature Development Reference
 
-Quick reference for creating new graphics features in Bottled Shaders.
+Quick reference for creating new graphics features in Community Shaders.
 
 ## File Structure
 
