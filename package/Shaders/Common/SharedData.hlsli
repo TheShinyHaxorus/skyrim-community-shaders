@@ -315,7 +315,6 @@ namespace SharedData
 		float SkyScatteringMoonGlowAmount;
 
 		float SkyScatteringMoonGlowRange;
-		float SkyScatteringCloudsLightingSunMinIntensity;
 		float SkyScatteringCloudsLightingSunMultiplier;
 		float SkyScatteringCloudsLightingMoonIntensity;
 
