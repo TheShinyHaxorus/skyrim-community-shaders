@@ -317,6 +317,7 @@ namespace SharedData
 		float SkyScatteringMoonGlowRange;
 		float SkyScatteringCloudsLightingSunMultiplier;
 		float SkyScatteringCloudsLightingMoonIntensity;
+		float SkyScatteringPadding;
 
 		uint EnableVolumetricRays;
 		float VolumetricRaysIntensity;
