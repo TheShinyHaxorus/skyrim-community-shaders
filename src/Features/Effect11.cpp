@@ -86,8 +86,8 @@ Effect11::PerFrame Effect11::GetCommonBufferData()
 	data.RainMotionTransparency = settingManager.GetInterpolatedTimeOfDayValue("MotionTransparency", "RAIN");
 	data.RainLightingInfluence = settingManager.GetInterpolatedTimeOfDayValue("LightingInfluence", "RAIN");
 
-	data.FireIntensity = settingManager.GetInterpolatedTimeOfDayValue("Intensity", "FIRE");
-	data.FireCurve = settingManager.GetInterpolatedTimeOfDayValue("Curve", "FIRE");
+	data.FireIntensity = settingManager.GetValue<float>("FireIntensity", "MAIN");
+	data.FireCurve = settingManager.GetValue<float>("FireCurve", "MAIN");
 
 	data.EnableWater = enableEffect && settingManager.GetValue<bool>("EnableWater", "EFFECT");
 	data.WaterWavesAmplitude = settingManager.GetInterpolatedTimeOfDayValue("WavesAmplitude", "WATER");
