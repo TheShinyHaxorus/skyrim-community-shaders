@@ -114,7 +114,7 @@ VS_OUTPUT main(VS_INPUT input)
 	vsout.PrecipitationOcclusionTexCoord = precipitationOcclusionTexCoord;
 #		if defined(RAIN)
 	float2 raindropUv = input.TexCoord1.xy;
-	raindropUv.y *= 1.25;  // UV fix
+	raindropUv.xy *= 2.0;  // UV fix
 	raindropUv.xy *= 0.5;  // UV unfix
 	vsout.RaindropData.xy = raindropUv * 0.5 + 0.5;
 #		endif
@@ -303,8 +303,8 @@ PS_OUTPUT main(PS_INPUT input, bool frontFace : SV_IsFrontFace)
 		if (dot(refractDir, refractDir) < 1e-4)
 			refractDir = -V;
 
-		float3 reflectColor = DynamicCubemaps::EnvReflectionsTexture.SampleLevel(SampSourceTexture, reflectDir, 0).xyz;
-		float3 refractColor = DynamicCubemaps::EnvReflectionsTexture.SampleLevel(SampSourceTexture, refractDir, 0).xyz;
+		float3 reflectColor = Color::IrradianceToLinear(DynamicCubemaps::EnvReflectionsTexture.SampleLevel(SampSourceTexture, reflectDir, 0).xyz);
+		float3 refractColor = Color::IrradianceToLinear(DynamicCubemaps::EnvReflectionsTexture.SampleLevel(SampSourceTexture, refractDir, 0).xyz);
 
 		float3 rainColor = lerp(refractColor, reflectColor, fresnel);
 
@@ -352,7 +352,7 @@ PS_OUTPUT main(PS_INPUT input, bool frontFace : SV_IsFrontFace)
 		}
 #		endif
 
-		psout.Color.xyz = rainColor;
+		psout.Color.xyz = Color::IrradianceToGamma(rainColor);
 		psout.Color.w = alpha;
 		psout.Normal = float4(0, 1, 0, alpha);
 		return psout;
