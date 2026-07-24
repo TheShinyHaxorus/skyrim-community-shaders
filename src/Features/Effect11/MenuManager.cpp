@@ -385,7 +385,17 @@ void MenuManager::RenderAllSettings()
 						ImGui::SetNextItemOpen(true);
 
 					if (ImGui::TreeNodeEx(category.c_str(), flags)) {
-						if (ImGui::BeginTable((category + "_table").c_str(), 2, ImGuiTableFlags_BordersInnerV | ImGuiTableFlags_SizingStretchProp)) {
+						bool categoryDisabled = false;
+						if (category == "RAIN") {
+							if (!globals::features::effect11.raindropStatus.empty()) {
+								categoryDisabled = true;
+								ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.6f, 0.2f, 1.0f));
+								ImGui::TextWrapped("Rain disabled: %s", globals::features::effect11.raindropStatus.c_str());
+								ImGui::PopStyleColor();
+							}
+						}
+
+						if (!categoryDisabled && ImGui::BeginTable((category + "_table").c_str(), 2, ImGuiTableFlags_BordersInnerV | ImGuiTableFlags_SizingStretchProp)) {
 							ImGui::TableSetupColumn("Parameter", ImGuiTableColumnFlags_WidthFixed);
 							ImGui::TableSetupColumn("Value", ImGuiTableColumnFlags_WidthStretch);
 

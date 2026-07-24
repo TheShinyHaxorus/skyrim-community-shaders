@@ -116,6 +116,7 @@ public:
 
 	winrt::com_ptr<ID3D11Texture2D> raindropTexture;
 	winrt::com_ptr<ID3D11ShaderResourceView> raindropSRV;
+	std::string raindropStatus;
 	void LoadRaindropTexture();
 
 	PerFrame GetCommonBufferData();
