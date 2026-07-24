@@ -19,10 +19,12 @@
 #include "Features/LODBlending.h"
 #include "Features/LightLimitFix.h"
 #include "Features/LinearLighting.h"
+#include "Features/NRD.h"
 #include "Features/PerformanceOverlay.h"
 #include "Features/RemoteControl.h"
 #include "Features/RenderDoc.h"
 #include "Features/ScreenSpaceGI.h"
+#include "Features/ScreenSpaceReflections.h"
 #include "Features/ScreenSpaceShadows.h"
 #include "Features/ScreenshotFeature.h"
 #include "Features/Skin.h"
@@ -74,7 +76,9 @@ namespace globals
 		HorizonFix horizonFix{};
 		InteriorSun interiorSun{};
 		InverseSquareLighting inverseSquareLighting{};
+		NRD nrd{};
 		ScreenSpaceGI screenSpaceGI{};
+		ScreenSpaceReflections screenSpaceReflections{};
 		ScreenSpaceShadows screenSpaceShadows{};
 		Skylighting skylighting{};
 		TerrainVariation terrainVariation{};
