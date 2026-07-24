@@ -15,8 +15,9 @@ struct VS_OUTPUT_POST
 
 struct PS_OUTPUT
 {
-	float shadow : SV_Target0;
-	float depth : SV_Target1;
+	float Scattering : SV_Target0;
+	// Depth this texel raymarched with; the bilateral blur + upsample weight against it.
+	float Depth : SV_Target1;
 };
 
 PS_OUTPUT main(VS_OUTPUT_POST input)
@@ -67,7 +68,7 @@ PS_OUTPUT main(VS_OUTPUT_POST input)
 	}
 
 	PS_OUTPUT output;
-	output.shadow = scattering;
-	output.depth = depth;
+	output.Scattering = scattering;
+	output.Depth = depth;
 	return output;
 }

@@ -288,11 +288,11 @@ void SnowCover::CheckFireSource(RE::BSRenderPass* a_pass, uint32_t a_descriptor)
 	if (a_pass->shaderProperty->GetRTTI() != globals::rtti::BSEffectShaderPropertyRTTI.get())
 		return;
 
+	// Mirrors Effect.hlsl's FIRE split: additive draws with GRAYSCALE_TO_COLOR are fire.
 	using EffectFlags = SIE::ShaderCache::EffectShaderFlags;
 	const bool addBlend = a_descriptor & static_cast<uint32_t>(EffectFlags::AddBlend);
-	const bool soft = a_descriptor & static_cast<uint32_t>(EffectFlags::Soft);
 	const bool grayscale = a_descriptor & static_cast<uint32_t>(EffectFlags::GrayscaleToColor);
-	if (!addBlend || (soft && !grayscale))
+	if (!addBlend || !grayscale)
 		return;
 
 	// Impact effects (arrow hits, weapon strikes, blood, sparks) are additive too; only

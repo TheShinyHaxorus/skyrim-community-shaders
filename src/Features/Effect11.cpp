@@ -27,8 +27,8 @@ Effect11::PerFrame Effect11::GetCommonBufferData()
 	PerFrame data{};
 
 	data.Enable = enableEffect;
-	data.EnableSky = enableEffect && settingManager.GetValue<bool>("Enable", "SKY");
-	data.ColorPow = settingManager.GetInterpolatedTimeOfDayValue("ColorPow", "ENVIRONMENT");
+	data.EnableSky = enableEffect;
+	data.ColorPow = settingManager.GetValue<float>("ColorPow", "ENVIRONMENT");
 
 	data.CloudsCurve = settingManager.GetInterpolatedTimeOfDayValue("CloudsCurve", "SKY");
 	data.CloudsDesaturation = settingManager.GetInterpolatedTimeOfDayValue("CloudsDesaturation", "SKY");
@@ -42,7 +42,7 @@ Effect11::PerFrame Effect11::GetCommonBufferData()
 	data.UseProceduralGradientWeights = enableEffect && settingManager.GetValue<bool>("UseProceduralGradientWeights", "SKY");
 	data.ProceduralGradientWeightCurve = settingManager.GetInterpolatedTimeOfDayValue("ProceduralGradientWeightCurve", "SKY");
 
-	data.LightSpriteIntensity = settingManager.GetInterpolatedTimeOfDayValue("Intensity", "LIGHTSPRITE");
+	data.LightSpriteIntensity = settingManager.GetValue<float>("Intensity", "LIGHTSPRITE");
 
 	data.ParticleIntensity = settingManager.GetInterpolatedTimeOfDayValue("Intensity", "PARTICLE");
 	data.ParticleLightingInfluence = settingManager.GetInterpolatedTimeOfDayValue("LightingInfluence", "PARTICLE");
@@ -50,24 +50,11 @@ Effect11::PerFrame Effect11::GetCommonBufferData()
 	data.ParticlePointLightingInfluence = settingManager.GetInterpolatedTimeOfDayValue("PointLightingInfluence", "PARTICLE");
 
 	data.EnableCloudsLightingFromMoon = settingManager.GetValue<bool>("EnableCloudsLightingFromMoon", "SKYSCATTERING");
-	data.ScatteringColorHDRWeighting = settingManager.GetValue<bool>("ScatteringColorHDRWeighting", "SKYSCATTERING");
-	data.SkyScatteringAtmosphereThickness = settingManager.GetInterpolatedTimeOfDayValue("AtmosphereThickness", "SKYSCATTERING");
-	data.SkyScatteringHorizonRange = settingManager.GetInterpolatedTimeOfDayValue("HorizonRange", "SKYSCATTERING");
 	data.SkyScatteringIntensity = settingManager.GetInterpolatedTimeOfDayValue("Intensity", "SKYSCATTERING");
 	data.SkyScatteringAmount = settingManager.GetInterpolatedTimeOfDayValue("Amount", "SKYSCATTERING");
-	data.SkyScatteringDustVolume = settingManager.GetInterpolatedTimeOfDayValue("DustVolume", "SKYSCATTERING");
-	data.SkyScatteringDustDensity = settingManager.GetInterpolatedTimeOfDayValue("DustDensity", "SKYSCATTERING");
-	data.SkyScatteringDustDarkening = settingManager.GetInterpolatedTimeOfDayValue("DustDarkening", "SKYSCATTERING");
-	data.SkyScatteringShadowAmount = settingManager.GetInterpolatedTimeOfDayValue("ShadowAmount", "SKYSCATTERING");
 	data.SkyScatteringColorFromSun = settingManager.GetInterpolatedTimeOfDayValue("ColorFromSun", "SKYSCATTERING");
 	auto scatteringColor = settingManager.GetInterpolatedColorTimeOfDayValue("ScatteringColor", "SKYSCATTERING");
 	data.SkyScatteringColor = { scatteringColor.x, scatteringColor.y, scatteringColor.z };
-	data.SkyScatteringAirGlowIntensity = settingManager.GetInterpolatedTimeOfDayValue("AirGlowIntensity", "SKYSCATTERING");
-	data.SkyScatteringAirGlowRange = settingManager.GetInterpolatedTimeOfDayValue("AirGlowRange", "SKYSCATTERING");
-	data.SkyScatteringSunGlowIntensity = settingManager.GetInterpolatedTimeOfDayValue("SunGlowIntensity", "SKYSCATTERING");
-	data.SkyScatteringSunGlowRange = settingManager.GetInterpolatedTimeOfDayValue("SunGlowRange", "SKYSCATTERING");
-	data.SkyScatteringMoonGlowAmount = settingManager.GetInterpolatedTimeOfDayValue("MoonGlowAmount", "SKYSCATTERING");
-	data.SkyScatteringMoonGlowRange = settingManager.GetInterpolatedTimeOfDayValue("MoonGlowRange", "SKYSCATTERING");
 	data.SkyScatteringCloudsLightingSunMultiplier = settingManager.GetInterpolatedTimeOfDayValue("CloudsLightingSunMultiplier", "SKYSCATTERING");
 	data.SkyScatteringCloudsLightingMoonIntensity = settingManager.GetInterpolatedTimeOfDayValue("CloudsLightingMoonIntensity", "SKYSCATTERING");
 
@@ -81,7 +68,7 @@ Effect11::PerFrame Effect11::GetCommonBufferData()
 	}
 	data.VolumetricRaysSkyColorAmount = settingManager.GetInterpolatedTimeOfDayValue("SkyColorAmount", "VOLUMETRICRAYS");
 
-	data.EnableRain = enableEffect && raindropSRV && settingManager.GetValue<bool>("Enable", "RAIN");
+	data.EnableRain = enableEffect && raindropSRV;
 	data.RainMotionStretch = settingManager.GetInterpolatedTimeOfDayValue("MotionStretch", "RAIN");
 	data.RainMotionTransparency = settingManager.GetInterpolatedTimeOfDayValue("MotionTransparency", "RAIN");
 	data.RainLightingInfluence = settingManager.GetInterpolatedTimeOfDayValue("LightingInfluence", "RAIN");
@@ -240,10 +227,6 @@ void Effect11::Prepass()
 
 	auto& settingManager = SettingManager::GetSingleton();
 
-	if (!settingManager.GetValue<bool>("Enable", "SKY")) {
-		return;
-	}
-
 	auto imageSpaceManager = RE::ImageSpaceManager::GetSingleton();
 	if (!imageSpaceManager) {
 		return;
@@ -270,9 +253,9 @@ float3 Desaturation(float3 color, float desaturation)
 {
 	float luminance = color.Dot({ 1.0f / 3.0f, 1.0f / 3.0f, 1.0f / 3.0f });
 
-	color.x = std::lerp(color.x, luminance, desaturation);
-	color.y = std::lerp(color.y, luminance, desaturation);
-	color.z = std::lerp(color.z, luminance, desaturation);
+	color.x = std::max(std::lerp(color.x, luminance, desaturation), 0.0f);
+	color.y = std::max(std::lerp(color.y, luminance, desaturation), 0.0f);
+	color.z = std::max(std::lerp(color.z, luminance, desaturation), 0.0f);
 
 	return color;
 }
@@ -383,9 +366,7 @@ void Effect11::OverrideWeather(RE::Sky* a_sky)
 		waterColor = F3ToNi(waterColorF3);
 	}
 
-	const bool enableSky = enableEffect && settingManager.GetValue<bool>("Enable", "SKY");
-
-	if (enableSky) {
+	if (enableEffect) {
 		{
 			auto& sunColor = colors[(uint)RE::TESWeather::ColorTypes::kSun];
 
@@ -532,9 +513,9 @@ void Effect11::OverridePointLightColor(float3& a_color)
 {
 	auto& settingManager = SettingManager::GetSingleton();
 
-	a_color = Curve(a_color, settingManager.GetInterpolatedTimeOfDayValue("PointLightingCurve", "ENVIRONMENT"));
-	a_color = Desaturation(a_color, settingManager.GetInterpolatedTimeOfDayValue("PointLightingDesaturation", "ENVIRONMENT"));
-	a_color = Intensity(a_color, settingManager.GetInterpolatedTimeOfDayValue("PointLightingIntensity", "ENVIRONMENT"));
+	a_color = Curve(a_color, settingManager.GetValue<float>("PointLightingCurve", "ENVIRONMENT"));
+	a_color = Desaturation(a_color, settingManager.GetValue<float>("PointLightingDesaturation", "ENVIRONMENT"));
+	a_color = Intensity(a_color, settingManager.GetValue<float>("PointLightingIntensity", "ENVIRONMENT"));
 }
 
 void Effect11::OverrideAmbientLighting(DirectionalAmbientColors& DirectionalAmbientColors)
@@ -778,15 +759,16 @@ void Effect11::DrawVolumetricRays()
 	uint32_t dynWidth = static_cast<uint32_t>(resolution.x);
 	uint32_t dynHeight = static_cast<uint32_t>(resolution.y);
 
-	uint32_t halfFullWidth = (mainTexDesc.Width + 1) / 2;
-	uint32_t halfFullHeight = (mainTexDesc.Height + 1) / 2;
-	uint32_t halfDynWidth = (dynWidth + 1) / 2;
-	uint32_t halfDynHeight = (dynHeight + 1) / 2;
+	// Raymarch + blurs run at half resolution; the apply pass upsamples bilaterally.
+	const uint32_t halfTexWidth = (mainTexDesc.Width + 1) / 2;
+	const uint32_t halfTexHeight = (mainTexDesc.Height + 1) / 2;
+	const uint32_t halfDynWidth = (dynWidth + 1) / 2;
+	const uint32_t halfDynHeight = (dynHeight + 1) / 2;
 
-	if (!vrTexA || vrTexA->desc.Width != halfFullWidth || vrTexA->desc.Height != halfFullHeight) {
+	if (!vlTexA || vlTexA->desc.Width != halfTexWidth || vlTexA->desc.Height != halfTexHeight) {
 		D3D11_TEXTURE2D_DESC desc{};
-		desc.Width = halfFullWidth;
-		desc.Height = halfFullHeight;
+		desc.Width = halfTexWidth;
+		desc.Height = halfTexHeight;
 		desc.MipLevels = 1;
 		desc.ArraySize = 1;
 		desc.Format = DXGI_FORMAT_R16_FLOAT;
@@ -807,15 +789,16 @@ void Effect11::DrawVolumetricRays()
 		uavDesc.Format = DXGI_FORMAT_R16_FLOAT;
 		uavDesc.ViewDimension = D3D11_UAV_DIMENSION_TEXTURE2D;
 
-		vrTexA = std::make_unique<Texture2D>(desc, "Effect11::VRTexA");
-		vrTexA->CreateSRV(srvDesc);
-		vrTexA->CreateRTV(rtvDesc);
-		vrTexA->CreateUAV(uavDesc);
+		vlTexA = std::make_unique<Texture2D>(desc, "Effect11::VLTexA");
+		vlTexA->CreateSRV(srvDesc);
+		vlTexA->CreateRTV(rtvDesc);
+		vlTexA->CreateUAV(uavDesc);
 
-		vrTexB = std::make_unique<Texture2D>(desc, "Effect11::VRTexB");
-		vrTexB->CreateSRV(srvDesc);
-		vrTexB->CreateUAV(uavDesc);
+		vlTexB = std::make_unique<Texture2D>(desc, "Effect11::VLTexB");
+		vlTexB->CreateSRV(srvDesc);
+		vlTexB->CreateUAV(uavDesc);
 
+		// R32F to preserve the raw depth precision the bilateral weights compare against.
 		D3D11_TEXTURE2D_DESC depthDesc = desc;
 		depthDesc.Format = DXGI_FORMAT_R32_FLOAT;
 		depthDesc.BindFlags = D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE;
@@ -826,15 +809,15 @@ void Effect11::DrawVolumetricRays()
 		D3D11_RENDER_TARGET_VIEW_DESC depthRtvDesc = rtvDesc;
 		depthRtvDesc.Format = DXGI_FORMAT_R32_FLOAT;
 
-		vrDepth = std::make_unique<Texture2D>(depthDesc, "Effect11::VRDepth");
-		vrDepth->CreateSRV(depthSrvDesc);
-		vrDepth->CreateRTV(depthRtvDesc);
+		vlDepthHalf = std::make_unique<Texture2D>(depthDesc, "Effect11::VLDepthHalf");
+		vlDepthHalf->CreateSRV(depthSrvDesc);
+		vlDepthHalf->CreateRTV(depthRtvDesc);
 	}
 
-	if (!vrBlurCB)
-		vrBlurCB = std::make_unique<ConstantBuffer>(ConstantBufferDesc(16), "Effect11::VRBlurCB");
+	if (!vlBlurCB)
+		vlBlurCB = std::make_unique<ConstantBuffer>(ConstantBufferDesc(16), "Effect11::VLBlurCB");
 
-	Effect11Util::D3D11FullStateBackup stateBackup;
+	Effect11Util::D3D11ScopedPostFxBackup stateBackup;
 	stateBackup.Save(context);
 
 	ID3D11SamplerState* sampler = Deferred::GetSingleton()->linearSampler;
@@ -843,11 +826,11 @@ void Effect11::DrawVolumetricRays()
 
 	auto* profiler = globals::profiler;
 
-	// Pass 1: Raymarch shadow → R16F texture
+	// Pass 1: Raymarch shadow + depth → half-res textures (MRT)
 	{
 		profiler->BeginPass("Effect11::VolumetricRays Pass 0");
 
-		ID3D11RenderTargetView* rtvs[2] = { vrTexA->rtv.get(), vrDepth->rtv.get() };
+		ID3D11RenderTargetView* rtvs[2] = { vlTexA->rtv.get(), vlDepthHalf->rtv.get() };
 		context->OMSetRenderTargets(2, rtvs, nullptr);
 		context->RSSetViewports(1, &halfViewport);
 
@@ -880,7 +863,7 @@ void Effect11::DrawVolumetricRays()
 		int32_t screenX, screenY, screenXMin1, screenYMin1;
 	};
 	VLData vlData = { static_cast<int32_t>(halfDynWidth), static_cast<int32_t>(halfDynHeight), static_cast<int32_t>(halfDynWidth) - 1, static_cast<int32_t>(halfDynHeight) - 1 };
-	vrBlurCB->Update(vlData);
+	vlBlurCB->Update(vlData);
 
 	static constexpr uint32_t tgDim = 256;
 	static constexpr uint32_t blurWindow = 12;
@@ -891,13 +874,13 @@ void Effect11::DrawVolumetricRays()
 		profiler->BeginPass("Effect11::VolumetricRays Pass 1");
 		context->CSSetShader(blurHCS, nullptr, 0);
 
-		ID3D11ShaderResourceView* csSRVs[2] = { vrTexA->srv.get(), vrDepth->srv.get() };
+		ID3D11ShaderResourceView* csSRVs[2] = { vlTexA->srv.get(), vlDepthHalf->srv.get() };
 		context->CSSetShaderResources(0, 2, csSRVs);
 
-		ID3D11UnorderedAccessView* csUAVs[1] = { vrTexB->uav.get() };
+		ID3D11UnorderedAccessView* csUAVs[1] = { vlTexB->uav.get() };
 		context->CSSetUnorderedAccessViews(0, 1, csUAVs, nullptr);
 
-		ID3D11Buffer* csCBs[2] = { nullptr, vrBlurCB->CB() };
+		ID3D11Buffer* csCBs[2] = { nullptr, vlBlurCB->CB() };
 		context->CSSetConstantBuffers(0, 2, csCBs);
 
 		uint32_t groupsX = (halfDynWidth + effectiveGroupSize - 1) / effectiveGroupSize;
@@ -915,10 +898,10 @@ void Effect11::DrawVolumetricRays()
 		profiler->BeginPass("Effect11::VolumetricRays Pass 2");
 		context->CSSetShader(blurVCS, nullptr, 0);
 
-		ID3D11ShaderResourceView* csSRVs[2] = { vrTexB->srv.get(), vrDepth->srv.get() };
+		ID3D11ShaderResourceView* csSRVs[2] = { vlTexB->srv.get(), vlDepthHalf->srv.get() };
 		context->CSSetShaderResources(0, 2, csSRVs);
 
-		ID3D11UnorderedAccessView* csUAVs[1] = { vrTexA->uav.get() };
+		ID3D11UnorderedAccessView* csUAVs[1] = { vlTexA->uav.get() };
 		context->CSSetUnorderedAccessViews(0, 1, csUAVs, nullptr);
 
 		uint32_t groupsY = (halfDynHeight + effectiveGroupSize - 1) / effectiveGroupSize;
@@ -955,13 +938,18 @@ void Effect11::DrawVolumetricRays()
 
 		auto& ibl = globals::features::ibl;
 		ID3D11ShaderResourceView* srvs[16]{};
-		srvs[0] = vrTexA->srv.get();
+		srvs[0] = vlTexA->srv.get();
+		srvs[1] = vlDepthHalf->srv.get();
 		if (ibl.loaded) {
 			srvs[14] = ibl.envIBLTexture->srv.get();
 			srvs[15] = ibl.skyIBLTexture->srv.get();
 		}
 		context->PSSetShaderResources(0, 16, srvs);
 		context->PSSetSamplers(0, 1, &sampler);
+
+		// Half-res dimensions for the bilateral upsample.
+		ID3D11Buffer* psCB = vlBlurCB->CB();
+		context->PSSetConstantBuffers(1, 1, &psCB);
 
 		context->Draw(4, 0);
 		profiler->EndPass();

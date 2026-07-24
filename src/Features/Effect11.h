@@ -57,28 +57,12 @@ public:
 
 		uint EnableCloudsScattering;
 		uint EnableCloudsLightingFromMoon;
-		uint ScatteringColorHDRWeighting;
-		float SkyScatteringAtmosphereThickness;
-
-		float SkyScatteringHorizonRange;
 		float SkyScatteringIntensity;
 		float SkyScatteringAmount;
-		float SkyScatteringDustVolume;
-
-		float SkyScatteringDustDensity;
-		float SkyScatteringDustDarkening;
-		float SkyScatteringShadowAmount;
-		float SkyScatteringColorFromSun;
 
 		float3 SkyScatteringColor;
-		float SkyScatteringAirGlowIntensity;
+		float SkyScatteringColorFromSun;
 
-		float SkyScatteringAirGlowRange;
-		float SkyScatteringSunGlowIntensity;
-		float SkyScatteringSunGlowRange;
-		float SkyScatteringMoonGlowAmount;
-
-		float SkyScatteringMoonGlowRange;
 		float SkyScatteringCloudsLightingSunMultiplier;
 		float SkyScatteringCloudsLightingMoonIntensity;
 		float SkyScatteringPadding;
@@ -106,7 +90,7 @@ public:
 		float WaterFresnelMax;
 		float WaterFresnelMultiplier;
 		float WaterReflectionAmount;
-		float EnbPadding;
+		float2 EnbPadding;
 	};
 
 	bool enableEffect = false;
@@ -124,10 +108,11 @@ public:
 	ID3D11BlendState* additiveBlendState = nullptr;
 	ID3D11BlendState* alphaBlendState = nullptr;
 
-	std::unique_ptr<Texture2D> vrTexA;
-	std::unique_ptr<Texture2D> vrTexB;
-	std::unique_ptr<Texture2D> vrDepth;
-	std::unique_ptr<ConstantBuffer> vrBlurCB;
+	std::unique_ptr<Texture2D> vlTexA;
+	std::unique_ptr<Texture2D> vlTexB;
+	// Depth each half-res texel raymarched with; the bilateral blur + upsample weight against it.
+	std::unique_ptr<Texture2D> vlDepthHalf;
+	std::unique_ptr<ConstantBuffer> vlBlurCB;
 
 	winrt::com_ptr<ID3D11Texture2D> raindropTexture;
 	winrt::com_ptr<ID3D11ShaderResourceView> raindropSRV;

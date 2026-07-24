@@ -1,4 +1,4 @@
-﻿#include "MenuManager.h"
+#include "MenuManager.h"
 
 #include "EffectManager.h"
 #include "SettingManager.h"
@@ -352,7 +352,22 @@ void MenuManager::RenderAllSettings()
 				}
 
 				for (const auto& category : categories) {
+					if (!settingManager.IsCategoryEnabled(category))
+						continue;
+
 					auto settings = settingManager.GetSettingsByCategory(category);
+
+					std::erase_if(settings, [&](const std::string& key) {
+						auto settingInfo = settingManager.GetSettingInfo(key, category);
+						if (!settingInfo)
+							return true;
+
+						const bool isTod = settingInfo->type == SettingType::TimeOfDay || settingInfo->type == SettingType::ColorTimeOfDay;
+						if ((tabName == "Main" && isTod) || (tabName == "Weather" && !isTod))
+							return true;
+
+						return !settingManager.IsSettingEnabled(key, category);
+					});
 
 					// With a search active, show only matching settings; a match
 					// on the category name keeps the whole category visible.
@@ -360,9 +375,10 @@ void MenuManager::RenderAllSettings()
 						std::erase_if(settings, [&](const std::string& key) {
 							return !ContainsCaseInsensitive(key, settingsFilter);
 						});
-						if (settings.empty())
-							continue;
 					}
+
+					if (settings.empty())
+						continue;
 
 					ImGuiTreeNodeFlags flags = (tabName == "Weather") ? ImGuiTreeNodeFlags_None : ImGuiTreeNodeFlags_DefaultOpen;
 					if (filtering)
@@ -373,8 +389,8 @@ void MenuManager::RenderAllSettings()
 							ImGui::TableSetupColumn("Parameter", ImGuiTableColumnFlags_WidthFixed);
 							ImGui::TableSetupColumn("Value", ImGuiTableColumnFlags_WidthStretch);
 
-							// Add weather ignore controls for categories with weather support
-							if (settingManager.CategoryHasWeatherSupport(category)) {
+							// Add weather ignore controls for categories with weather support (Weather tab only)
+							if (tabName == "Weather" && settingManager.CategoryHasWeatherSupport(category)) {
 								auto& effectManager = EffectManager::GetSingleton();
 								bool isInterior = effectManager.commonData.eInteriorFactor > 0.5f;
 
@@ -581,5 +597,3 @@ void MenuManager::RenderSettingRows(const std::string& settingKey, const std::st
 		}
 	}
 }
-
-
