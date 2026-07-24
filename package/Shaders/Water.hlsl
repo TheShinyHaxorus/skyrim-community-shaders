@@ -181,9 +181,9 @@ VS_OUTPUT main(VS_INPUT input)
 	vsout.HPosition.z = heightMult * 0.5 + worldViewPos.z;
 	vsout.HPosition.w = worldViewPos.w;
 
-#	if defined(HORIZON_FIX)
+#		if defined(HORIZON_FIX)
 	vsout.HPosition.z = min(vsout.HPosition.z, vsout.HPosition.w * HorizonFix::FoldedDepth);
-#	endif
+#		endif
 
 #		if defined(STENCIL)
 	vsout.WorldPosition = worldPos;

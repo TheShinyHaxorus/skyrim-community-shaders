@@ -31,7 +31,6 @@ struct VS_OUTPUT
 	float4 PreviousWorldPosition: POSITION2;
 #endif  // RENDER_DEPTH
 	float4 ViewPosition: POSITION3;
-
 };
 
 #ifdef VSHADER
