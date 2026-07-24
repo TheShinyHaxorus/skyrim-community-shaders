@@ -216,9 +216,9 @@ namespace SharedData
 		float EnvIBLSaturation;
 		float SkyIBLSaturation;
 		float FogAmount;
-		uint DALCMode;  // 0: Luminance Ratio, 1: Color Ratio, 2: DALC + Sky
-		uint SkylightingAffectsEnv;
+		uint DALCMode;  // 0: Luminance Ratio, 1: Color Ratio, 2: DALC + Sky, 3: DALC + Sky (Directional)
 		float pad0;
+		float pad1;
 	};
 
 	struct ExtendedTranslucencySettings
@@ -337,10 +337,10 @@ namespace SharedData
 
 	struct SSGISettings
 	{
-		uint Enabled;
 		uint EnableIL;
 		uint DebugMode;
 		uint pad0;
+		uint pad1;
 	};
 
 	struct SSRSettings

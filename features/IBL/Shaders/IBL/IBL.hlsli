@@ -132,14 +132,19 @@ namespace ImageBasedLighting
 	float3 GetDiffuseIBLOccluded(float3 vanillaDALC, float3 rayDir, float visibility)
 	{
 		float3 linEnv, linSky;
-		if (SharedData::iblSettings.DALCMode >= 2) {
+		if (SharedData::iblSettings.DALCMode == 3) {
+			// Mode 3: Skylighting dims both DALC and sky
+			linEnv = Color::IrradianceToLinear(vanillaDALC * SharedData::iblSettings.DALCAmount) * visibility;
+			linSky = GetSkyIBLColorOccluded(rayDir, visibility);
+		} else if (SharedData::iblSettings.DALCMode == 2) {
+			// Mode 2: Skylighting only dims sky, DALC unaffected
 			linEnv = Color::IrradianceToLinear(vanillaDALC * SharedData::iblSettings.DALCAmount);
+			linSky = GetSkyIBLColorOccluded(rayDir, visibility);
 		} else {
+			// Mode 0/1: Skylighting only dims sky, env IBL unaffected
 			linEnv = GetEnvIBLColor(rayDir);
+			linSky = GetSkyIBLColorOccluded(rayDir, visibility);
 		}
-		if (!SharedData::InInterior && SharedData::iblSettings.SkylightingAffectsEnv != 0)
-			linEnv *= visibility;
-		linSky = GetSkyIBLColorOccluded(rayDir, visibility);
 		return Color::IrradianceToGamma(linEnv + linSky);
 	}
 
@@ -154,10 +159,7 @@ namespace ImageBasedLighting
 
 	float3 GetIBLColorOccluded(float3 rayDir, float visibility)
 	{
-		float3 envColor = GetEnvIBLColor(rayDir);
-		if (!SharedData::InInterior && SharedData::iblSettings.SkylightingAffectsEnv != 0)
-			envColor *= visibility;
-		return envColor + GetSkyIBLColorOccluded(rayDir, visibility);
+		return GetEnvIBLColor(rayDir) + GetSkyIBLColorOccluded(rayDir, visibility);
 	}
 
 #if defined(LIGHTING)

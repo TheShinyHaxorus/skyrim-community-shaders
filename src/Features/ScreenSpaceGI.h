@@ -79,7 +79,6 @@ public:
 		// performance/quality
 		uint NumSteps = 8u;
 		bool HalfRes = true;
-		bool QuarterRes = false;
 		// visual
 		float Thickness = 0.1f;
 		// mix
@@ -119,10 +118,10 @@ public:
 
 	struct alignas(16) SharedData
 	{
-		uint Enabled;
 		uint EnableIL;
 		uint DebugMode;
 		uint pad0;
+		uint pad1;
 	};
 
 	SharedData GetCommonBufferData();
