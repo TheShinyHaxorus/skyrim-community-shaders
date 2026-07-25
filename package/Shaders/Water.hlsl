@@ -878,7 +878,7 @@ float GetFresnelValue(float3 normal, float3 viewDirection)
 	float viewAngle = 1 - saturate(dot(-viewDirection, actualNormal));
 
 	if (SharedData::enbSettings.EnableWater) {
-		float fresnelRI = pow(FresnelRI.x, SharedData::enbSettings.WaterFresnelMultiplier);
+		float fresnelRI = pow(abs(FresnelRI.x), SharedData::enbSettings.WaterFresnelMultiplier);
 		float fresnel = (1 - fresnelRI) * pow(viewAngle, 5) + fresnelRI;
 		fresnel = lerp(SharedData::enbSettings.WaterFresnelMin, SharedData::enbSettings.WaterFresnelMax, fresnel);
 		return fresnel * SharedData::enbSettings.WaterReflectionAmount;

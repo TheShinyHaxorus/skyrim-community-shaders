@@ -70,6 +70,15 @@ public:
 	Settings GetCommonBufferData();
 
 	/**
+	 * @brief Whether the ENB preset is actively driving cloud shadow opacity.
+	 *
+	 * Only true when Effect11 post-processing is running and the preset opted in via
+	 * [EFFECT] EnableCloudShadows. A preset that leaves it off does not disable this
+	 * feature — it simply keeps its own opacity setting.
+	 */
+	bool IsDrivenByENB();
+
+	/**
 	 * @brief Clears the cloud occlusion render target for a given cubemap face if not yet cleared this frame.
 	 * @param side Cubemap face index (0-5).
 	 */

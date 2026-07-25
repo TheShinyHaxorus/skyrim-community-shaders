@@ -14,12 +14,9 @@ NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(
 
 void CloudShadows::DrawSettings()
 {
-	if (globals::features::effect11.loaded) {
-		auto& enb = globals::features::effect11;
-		if (enb.enableEffect) {
-			ImGui::TextColored(ImVec4(1.0f, 1.0f, 0.0f, 1.0f), "Settings are currently managed by ENB.");
-			return;
-		}
+	if (IsDrivenByENB()) {
+		ImGui::TextColored(ImVec4(1.0f, 1.0f, 0.0f, 1.0f), "Settings are currently managed by ENB.");
+		return;
 	}
 
 	ImGui::SliderFloat(T(TKEY("opacity"), "Opacity"), &settings.Opacity, 0.0f, 4.0f, "%.1f");
@@ -46,6 +43,15 @@ void CloudShadows::RestoreDefaultSettings()
 	settings = {};
 }
 
+bool CloudShadows::IsDrivenByENB()
+{
+	auto& enb = globals::features::effect11;
+	if (!enb.loaded || !enb.enableEffect)
+		return false;
+
+	return SettingManager::GetSingleton().GetValue<bool>("EnableCloudShadows", "EFFECT");
+}
+
 CloudShadows::Settings CloudShadows::GetCommonBufferData()
 {
 	if (!loaded)
@@ -53,17 +59,8 @@ CloudShadows::Settings CloudShadows::GetCommonBufferData()
 
 	auto data = settings;
 
-	if (globals::features::effect11.loaded) {
-		auto& enb = globals::features::effect11;
-		if (enb.enableEffect) {
-			auto& settingManager = SettingManager::GetSingleton();
-			if (settingManager.GetValue<bool>("EnableCloudShadows", "EFFECT")) {
-				data.Opacity = settingManager.GetInterpolatedTimeOfDayValue("Amount", "CLOUDSHADOWS");
-			} else {
-				data.Opacity = 0.0f;
-			}
-		}
-	}
+	if (IsDrivenByENB())
+		data.Opacity = SettingManager::GetSingleton().GetInterpolatedTimeOfDayValue("Amount", "CLOUDSHADOWS");
 
 	return data;
 }
