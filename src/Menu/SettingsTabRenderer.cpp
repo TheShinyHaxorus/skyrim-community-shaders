@@ -458,7 +458,7 @@ void SettingsTabRenderer::RenderBehaviorTab()
 				ImGui::EndCombo();
 			}
 			if (auto _tt = Util::HoverTooltipWrapper()) {
-				ImGui::Text("%s", T("menu.settings.language_tooltip", "Select the display language for the Community Shaders interface."));
+				ImGui::Text("%s", T("menu.settings.language_tooltip", "Select the display language for the Bottled Shaders interface."));
 			}
 		}
 
@@ -484,7 +484,7 @@ void SettingsTabRenderer::RenderBehaviorTab()
 				globals::menu->pendingIconReload = true;
 			}
 			if (auto _tt = Util::HoverTooltipWrapper()) {
-				ImGui::Text("%s", T("menu.settings.use_monochrome_cs_logo_tooltip", "Uses monochrome version of the Community Shaders logo"));
+				ImGui::Text("%s", T("menu.settings.use_monochrome_cs_logo_tooltip", "Uses monochrome version of the Bottled Shaders logo"));
 			}
 			ImGui::Unindent();
 		}
@@ -496,7 +496,7 @@ void SettingsTabRenderer::RenderBehaviorTab()
 
 		ImGui::Checkbox(T("menu.settings.center_header_title", "Center Header Title"), &themeSettings.CenterHeader);
 		if (auto _tt = Util::HoverTooltipWrapper()) {
-			ImGui::Text("%s", T("menu.settings.center_header_title_tooltip", "Centers the Community Shaders title and logo in the header title bar"));
+			ImGui::Text("%s", T("menu.settings.center_header_title_tooltip", "Centers the Bottled Shaders title and logo in the header title bar"));
 		}
 
 		ImGui::Checkbox(T("menu.settings.auto_hide_feature_list", "Auto-hide Feature List"), &globals::menu->GetSettings().AutoHideFeatureList);

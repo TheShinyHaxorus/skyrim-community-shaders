@@ -57,7 +57,7 @@ public:
 	enum class FontRole : std::uint8_t
 	{
 		Body = 0,    // Default UI text
-		Title,       // Large title text (e.g., "Community Shaders" header)
+		Title,       // Large title text (e.g., "Bottled Shaders" header)
 		Heading,     // Section headers (tabs, category labels)
 		Subheading,  // Subsection headers (feature names, separators)
 		Subtext,     // Smaller secondary text (descriptions, about content)
@@ -243,9 +243,6 @@ public:
 		UIIcon undo;                  // Undo icon (CS editor)
 		UIIcon freeCamera;            // Free camera preview icon (CS editor)
 		UIIcon playMode;              // Play mode preview icon (CS editor)
-
-		// Social media/external link icons
-		UIIcon discord;
 
 		// Category icons
 		UIIcon characters;

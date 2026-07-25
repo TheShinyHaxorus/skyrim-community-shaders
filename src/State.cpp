@@ -461,8 +461,8 @@ void State::Load(ConfigMode a_configMode, bool a_allowReload)
 				}
 			} catch (const std::exception& e) {
 				feature->failedLoadedMessage = feature->failedLoadedMessage.empty() ?
-				                                   (feature->GetName() + " failed to load. Check CommunityShaders.log") :
-				                                   (feature->failedLoadedMessage + "\n" + feature->GetName() + " failed to load. Check CommunityShaders.log");
+				                                   (feature->GetName() + " failed to load. Check " + std::format("{}.log", Plugin::NAME)) :
+				                                   (feature->failedLoadedMessage + "\n" + feature->GetName() + " failed to load. Check " + std::format("{}.log", Plugin::NAME));
 				logger::warn("Error loading setting for feature '{}': {}", feature->GetShortName(), e.what());
 			}
 		}

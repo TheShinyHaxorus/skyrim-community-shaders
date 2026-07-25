@@ -26,7 +26,7 @@ void MenuHeaderRenderer::RenderHeader(bool isDocked, bool showLogo, bool canShow
 
 	auto versionStr = Util::GetFormattedVersion(Plugin::VERSION);
 	auto expectedTag = std::format("v{}", versionStr);
-	auto title = Plugin::BUILD_DESCRIBE == expectedTag ? std::format("Community Shaders {}", versionStr) : std::format("Community Shaders {} [{}]", versionStr, Plugin::BUILD_DESCRIBE);
+	auto title = Plugin::BUILD_DESCRIBE == expectedTag ? std::format("Bottled Shaders {}", versionStr) : std::format("Bottled Shaders {} [{}]", versionStr, Plugin::BUILD_DESCRIBE);
 	auto actionIcons = BuildActionIcons(canShowIcons, uiIcons);
 
 	if (isDocked) {
@@ -198,7 +198,7 @@ void MenuHeaderRenderer::RenderHeader(bool isDocked, bool showLogo, bool canShow
 										  "Hide or show the shader failure message. "
 										  "Your installation is broken and will likely see errors in game. "
 										  "Please double check you have updated all features and that your load order is correct. "
-										  "See CommunityShaders.log for details and check the Nexus Mods page or Discord server."));
+										  "See the log file for details, and review the Feature Issues tab."));
 				}
 			}
 
@@ -222,7 +222,7 @@ void MenuHeaderRenderer::RenderHeader(bool isDocked, bool showLogo, bool canShow
 								  "Hide or show the shader failure message. "
 								  "Your installation is broken and will likely see errors in game. "
 								  "Please double check you have updated all features and that your load order is correct. "
-								  "See CommunityShaders.log for details and check the Nexus Mods page or Discord server."));
+								  "See the log file for details, and review the Feature Issues tab."));
 		}
 
 		// Add second separator when showing error button

@@ -852,7 +852,7 @@ void ScreenshotFeature::ScreenshotWorkerLoop()
 		}
 
 		if (!saveOk) {
-			ShowInGameNotification("Screenshot failed - see CommunityShaders.log");
+			ShowInGameNotification(std::format("Screenshot failed - see {}.log", Plugin::NAME));
 		} else {
 			logger::info("Saved screenshot to {}", screenshot.outputPath.string());
 			ShowInGameNotification(std::format("Screenshot saved: {}",

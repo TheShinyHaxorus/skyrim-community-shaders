@@ -18,6 +18,7 @@
 #include "Globals.h"
 #include "I18n/I18n.h"
 #include "Menu.h"
+#include "Plugin.h"
 #include "ShaderCache.h"
 #include "State.h"
 #include "Menu/CursorLoader.h"
@@ -30,15 +31,15 @@ namespace
 	std::unordered_map<ImGuiID, float> s_windowOverlapAlpha;
 
 	constexpr ImGuiWindowFlags SKIP_WINDOW_FLAGS = ImGuiWindowFlags_Tooltip | ImGuiWindowFlags_NoBackground | ImGuiWindowFlags_NoMove;
-	constexpr const char* MAIN_WINDOW_PREFIX = "Community Shaders";
+	constexpr const char* MAIN_WINDOW_PREFIX = "Bottled Shaders";
 
 	bool IsMainWindow(ImGuiWindow* win) { return win->Name && strncmp(win->Name, MAIN_WINDOW_PREFIX, strlen(MAIN_WINDOW_PREFIX)) == 0; }
 
 	void DrawShaderCompilationFailures(uint64_t failed, const Menu::ThemeSettings& themeSettings)
 	{
 		ImGui::TextColored(themeSettings.StatusPalette.Error,
-			"ERROR: %llu shaders failed to compile. Check installation and CommunityShaders.log",
-			static_cast<unsigned long long>(failed));
+			"ERROR: %llu shaders failed to compile. Check installation and %s.log",
+			static_cast<unsigned long long>(failed), Plugin::NAME.data());
 
 		if (FeatureIssues::HasPotentialShaderModifyingFeatures()) {
 			ImGui::TextColored(themeSettings.StatusPalette.Error, "%s", T("overlay.modified_features", "Features that may have modified shaders detected. Check Feature Issues in the Menu."));

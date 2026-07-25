@@ -940,9 +940,9 @@ void ThemeManager::CreateDefaultThemeFiles()
 
 		file << R"({
 	"DisplayName": "Default Theme",
-	"Description": "Default community shaders theme",
+	"Description": "Minimal fallback theme",
 	"Version": "1.0",
-	"Author": "Community Shaders",
+	"Author": "Bottled Shaders",
 	"Theme": {
 		"UseSimplePalette": true,
 		"Palette": {

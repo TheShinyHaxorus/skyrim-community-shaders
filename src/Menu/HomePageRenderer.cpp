@@ -4,11 +4,13 @@
 #include <imgui.h>
 
 #include "FeatureConstraints.h"
+#include "Fonts.h"
 #include "Globals.h"
 #include "I18n/I18n.h"
 #include "Menu.h"
 #include "Plugin.h"
 #include "State.h"
+#include "ThemeManager.h"
 
 // Static member definitions
 bool HomePageRenderer::isFirstTimeSetupShown = false;
@@ -27,152 +29,187 @@ void HomePageRenderer::RenderHomePage()
 {
 	ImGui::BeginChild("HomePage", ImVec2(0, 0), false);
 
-	RenderWelcomeSection();
-	ImGui::Spacing();
+	RenderMastheadSection();
 
 	RenderActiveConstraintsSection();
 
 	RenderQuickLinksSection();
-	ImGui::Spacing();
 
 	RenderFAQSection();
 
 	ImGui::EndChild();
 }
 
-void HomePageRenderer::RenderWelcomeSection()
+void HomePageRenderer::DrawOrnamentalRule(float widthRatio)
 {
-	float scale = Util::GetUIScale();
-	ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(8 * scale, 8 * scale));
-
-	// Main title - centered with safe font handling
-	ImGuiIO& io = ImGui::GetIO();
-	ImFont* titleFont = nullptr;
-
-	// Safely check if we have multiple fonts and the second one is valid
-	if (io.Fonts && io.Fonts->Fonts.Size > 1 && io.Fonts->Fonts[1] != nullptr) {
-		titleFont = io.Fonts->Fonts[1];
+	const float scale = Util::GetUIScale();
+	const float avail = ImGui::GetContentRegionAvail().x;
+	if (avail <= 0.0f) {
+		return;
 	}
 
-	// Scale the text to make it larger (2.0x size)
-	ImGui::SetWindowFontScale(TITLE_FONT_SCALE);
+	const float diamond = RULE_DIAMOND_RADIUS * scale;
+	const float padding = RULE_VERTICAL_PADDING * scale;
 
-	// Only push font if we have a valid one, otherwise use default scaled
-	if (titleFont) {
-		ImGui::PushFont(titleFont, titleFont->LegacySize);
+	ImGui::Dummy(ImVec2(0.0f, padding));
+
+	const ImVec2 origin = ImGui::GetCursorScreenPos();
+	const float centerX = origin.x + avail * 0.5f;
+	const float centerY = origin.y + diamond;
+	const float halfWidth = std::max(RULE_MIN_WIDTH * scale, avail * widthRatio) * 0.5f;
+	const float gap = diamond * RULE_DIAMOND_GAP;
+	const float thickness = std::max(1.0f, RULE_THICKNESS * scale);
+
+	ImVec4 sepColor = globals::menu ? globals::menu->GetTheme().Palette.Separator : ImVec4(0.5f, 0.5f, 0.5f, 0.6f);
+	const ImU32 solid = ImGui::GetColorU32(sepColor);
+	sepColor.w = 0.0f;
+	const ImU32 fade = ImGui::GetColorU32(sepColor);
+
+	ImDrawList* drawList = ImGui::GetWindowDrawList();
+
+	// Each arm fades out toward the outer edge, mirroring Skyrim's tapered rules.
+	drawList->AddRectFilledMultiColor(
+		ImVec2(centerX - halfWidth, centerY - thickness * 0.5f),
+		ImVec2(centerX - gap, centerY + thickness * 0.5f),
+		fade, solid, solid, fade);
+	drawList->AddRectFilledMultiColor(
+		ImVec2(centerX + gap, centerY - thickness * 0.5f),
+		ImVec2(centerX + halfWidth, centerY + thickness * 0.5f),
+		solid, fade, fade, solid);
+
+	drawList->AddQuadFilled(
+		ImVec2(centerX, centerY - diamond),
+		ImVec2(centerX + diamond, centerY),
+		ImVec2(centerX, centerY + diamond),
+		ImVec2(centerX - diamond, centerY),
+		solid);
+
+	ImGui::Dummy(ImVec2(0.0f, diamond * 2.0f + padding));
+}
+
+void HomePageRenderer::DrawSectionTitle(const char* title)
+{
+	MenuFonts::FontRoleGuard headingFont(Menu::FontRole::Heading);
+
+	const float avail = ImGui::GetContentRegionAvail().x;
+	const float offset = (avail - ImGui::CalcTextSize(title).x) * 0.5f;
+	if (offset > 0.0f) {
+		ImGui::SetCursorPosX(ImGui::GetCursorPosX() + offset);
+	}
+	ImGui::TextUnformatted(title);
+
+	DrawOrnamentalRule();
+}
+
+void HomePageRenderer::DrawFAQGroupLabel(const char* label)
+{
+	ImGui::Dummy(ImVec2(0.0f, FAQ_GROUP_TOP_SPACING * Util::GetUIScale()));
+
+	MenuFonts::FontRoleGuard subtextFont(Menu::FontRole::Subtext);
+
+	ImVec4 color = globals::menu ? globals::menu->GetTheme().Palette.Text : ImVec4(1.0f, 1.0f, 1.0f, 1.0f);
+	color.w *= FAQ_GROUP_LABEL_ALPHA;
+	ImGui::TextColored(color, "%s", label);
+}
+
+void HomePageRenderer::DrawFAQEntry(const char* question, const char* answer)
+{
+	if (ImGui::CollapsingHeader(question)) {
+		ImGui::Indent(FAQ_ANSWER_INDENT * Util::GetUIScale());
+		ImGui::TextWrapped("%s", answer);
+		ImGui::Spacing();
+		ImGui::Unindent(FAQ_ANSWER_INDENT * Util::GetUIScale());
+	}
+}
+
+void HomePageRenderer::RenderMastheadSection()
+{
+	const float scale = Util::GetUIScale();
+	auto* menu = Menu::GetSingleton();
+
+	ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(8 * scale, 6 * scale));
+
+	// Emblem, centred above the wordmark
+	if (menu && menu->uiIcons.logo.texture && menu->uiIcons.logo.size.y > 0.0f) {
+		const float emblemHeight = MASTHEAD_EMBLEM_HEIGHT * scale;
+		const float emblemWidth = emblemHeight * (menu->uiIcons.logo.size.x / menu->uiIcons.logo.size.y);
+
+		const float offset = (ImGui::GetContentRegionAvail().x - emblemWidth) * 0.5f;
+		if (offset > 0.0f) {
+			ImGui::SetCursorPosX(ImGui::GetCursorPosX() + offset);
+		}
+
+		ImVec4 tint(1.0f, 1.0f, 1.0f, MASTHEAD_EMBLEM_ALPHA);
+		if (menu->GetSettings().Theme.UseMonochromeLogo) {
+			tint = menu->GetSettings().Theme.Palette.Text;
+			tint.w *= MASTHEAD_EMBLEM_ALPHA;
+		}
+		ImGui::ImageWithBg(menu->uiIcons.logo.texture, ImVec2(emblemWidth, emblemHeight), ImVec2(0, 0), ImVec2(1, 1), ImVec4(0, 0, 0, 0), tint);
 	}
 
-	ImVec2 windowSize = ImGui::GetWindowSize();
+	// Wordmark with version
 	auto versionStr = Util::GetFormattedVersion(Plugin::VERSION);
 	auto expectedTag = std::format("v{}", versionStr);
 	auto* i18n = I18n::GetSingleton();
-	std::string titleWithVersion = Plugin::BUILD_DESCRIBE == expectedTag ? i18n->Format("menu.home.welcome", { { "version", versionStr } }, "Welcome to Community Shaders {version}") : i18n->Format("menu.home.welcome_dev", { { "version", versionStr }, { "build", std::string(Plugin::BUILD_DESCRIBE) } }, "Welcome to Community Shaders {version} [{build}]");
-	ImVec2 titleSize = ImGui::CalcTextSize(titleWithVersion.c_str());
-	ImGui::SetCursorPosX((windowSize.x - titleSize.x) * 0.5f);
-	ImGui::Text("%s", titleWithVersion.c_str());
+	std::string titleWithVersion = Plugin::BUILD_DESCRIBE == expectedTag ?
+	                                   i18n->Format("menu.home.welcome", { { "version", versionStr } }, "Bottled Shaders {version}") :
+	                                   i18n->Format("menu.home.welcome_dev", { { "version", versionStr }, { "build", std::string(Plugin::BUILD_DESCRIBE) } }, "Bottled Shaders {version} [{build}]");
 
-	// Only pop font if we pushed one
-	if (titleFont) {
-		ImGui::PopFont();
+	{
+		MenuFonts::FontRoleGuard titleFont(Menu::FontRole::Title);
+		ImGui::SetWindowFontScale(TITLE_FONT_SCALE);
+
+		const float offset = (ImGui::GetContentRegionAvail().x - ImGui::CalcTextSize(titleWithVersion.c_str()).x) * 0.5f;
+		if (offset > 0.0f) {
+			ImGui::SetCursorPosX(ImGui::GetCursorPosX() + offset);
+		}
+		ImGui::TextUnformatted(titleWithVersion.c_str());
+
+		ImGui::SetWindowFontScale(1.0f);
 	}
 
-	// Reset text scale back to normal
-	ImGui::SetWindowFontScale(1.0f);
+	// Single-line tagline, dimmed so the wordmark stays dominant
+	{
+		MenuFonts::FontRoleGuard subtextFont(Menu::FontRole::Subtext);
 
-	ImGui::Spacing();
-
-	// Intro text - centered
-	const char* introText = T("menu.home.intro",
-		"Community Shaders provides advanced graphics enhancements for Skyrim.\n"
-		"This comprehensive collection of features brings modern rendering techniques\n"
-		"to enhance your visual experience.");
-	ImVec2 introSize = ImGui::CalcTextSize(introText);
-	ImGui::SetCursorPosX((windowSize.x - introSize.x) * 0.5f);
-	ImGui::TextWrapped("%s", introText);
-
-	ImGui::Spacing();
-
-	// Discord banner - centered with proper error checking
-	auto menu = Menu::GetSingleton();
-	bool discordIconAvailable = false;
-
-	// Check if menu exists, has icons, and Discord icon is loaded
-	if (menu && menu->uiIcons.discord.texture != nullptr &&
-		menu->uiIcons.discord.size.x > 0 && menu->uiIcons.discord.size.y > 0) {
-		discordIconAvailable = true;
-	}
-
-	if (discordIconAvailable) {
-		// Calculate scaled icon size based on window width, with min/max constraints
-		ImVec2 originalSize = ImVec2(menu->uiIcons.discord.size.x, menu->uiIcons.discord.size.y);
-
-		// Compute width based on window size with constraints and padding (handles very small windows)
-		float ratioWidth = windowSize.x * DISCORD_BANNER_TARGET_WIDTH_RATIO;
-		float aspectRatio = originalSize.y / originalSize.x;
-		float maxAllowed = std::max(1.0f, windowSize.x - DISCORD_BANNER_PADDING_MARGIN);
-		float upperBound = std::min(DISCORD_BANNER_MAX_WIDTH, maxAllowed);
-		float lowerBound = std::min(DISCORD_BANNER_MIN_WIDTH, upperBound);
-		float targetWidth = std::clamp(ratioWidth, lowerBound, upperBound);
-
-		ImVec2 iconSize = ImVec2(targetWidth, targetWidth * aspectRatio);
-		ImGui::SetCursorPosX((windowSize.x - iconSize.x) * 0.5f);
-
-		// Push style to remove border
-		ImGui::PushStyleVar(ImGuiStyleVar_FrameBorderSize, 0.0f);
-		ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0, 0, 0, 0));                     // Transparent background
-		ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.1f, 0.1f, 0.1f, 0.3f));  // Subtle hover
-		ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.2f, 0.2f, 0.2f, 0.5f));   // Subtle click
-
-		if (ImGui::ImageButton("##DiscordButton", menu->uiIcons.discord.texture, iconSize)) {
-			ShellExecuteA(NULL, "open", DISCORD_URL, NULL, NULL, SW_SHOWNORMAL);
+		const char* introText = T("menu.home.intro", "Modern rendering for Skyrim - enable only what you want.");
+		const float offset = (ImGui::GetContentRegionAvail().x - ImGui::CalcTextSize(introText).x) * 0.5f;
+		if (offset > 0.0f) {
+			ImGui::SetCursorPosX(ImGui::GetCursorPosX() + offset);
 		}
 
-		// Pop the style changes
-		ImGui::PopStyleColor(3);
-		ImGui::PopStyleVar();
-
-		Util::AddTooltip(T("menu.home.join_discord", "Join our Discord"));
-	} else {
-		// Fallback button when Discord icon is not available
-		float buttonWidth = DISCORD_BANNER_MIN_WIDTH * scale;
-		ImGui::SetCursorPosX((windowSize.x - buttonWidth) * 0.5f);
-		if (ImGui::Button(T("menu.home.join_discord", "Join our Discord"), ImVec2(buttonWidth, 0))) {
-			ShellExecuteA(NULL, "open", DISCORD_URL, NULL, NULL, SW_SHOWNORMAL);
-		}
-		Util::AddTooltip(T("menu.home.join_discord", "Join our Discord"));
+		ImVec4 color = globals::menu ? globals::menu->GetTheme().Palette.Text : ImVec4(1.0f, 1.0f, 1.0f, 1.0f);
+		color.w *= SUBTITLE_ALPHA;
+		ImGui::TextColored(color, "%s", introText);
 	}
 
 	ImGui::PopStyleVar();
+
+	DrawOrnamentalRule();
 }
 
 void HomePageRenderer::RenderQuickLinksSection()
 {
-	// Quick Links title - centered
-	ImVec2 windowSize = ImGui::GetWindowSize();
-	const char* quickLinksTitle = T("menu.home.quick_links", "Quick Links");
-	ImVec2 titleSize = ImGui::CalcTextSize(quickLinksTitle);
-	ImGui::SetCursorPosX((windowSize.x - titleSize.x) * 0.5f);
-	ImGui::Text("%s", quickLinksTitle);
+	DrawSectionTitle(T("menu.home.quick_links", "Quick Links"));
 
 	ImGui::Columns(4, nullptr, false);
 
-	// External links in a row
 	if (ImGui::Button(T("menu.home.nexus_mods", "Nexus Mods"), ImVec2(-1, 0))) {
 		ShellExecuteA(NULL, "open", "https://www.nexusmods.com/skyrimspecialedition/mods/86492", NULL, NULL, SW_SHOWNORMAL);
 	}
 
 	ImGui::NextColumn();
-	if (ImGui::Button(T("menu.home.github", "GitHub"), ImVec2(-1, 0))) {
+	if (ImGui::Button(T("menu.home.github", "Source Code"), ImVec2(-1, 0))) {
 		ShellExecuteA(NULL, "open", "https://github.com/doodlum/skyrim-community-shaders", NULL, NULL, SW_SHOWNORMAL);
 	}
 
 	ImGui::NextColumn();
-	if (ImGui::Button(T("menu.home.wiki", "Wiki"), ImVec2(-1, 0))) {
+	if (ImGui::Button(T("menu.home.wiki", "User Guide"), ImVec2(-1, 0))) {
 		ShellExecuteA(NULL, "open", "https://modding.wiki/en/skyrim/developers/community-shaders", NULL, NULL, SW_SHOWNORMAL);
 	}
 
 	ImGui::NextColumn();
-	if (ImGui::Button(T("menu.home.dev_wiki", "Developer Wiki"), ImVec2(-1, 0))) {
+	if (ImGui::Button(T("menu.home.dev_wiki", "Developer Docs"), ImVec2(-1, 0))) {
 		ShellExecuteA(NULL, "open", "https://github.com/doodlum/skyrim-community-shaders/wiki", NULL, NULL, SW_SHOWNORMAL);
 	}
 
@@ -181,79 +218,66 @@ void HomePageRenderer::RenderQuickLinksSection()
 
 void HomePageRenderer::RenderFAQSection()
 {
-	// FAQ title - centered
-	ImVec2 windowSize = ImGui::GetWindowSize();
-	const char* faqTitle = T("menu.faq.title", "Frequently Asked Questions");
-	ImVec2 titleSize = ImGui::CalcTextSize(faqTitle);
-	ImGui::SetCursorPosX((windowSize.x - titleSize.x) * 0.5f);
-	ImGui::Text("%s", faqTitle);
-	ImGui::Separator();
+	DrawSectionTitle(T("menu.faq.title", "Frequently Asked Questions"));
 
-	// FAQ items with collapsible headers
-	if (ImGui::CollapsingHeader(T("menu.faq.q1", "What is Community Shaders?"))) {
-		ImGui::TextWrapped("%s", T("menu.faq.a1",
-									 "Community Shaders is a comprehensive graphics enhancement framework for Skyrim that "
-									 "provides advanced lighting, materials, and visual effects. It's designed to be modular, "
-									 "allowing you to enable only the features you want while maintaining good performance."));
-	}
+	DrawFAQGroupLabel(T("menu.faq.group_getting_started", "GETTING STARTED"));
 
-	if (ImGui::CollapsingHeader(T("menu.faq.q2", "How do I configure features?"))) {
-		ImGui::TextWrapped("%s", T("menu.faq.a2",
-									 "Each feature can be found in the left sidebar menu. Click on any feature to access its "
-									 "settings. Most features include presets and detailed tooltips to help you understand "
-									 "what each setting does."));
-	}
+	DrawFAQEntry(
+		T("menu.faq.q1", "What is Bottled Shaders?"),
+		T("menu.faq.a1",
+			"A modular graphics framework for Skyrim. It replaces the game's shaders at runtime to add "
+			"modern lighting, materials, and post-processing. Every feature is independent, so you can "
+			"enable only the ones you want."));
 
-	if (ImGui::CollapsingHeader(T("menu.faq.q3", "Why are some features not loading?"))) {
-		ImGui::TextWrapped("%s", T("menu.faq.a3",
-									 "Features may fail to load due to hardware incompatibility, missing dependencies, or "
-									 "conflicts with other mods. Check the 'Feature Issues' tab for detailed information "
-									 "about any problematic features."));
-	}
+	DrawFAQEntry(
+		T("menu.faq.q2", "How do I configure a feature?"),
+		T("menu.faq.a2",
+			"Pick a feature from the sidebar to open its settings. Most features ship with presets to start "
+			"from, and every setting has a tooltip explaining what it does and what it costs."));
 
-	if (ImGui::CollapsingHeader(T("menu.faq.q4", "I have \"Failed Shaders\" when compiling?"))) {
-		ImGui::TextWrapped("%s", T("menu.faq.a4",
-									 "Failed shaders are usually caused by mixed file versions. Ensure all features are up to date "
-									 "and avoid mixing files from test builds or outdated versions. Please review the 'Feature Issues' tab "
-									 "and/or Wiki for more information. Update your features and remove any obsolete features."));
-	}
+	DrawFAQEntry(
+		T("menu.faq.q7", "How do I change the menu hotkey?"),
+		T("menu.faq.a7",
+			"The menu opens with END by default. Rebind it under General > Keybindings, or edit the hotkey "
+			"directly in the JSON configuration files."));
 
-	if (ImGui::CollapsingHeader(T("menu.faq.q5", "How do I improve performance?"))) {
-		ImGui::TextWrapped("%s", T("menu.faq.a5",
-									 "Start by enabling the Performance Overlay to monitor your FPS. Consider disabling "
-									 "expensive features like Screen Space GI or reducing quality settings. The 'Display' "
-									 "tab also includes upscaling options that can improve performance."));
-	}
+	DrawFAQGroupLabel(T("menu.faq.group_performance", "PERFORMANCE"));
 
-	if (ImGui::CollapsingHeader(T("menu.faq.q6", "Is Community Shaders compatible with ENB?"))) {
-		ImGui::TextWrapped("%s", T("menu.faq.a6",
-									 "No, Community Shaders is not compatible with ENB. Community Shaders will automatically "
-									 "disable itself if ENB is detected."));
-	}
+	DrawFAQEntry(
+		T("menu.faq.q5", "How do I improve performance?"),
+		T("menu.faq.a5",
+			"Turn on the Performance Overlay first so you can see which passes cost the most. From there: lower "
+			"the quality of expensive features such as Screen Space GI, or turn them off entirely; enable "
+			"upscaling under the Display tab. Features you never use are best set to \"Disable at Boot\" so they "
+			"cost nothing at all."));
 
-	if (ImGui::CollapsingHeader(T("menu.faq.q7", "The menu hotkey isn't working!"))) {
-		ImGui::TextWrapped("%s", T("menu.faq.a7",
-									 "By default, Community Shaders uses the END key to open this menu. If your keyboard "
-									 "doesn't have an END key or it's not working, you can change it in the General > Keybindings tab. "
-									 "You can also edit the hotkey in the JSON configuration files."));
-	}
+	DrawFAQGroupLabel(T("menu.faq.group_troubleshooting", "TROUBLESHOOTING"));
 
-	if (ImGui::CollapsingHeader(T("menu.faq.q8", "I would like to help develop Community Shaders."))) {
-		ImGui::TextWrapped("%s", T("menu.faq.a8",
-									 "We're always looking for talented developers to join the team! Check out our GitHub wiki "
-									 "for contribution guidelines and join our Discord server to connect with the development team. "
-									 "Whether you're interested in shader programming, C++ development, or documentation, there's "
-									 "always something to contribute."));
-	}
+	DrawFAQEntry(
+		T("menu.faq.q3", "A feature won't load, or shaders failed to compile"),
+		T("menu.faq.a3",
+			"Both usually mean mismatched files. Check the Feature Issues tab first - it names the specific "
+			"feature and problem. The common causes are feature files left over from an older version, files "
+			"mixed in from a test build, or a feature whose functionality is now built in and should be "
+			"uninstalled. Update every feature to the matching version and remove obsolete ones, then clear the "
+			"shader cache."));
 
-	if (ImGui::CollapsingHeader(T("menu.faq.q9", "Is Community Shaders open source?"))) {
-		ImGui::TextWrapped("%s", T("menu.faq.a9",
-									 "Yes! Community Shaders is completely open source and available on GitHub. You can view "
-									 "the source code, report issues, suggest features, and contribute to the project. "
-									 "The project is licensed under GPL, ensuring it remains free and open for everyone."
-									 " Branding materials and assets (icons, nexus branding, typography, etc) are not covered by the GPL Licence."
-									 " Any included assets may not be used without explicit permission."));
-	}
+	DrawFAQEntry(
+		T("menu.faq.q6", "Is it compatible with ENB?"),
+		T("menu.faq.a6",
+			"No. If ENB is detected at startup, all hooks and features disable themselves automatically to avoid "
+			"conflicts. Use one or the other, not both."));
+
+	DrawFAQGroupLabel(T("menu.faq.group_about", "ABOUT"));
+
+	DrawFAQEntry(
+		T("menu.faq.q9", "Is it open source? Can I contribute?"),
+		T("menu.faq.a9",
+			"Yes. The source is on GitHub under the GPL, and contributions are welcome - shader work, C++, and "
+			"documentation alike. See the developer documentation for build instructions and contribution "
+			"guidelines.\n\n"
+			"Note that branding assets (logos, icons, and typography) are not covered by the GPL and may not be "
+			"reused without permission."));
 }
 
 void HomePageRenderer::RenderActiveConstraintsSection()
@@ -445,7 +469,7 @@ void HomePageRenderer::RenderFirstTimeSetupDialog()
 
 	// Version text - two lines, both centered (reduced spacing between lines)
 	const char* versionLine1 = T("menu.setup.new_install_line1", "This appears to be a new install, update, or");
-	const char* versionLine2 = T("menu.setup.new_install_line2", "reinstallation of Community Shaders.");
+	const char* versionLine2 = T("menu.setup.new_install_line2", "reinstallation of Bottled Shaders.");
 
 	centerText(versionLine1);
 	ImGui::Text("%s", versionLine1);

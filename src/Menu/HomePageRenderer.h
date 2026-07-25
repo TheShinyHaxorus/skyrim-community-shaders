@@ -4,17 +4,16 @@
 #include <string>
 
 /**
- * @brief Renders the Home page of the in-game menu with welcome info, FAQ, and first-time setup.
+ * @brief Renders the Home page of the in-game menu with the masthead, FAQ, and first-time setup.
  *
- * Displays a welcome banner, quick links (Discord, etc.), active constraint
- * warnings, and a FAQ section. Also manages the first-time setup dialog
- * shown on initial launch.
+ * Displays the brand masthead, quick links, active constraint warnings, and a
+ * grouped FAQ section. Also manages the first-time setup dialog shown on
+ * initial launch.
  */
 class HomePageRenderer
 {
 public:
 	// Constants
-	static constexpr const char* DISCORD_URL = "https://discord.com/invite/nkrQybAsyy";
 	static constexpr float TITLE_FONT_SCALE = 2.0f;
 	static constexpr float HOTKEY_TEXT_SCALE = 1.6f;
 	static constexpr float HOTKEY_TEXT_SCALE_CAPTURING = 2.0f;
@@ -29,11 +28,23 @@ public:
 	static constexpr float DIALOG_CORNER_ROUNDING = 6.0f;
 	static constexpr float DIALOG_LINE_TIGHTEN = 3.0f;
 
-	// Discord banner scaling constants
-	static constexpr float DISCORD_BANNER_TARGET_WIDTH_RATIO = 0.85f;
-	static constexpr float DISCORD_BANNER_MIN_WIDTH = 150.0f;
-	static constexpr float DISCORD_BANNER_MAX_WIDTH = 1200.0f;
-	static constexpr float DISCORD_BANNER_PADDING_MARGIN = 40.0f;
+	// Masthead layout (1080p baseline, scaled by GetUIScale)
+	static constexpr float MASTHEAD_EMBLEM_HEIGHT = 88.0f;
+	static constexpr float MASTHEAD_EMBLEM_ALPHA = 0.85f;
+	static constexpr float SUBTITLE_ALPHA = 0.62f;
+
+	// Ornamental divider rule, echoing Skyrim's tapered menu separators
+	static constexpr float RULE_THICKNESS = 1.0f;
+	static constexpr float RULE_DIAMOND_RADIUS = 3.5f;
+	static constexpr float RULE_DIAMOND_GAP = 2.6f;   // Multiple of the diamond radius
+	static constexpr float RULE_VERTICAL_PADDING = 6.0f;
+	static constexpr float RULE_MIN_WIDTH = 120.0f;
+	static constexpr float RULE_DEFAULT_WIDTH_RATIO = 0.62f;
+
+	// FAQ layout
+	static constexpr float FAQ_GROUP_TOP_SPACING = 10.0f;
+	static constexpr float FAQ_ANSWER_INDENT = 12.0f;
+	static constexpr float FAQ_GROUP_LABEL_ALPHA = 0.55f;
 
 	/** @brief Renders the full Home page including welcome, quick links, constraints, and FAQ sections. */
 	static void RenderHomePage();
@@ -58,10 +69,22 @@ public:
 	static bool ShouldSkipKeyRelease(uint32_t key);
 
 private:
-	static void RenderWelcomeSection();
+	static void RenderMastheadSection();
 	static void RenderQuickLinksSection();
 	static void RenderFAQSection();
 	static void RenderActiveConstraintsSection();
+
+	/** @brief Draws a centred, tapered divider with a small diamond finial. */
+	static void DrawOrnamentalRule(float widthRatio = RULE_DEFAULT_WIDTH_RATIO);
+
+	/** @brief Draws a centred section title followed by an ornamental rule. */
+	static void DrawSectionTitle(const char* title);
+
+	/** @brief Draws a dimmed, letter-spaced group label above a run of FAQ entries. */
+	static void DrawFAQGroupLabel(const char* label);
+
+	/** @brief Draws one collapsible FAQ entry with an indented, wrapped answer. */
+	static void DrawFAQEntry(const char* question, const char* answer);
 
 	static void MarkFirstTimeSetupComplete(uint32_t closingKey);
 
