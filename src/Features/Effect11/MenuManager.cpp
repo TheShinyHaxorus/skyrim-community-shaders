@@ -362,10 +362,6 @@ void MenuManager::RenderAllSettings()
 						if (!settingInfo)
 							return true;
 
-						const bool isTod = settingInfo->type == SettingType::TimeOfDay || settingInfo->type == SettingType::ColorTimeOfDay;
-						if ((tabName == "Main" && isTod) || (tabName == "Weather" && !isTod))
-							return true;
-
 						return !settingManager.IsSettingEnabled(key, category);
 					});
 
@@ -399,8 +395,8 @@ void MenuManager::RenderAllSettings()
 							ImGui::TableSetupColumn("Parameter", ImGuiTableColumnFlags_WidthFixed);
 							ImGui::TableSetupColumn("Value", ImGuiTableColumnFlags_WidthStretch);
 
-							// Add weather ignore controls for categories with weather support (Weather tab only)
-							if (tabName == "Weather" && settingManager.CategoryHasWeatherSupport(category)) {
+							// Add weather ignore controls for categories with weather support
+							if (settingManager.CategoryHasWeatherSupport(category)) {
 								auto& effectManager = EffectManager::GetSingleton();
 								bool isInterior = effectManager.commonData.eInteriorFactor > 0.5f;
 
