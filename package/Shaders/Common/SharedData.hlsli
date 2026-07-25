@@ -278,7 +278,13 @@ namespace SharedData
 
 		uint UseProceduralGradientWeights;
 		float ProceduralGradientWeightCurve;
-		float2 SkyGradientPadding;
+		uint EnableProceduralSun;
+		float ProceduralSunDiskRadiusSq;
+
+		float ProceduralSunDiskEdgeScale;
+		float ProceduralSunGlowIntensity;
+		float ProceduralSunCoronaFalloff;
+		float ProceduralSunCoronaScale;
 
 		float ParticleIntensity;
 		float ParticleLightingInfluence;
