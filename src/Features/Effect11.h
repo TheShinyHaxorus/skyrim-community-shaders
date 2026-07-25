@@ -42,13 +42,7 @@ public:
 
 		uint UseProceduralGradientWeights;
 		float ProceduralGradientWeightCurve;
-		uint EnableProceduralSun;
-		float ProceduralSunDiskRadiusSq;
-
-		float ProceduralSunDiskEdgeScale;
-		float ProceduralSunGlowIntensity;
-		float ProceduralSunCoronaFalloff;
-		float ProceduralSunCoronaScale;
+		float2 SkyGradientPadding;
 
 		float ParticleIntensity;
 		float ParticleLightingInfluence;

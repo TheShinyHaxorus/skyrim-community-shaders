@@ -158,7 +158,6 @@ void EffectManager::RegisterSettings()
 	settingManager.RegisterBoolSetting("EnableDepthOfField", "EFFECT", false, false);
 	settingManager.RegisterBoolSetting("EnableWater", "EFFECT", false, false);
 	settingManager.RegisterBoolSetting("EnablePostPassShader", "EFFECT", false, false);
-	settingManager.RegisterBoolSetting("EnableProceduralSun", "EFFECT", false, false);
 	settingManager.RegisterBoolSetting("EnableCloudShadows", "EFFECT", false, false);
 	settingManager.RegisterBoolSetting("EnableCloudsScattering", "EFFECT", false, false);
 	settingManager.RegisterBoolSetting("EnableImageBasedLighting", "EFFECT", false, false);
@@ -258,11 +257,6 @@ void EffectManager::RegisterSettings()
 	settingManager.RegisterTimeOfDaySetting("CloudsLightingSunMultiplier", "SKYSCATTERING", 0.0f, 0.0f, 100.0f, 0.01f, true);
 	settingManager.RegisterTimeOfDaySetting("CloudsLightingMoonIntensity", "SKYSCATTERING", 0.0f, 0.0f, 10.0f, 0.01f, true);
 
-	settingManager.RegisterFloatSetting("Size", "PROCEDURALSUN", 1.0f, 0.0f, 12.0f, 0.01f, false);
-	settingManager.RegisterFloatSetting("EdgeSoftness", "PROCEDURALSUN", 0.4f, 0.0f, 1.0f, 0.01f, false);
-	settingManager.RegisterTimeOfDaySetting("GlowIntensity", "PROCEDURALSUN", 0.4f, 0.0f, 30000.0f, 0.01f, true);
-	settingManager.RegisterTimeOfDaySetting("GlowCurve", "PROCEDURALSUN", 10.0f, 0.0f, 100.0f, 0.01f, true);
-
 	settingManager.RegisterTimeOfDaySetting("Intensity", "VOLUMETRICFOG", 1.0f, 0.0f, 30000.0f, 0.01f, true);
 	settingManager.RegisterColorTimeOfDaySetting("ColorFilter", "VOLUMETRICFOG", { 1.0f, 1.0f, 1.0f }, true);
 
@@ -297,7 +291,6 @@ void EffectManager::RegisterSettings()
 	settingManager.SetCategoryTab("ENVIRONMENT", "Weather");
 	settingManager.SetCategoryTab("SKY", "Weather");
 	settingManager.SetCategoryTab("SKYSCATTERING", "Weather");
-	settingManager.SetCategoryTab("PROCEDURALSUN", "Weather");
 	settingManager.SetCategoryTab("VOLUMETRICFOG", "Weather");
 	settingManager.SetCategoryTab("VOLUMETRICRAYS", "Weather");
 	settingManager.SetCategoryTab("IMAGEBASEDLIGHTING", "Weather");
@@ -312,7 +305,6 @@ void EffectManager::RegisterSettings()
 	settingManager.SetCategoryDependency("BLOOM", "EnableBloom", "EFFECT");
 	settingManager.SetCategoryDependency("LENS", "EnableLens", "EFFECT");
 	settingManager.SetCategoryDependency("ADAPTATION", "EnableAdaptation", "EFFECT");
-	settingManager.SetCategoryDependency("PROCEDURALSUN", "EnableProceduralSun", "EFFECT");
 	settingManager.SetCategoryDependency("CLOUDSHADOWS", "EnableCloudShadows", "EFFECT");
 	settingManager.SetCategoryDependency("SKYSCATTERING", "EnableCloudsScattering", "EFFECT");
 	settingManager.SetCategoryDependency("IMAGEBASEDLIGHTING", "EnableImageBasedLighting", "EFFECT");

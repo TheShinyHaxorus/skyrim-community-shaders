@@ -42,6 +42,7 @@ struct VS_OUTPUT
 
 #if !defined(OCCLUSION) && !defined(MOONMASK) && !defined(HORIZFADE)
 	float4 SkyBlendColor0: TEXCOORD5;
+	float4 SkyBlendColor1: TEXCOORD7;
 	float4 SkyBlendColor2: TEXCOORD6;
 #endif
 
@@ -117,6 +118,7 @@ VS_OUTPUT main(VS_INPUT input)
 	vsout.Color.xyz = VParams * skyColor;
 	vsout.Color.w = BlendColor[0].w * input.Color.w;
 	vsout.SkyBlendColor0 = float4(BlendColor[0].xyz * VParams, 0);
+	vsout.SkyBlendColor1 = float4(BlendColor[1].xyz * VParams, 0);
 	vsout.SkyBlendColor2 = float4(BlendColor[2].xyz * VParams, 0);
 
 #	endif  // OCCLUSION MOONMASK HORIZFADE
@@ -180,37 +182,22 @@ cbuffer AlphaTestRefCB : register(b11)
 
 Texture2D<float> TexDepthSampler : register(t17);
 
-float3 LimbDarkenHestroffer(float norm_dist)
+// Absolute term covers kMAIN quantization, relative term survives tonemap compression of bright sky.
+float3 ApplySkyDither(float3 color, float2 pixelCoord)
 {
-	float mu = sqrt(1.0 - norm_dist * norm_dist);
-	float3 a0 = float3(0.34685, 0.26073, 0.15248);
-	float3 a1 = float3(1.37539, 1.27428, 1.38517);
-	float3 a2 = float3(-2.04425, -1.30352, -1.49615);
-	float3 a3 = float3(2.70493, 1.47085, 1.99886);
-	float3 a4 = float3(-1.94290, -0.96618, -1.48155);
-	float3 a5 = float3(0.55999, 0.26384, 0.44119);
-	float mu2 = mu * mu;
-	float mu3 = mu2 * mu;
-	float mu4 = mu2 * mu2;
-	float mu5 = mu4 * mu;
-	return a0 + a1 * mu + a2 * mu2 + a3 * mu3 + a4 * mu4 + a5 * mu5;
+	const float absoluteStep = 1.5 / 255.0;
+	const float relativeStep = 0.03;
+	float3 noise = Random::TriDither(pixelCoord, SharedData::FrameCount);
+	return color + noise * (absoluteStep + abs(color) * relativeStep);
 }
 
-float3 ComputeProceduralSun(float2 uv)
+// Smoothstep weights keep the curve C1 at the middle stop; a two-segment lerp kinks into a Mach band.
+float3 BlendSkyGradient(float3 horizonColor, float3 middleColor, float3 zenithColor, float gradientPosition)
 {
-	float2 p = uv * 2.0 - 1.0;
-	float r2 = dot(p, p);
-	float dist = r2 - SharedData::enbSettings.ProceduralSunDiskRadiusSq;
-
-	float c = saturate(dist * SharedData::enbSettings.ProceduralSunCoronaScale);
-	float corona = (1.0 - c) * rcp(SharedData::enbSettings.ProceduralSunCoronaFalloff * c + 1.0) * SharedData::enbSettings.ProceduralSunGlowIntensity;
-
-	float disk = saturate(-dist * SharedData::enbSettings.ProceduralSunDiskEdgeScale);
-
-	float normDist = saturate(sqrt(r2 / max(SharedData::enbSettings.ProceduralSunDiskRadiusSq, 1e-8)));
-	float3 limb = LimbDarkenHestroffer(normDist);
-
-	return corona + disk * limb;
+	float horizonWeight = smoothstep(0.5, 1.0, gradientPosition);
+	float zenithWeight = 1.0 - smoothstep(0.0, 0.5, gradientPosition);
+	float middleWeight = 1.0 - horizonWeight - zenithWeight;
+	return zenithColor * zenithWeight + middleColor * middleWeight + horizonColor * horizonWeight;
 }
 
 PS_OUTPUT main(PS_INPUT input)
@@ -242,7 +229,7 @@ PS_OUTPUT main(PS_INPUT input)
 	baseColor.xyz *= hdrSunGain;
 	if (HDRSun::IsHdrSunActive()) {
 		// Dither bright output to reduce banding in high-boost sun path.
-		// Same baseColor/skyScale treatment for DITHER and non-DITHER; DITHER adds noiseGrad later.
+		// Same baseColor/skyScale treatment for DITHER and non-DITHER; DITHER adds its own later.
 		baseColor.xyz += (Random::InterleavedGradientNoise(input.Position.xy) - 0.5f) *
 		                 (saturate(hdrSunGain - 1.0f) / 255.0f);
 		skyScale = 0.0f;
@@ -250,29 +237,19 @@ PS_OUTPUT main(PS_INPUT input)
 
 #		endif
 
-#		if defined(TEX)
-	if (SharedData::enbSettings.EnableProceduralSun && (Permutation::ExtraShaderDescriptor & Permutation::ExtraFlags::IsSun)) {
-		baseColor.xyz = ComputeProceduralSun(input.TexCoord0.xy);
-		baseColor.w = input.Color.w;
-		skyScale = 0.0;
-	}
-#		endif
-
 #		if defined(DITHER)
-	// Zero-mean analytic dither; ISHDR applies the final 8-bit TPDF dither downstream.
-	float skyDither = (Random::InterleavedGradientNoise(input.Position.xy) - 0.5) * (3.0 / 255.0);
 
 #			ifdef TEX
-	psout.Color.xyz = Color::Sky(input.Color.xyz) * baseColor.xyz + skyScale + skyDither;
+	psout.Color.xyz = ApplySkyDither(Color::Sky(input.Color.xyz) * baseColor.xyz + skyScale, input.Position.xy);
 	psout.Color.w = baseColor.w * input.Color.w;
 #			else
 	float3 skyGradientColor = input.Color.xyz;
 	if (SharedData::enbSettings.UseProceduralGradientWeights) {
 		float3 viewDirection = normalize(input.WorldPosition.xyz);
 		float gradientPosition = pow(1.0 - saturate(viewDirection.z), SharedData::enbSettings.ProceduralGradientWeightCurve);
-		skyGradientColor = lerp(input.SkyBlendColor2.xyz, input.SkyBlendColor0.xyz, gradientPosition);
+		skyGradientColor = BlendSkyGradient(input.SkyBlendColor0.xyz, input.SkyBlendColor1.xyz, input.SkyBlendColor2.xyz, gradientPosition);
 	}
-	psout.Color.xyz = Color::Sky(skyGradientColor) + skyScale + skyDither;
+	psout.Color.xyz = ApplySkyDither(Color::Sky(skyGradientColor) + skyScale, input.Position.xy);
 	psout.Color.w = input.Color.w;
 #			endif  // TEX
 
