@@ -312,7 +312,11 @@ void Effect11::OverrideWeather(RE::Sky* a_sky)
 		}
 
 		auto& data = imageSpaceManager->GetRuntimeData().data;
-		float sunlightScale = std::max(data.baseData.hdr.sunlightScale, FLT_MIN);
+		// The scale round-trip below only cancels for a linear curve. Storm imagespaces drive
+		// sunlightScale to ~0, where pow() either underflows the light to black or the divide
+		// blows it up by orders of magnitude, so apply the curve unscaled instead.
+		const float rawSunlightScale = data.baseData.hdr.sunlightScale;
+		const float sunlightScale = rawSunlightScale > 1e-3f ? rawSunlightScale : 1.0f;
 		dirLightColorF3 *= sunlightScale;
 
 		dirLightColorF3 = Curve(dirLightColorF3, settingManager.GetInterpolatedTimeOfDayValue("DirectLightingCurve", "ENVIRONMENT"));
