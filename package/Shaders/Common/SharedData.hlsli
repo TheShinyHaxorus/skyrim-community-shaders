@@ -371,8 +371,7 @@ namespace SharedData
 		float volumetricSampleJitterMultiplier;
 		float volumetricUpsampleJitterMultiplier;
 		float volumetricLocalLightScatteringIntensity;
-		uint matchVanillaFog;
-		float matchVanillaFogScale;
+		float2 pad0;
 	};
 
 	struct TruePBRSettings

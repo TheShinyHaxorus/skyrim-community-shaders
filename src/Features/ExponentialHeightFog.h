@@ -36,8 +36,6 @@ public:
 	 * light scattering, and front-to-back integration.
 	 */
 	virtual void Prepass() override;
-	/** @brief Applies the settings ENB post-processing expects the first time ENB is seen active. */
-	virtual void EarlyPrepass() override;
 
 	virtual void RestoreDefaultSettings() override;
 	virtual void LoadSettings(json& o_json) override;
@@ -84,27 +82,11 @@ public:
 		float volumetricSampleJitterMultiplier = 0.0f;
 		float volumetricUpsampleJitterMultiplier = 1.0f;
 		float volumetricLocalLightScatteringIntensity = 1.0f;
-		uint matchVanillaFog = 0;
-		float matchVanillaFogScale = 1.0f;
+		float2 pad0;
 	} settings;
 	STATIC_ASSERT_ALIGNAS_16(Settings);
 
-	/** @brief Set once ENB's values have been pushed into settings, so they are never re-applied over user edits. */
-	bool enbDefaultsApplied = false;
-
-	/** @brief Writes the settings ENB post-processing expects (fog disabled) into the user's settings. */
-	void ApplyENBDefaults();
-
 	Settings GetCommonBufferData() const;
-
-	/**
-	 * @brief Returns the settings actually used for rendering this frame.
-	 *
-	 * In "Match Vanilla Fog" mode the height-fog medium is derived from the engine's
-	 * current interpolated weather fog (RE::Sky fogNear/fogFar/fogClamp) so the fog
-	 * matches vanilla while still feeding the volumetric scattering pipeline.
-	 */
-	Settings ResolveSettings() const;
 
 private:
 	struct VolumetricFogCB

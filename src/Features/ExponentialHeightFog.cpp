@@ -50,9 +50,7 @@ NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(
 	volumetricHistoryMissSampleCount,
 	volumetricSampleJitterMultiplier,
 	volumetricUpsampleJitterMultiplier,
-	volumetricLocalLightScatteringIntensity,
-	matchVanillaFog,
-	matchVanillaFogScale)
+	volumetricLocalLightScatteringIntensity)
 
 namespace
 {
@@ -68,11 +66,6 @@ namespace
 		}
 		return result;
 	}
-
-	bool IsENBPostProcessingActive()
-	{
-		return globals::features::effect11.loaded && globals::features::effect11.enableEffect;
-	}
 }
 
 void ExponentialHeightFog::RestoreDefaultSettings()
@@ -83,116 +76,45 @@ void ExponentialHeightFog::RestoreDefaultSettings()
 void ExponentialHeightFog::LoadSettings(json& o_json)
 {
 	settings = o_json;
-	if (auto it = o_json.find("enbDefaultsApplied"); it != o_json.end() && it->is_boolean())
-		enbDefaultsApplied = it->get<bool>();
 }
 
 void ExponentialHeightFog::SaveSettings(json& o_json)
 {
 	o_json = settings;
-	o_json["enbDefaultsApplied"] = enbDefaultsApplied;
-}
-
-void ExponentialHeightFog::ApplyENBDefaults()
-{
-	// ENB post-processing draws its own fog, so it wants this feature off.
-	settings.enabled = 0;
-	enbDefaultsApplied = true;
-}
-
-void ExponentialHeightFog::EarlyPrepass()
-{
-	if (!enbDefaultsApplied && IsENBPostProcessingActive())
-		ApplyENBDefaults();
-}
-
-ExponentialHeightFog::Settings ExponentialHeightFog::ResolveSettings() const
-{
-	Settings data = settings;
-
-	if (!data.enabled || !data.matchVanillaFog)
-		return data;
-
-	auto* sky = RE::Sky::GetSingleton();
-	if (!sky || sky->mode.get() != RE::Sky::Mode::kFull)
-		return data;
-
-	const float fogNear = std::max(0.0f, sky->fogNear);
-	const float fogSpan = sky->fogFar - fogNear;
-	if (!(fogSpan > 1.0f) || !std::isfinite(fogSpan))
-		return data;
-
-	// Match vanilla's fogClamp opacity across its own span: 1 - e^(-sigma * span) = clamp.
-	const float fogClamp = std::clamp(sky->fogClamp, 0.05f, 0.995f);
-	const float extinction = -std::log(1.0f - fogClamp) / fogSpan;
-
-	// The shader integrates with exp2 and a ln(2) line integral, so its effective
-	// extinction is (fogDensity * 0.001) * ln(2)^2 -- undo that here.
-	constexpr float lnTwoSquared = 0.4804530139182014f;
-	const float density = extinction / lnTwoSquared * 1000.0f * std::max(0.0f, data.matchVanillaFogScale);
-	if (!std::isfinite(density))
-		return data;
-
-	data.fogDensity = std::clamp(density, 0.0f, 10.0f);
-	data.fogHeightFalloff = 0.001f;
-	data.startDistance = fogNear;
-	data.originalFogColorAmount = 1.0f;
-	data.fogInscatteringColor.w = 0.0f;
-	data.disableVanillaFog = 1;
-
-	return data;
 }
 
 ExponentialHeightFog::Settings ExponentialHeightFog::GetCommonBufferData() const
 {
-	return ResolveSettings();
+	Settings data = settings;
+
+	// When ENB post-processing is active, ENB handles fog; disable ours.
+	if (globals::features::effect11.loaded) {
+		auto& enb = globals::features::effect11;
+		if (enb.enableEffect) {
+			data.enabled = 0;
+		}
+	}
+
+	return data;
 }
 
 void ExponentialHeightFog::DrawSettings()
 {
-	if (IsENBPostProcessingActive()) {
-		ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 1.0f, 0.0f, 1.0f));
-		ImGui::TextWrapped("%s", T(TKEY("enb_active"),
-									 "ENB post-processing is active and draws its own fog, so this feature was turned off "
-									 "the first time ENB was detected. These settings are no longer locked -- change them freely."));
-		ImGui::PopStyleColor();
-		if (ImGui::Button(T(TKEY("apply_enb_values"), "Apply ENB Values"))) {
-			ApplyENBDefaults();
+	if (globals::features::effect11.loaded) {
+		auto& enb = globals::features::effect11;
+		if (enb.enableEffect) {
+			ImGui::TextColored(ImVec4(1.0f, 1.0f, 0.0f, 1.0f), "Settings are currently managed by ENB.");
+			return;
 		}
-		if (auto _tt = Util::HoverTooltipWrapper()) {
-			ImGui::Text("%s", T(TKEY("apply_enb_values_tooltip"),
-								  "Re-applies the settings ENB expects (Exponential Height Fog disabled),\n"
-								  "discarding your changes to them."));
-		}
-		ImGui::Separator();
 	}
 
 	ImGui::Checkbox(T(TKEY("enable_exp_height_fog"), "Enable Exponential Height Fog"), (bool*)&settings.enabled);
-
-	ImGui::Checkbox(T(TKEY("match_vanilla_fog"), "Match Vanilla Fog"), (bool*)&settings.matchVanillaFog);
-	if (auto _tt = Util::HoverTooltipWrapper()) {
-		ImGui::Text("%s", T(TKEY("match_vanilla_fog_tooltip"),
-							  "Derives the fog medium from the game's current weather fog (near/far/max) every frame\n"
-							  "instead of the manual density and height controls, then renders it through this feature.\n"
-							  "Use this to keep vanilla fog's look and weather-driven colors while still getting\n"
-							  "directional inscattering and shadowed volumetric lighting through the fog.\n"
-							  "Vanilla fog is replaced by the matched fog, so it is not drawn twice."));
-	}
-
-	if (settings.matchVanillaFog) {
-		ImGui::SliderFloat(T(TKEY("match_vanilla_fog_scale"), "Matched Density Scale"), &settings.matchVanillaFogScale, 0.0f, 4.0f, "%.2f");
-		if (auto _tt = Util::HoverTooltipWrapper()) {
-			ImGui::Text("%s", T(TKEY("match_vanilla_fog_scale_tooltip"), "Thickens or thins the derived fog relative to vanilla. 1.0 matches vanilla."));
-		}
-	} else {
-		Util::WeatherUI::SliderFloat(T(TKEY("start_distance"), "Start Distance"), this, "startDistance", &settings.startDistance, 0.0f, 100000.0f, "%.1f");
-		Util::WeatherUI::SliderFloat(T(TKEY("fog_height"), "Fog Height"), this, "fogHeight", &settings.fogHeight, -22000.0f, 22000.0f, "%.1f");
-		Util::WeatherUI::SliderFloat(T(TKEY("fog_height_falloff"), "Fog Height Falloff"), this, "fogHeightFalloff", &settings.fogHeightFalloff, 0.001f, 2.0f, "%.3f");
-		Util::WeatherUI::ColorEdit4(T(TKEY("fog_inscattering_color"), "Fog Inscattering Color"), this, "fogInscatteringColor", (float*)&settings.fogInscatteringColor);
-		Util::WeatherUI::SliderFloat(T(TKEY("original_fog_color_amount"), "Original Fog Color Amount"), this, "originalFogColorAmount", &settings.originalFogColorAmount, 0.0f, 1.0f, "%.2f");
-		Util::WeatherUI::SliderFloat(T(TKEY("fog_density"), "Fog Density"), this, "fogDensity", &settings.fogDensity, 0.0f, 1.0f, "%.3f");
-	}
-
+	Util::WeatherUI::SliderFloat(T(TKEY("start_distance"), "Start Distance"), this, "startDistance", &settings.startDistance, 0.0f, 100000.0f, "%.1f");
+	Util::WeatherUI::SliderFloat(T(TKEY("fog_height"), "Fog Height"), this, "fogHeight", &settings.fogHeight, -22000.0f, 22000.0f, "%.1f");
+	Util::WeatherUI::SliderFloat(T(TKEY("fog_height_falloff"), "Fog Height Falloff"), this, "fogHeightFalloff", &settings.fogHeightFalloff, 0.001f, 2.0f, "%.3f");
+	Util::WeatherUI::ColorEdit4(T(TKEY("fog_inscattering_color"), "Fog Inscattering Color"), this, "fogInscatteringColor", (float*)&settings.fogInscatteringColor);
+	Util::WeatherUI::SliderFloat(T(TKEY("original_fog_color_amount"), "Original Fog Color Amount"), this, "originalFogColorAmount", &settings.originalFogColorAmount, 0.0f, 1.0f, "%.2f");
+	Util::WeatherUI::SliderFloat(T(TKEY("fog_density"), "Fog Density"), this, "fogDensity", &settings.fogDensity, 0.0f, 1.0f, "%.3f");
 	Util::WeatherUI::SliderFloat(T(TKEY("dir_inscattering_mul"), "Directional Light Inscattering Multiplier"), this, "directionalInscatteringMultiplier", &settings.directionalInscatteringMultiplier, 0.0f, 10.0f, "%.2f");
 	Util::WeatherUI::SliderFloat(T(TKEY("sunlight_attenuation"), "Sunlight Attenuation Amount"), this, "sunlightAttenuationAmount", &settings.sunlightAttenuationAmount, 0.0f, 1.0f, "%.2f");
 	Util::WeatherUI::SliderFloat(T(TKEY("dir_inscattering_anisotropy"), "Directional Light Inscattering Anisotropy"), this, "directionalInscatteringAnisotropy", &settings.directionalInscatteringAnisotropy, -0.99f, 0.99f, "%.3f");
@@ -202,11 +124,9 @@ void ExponentialHeightFog::DrawSettings()
 							  "Positive values produce forward scattering (glow around sun).\n"
 							  "Zero is isotropic. Negative values produce back scattering."));
 	}
-	if (!settings.matchVanillaFog) {
-		ImGui::Checkbox(T(TKEY("disable_vanilla_fog"), "Disable Vanilla Fog"), (bool*)&settings.disableVanillaFog);
-		if (auto _tt = Util::HoverTooltipWrapper()) {
-			ImGui::Text("%s", T(TKEY("disable_vanilla_fog_tooltip"), "Disables the vanilla fog entirely. Only exponential height fog will be applied."));
-		}
+	ImGui::Checkbox(T(TKEY("disable_vanilla_fog"), "Disable Vanilla Fog"), (bool*)&settings.disableVanillaFog);
+	if (auto _tt = Util::HoverTooltipWrapper()) {
+		ImGui::Text("%s", T(TKEY("disable_vanilla_fog_tooltip"), "Disables the vanilla fog entirely. Only exponential height fog will be applied."));
 	}
 	Util::WeatherUI::Checkbox(T(TKEY("apply_vanilla_fade"), "Apply Vanilla Fade"), this, "respectVanillaFogFade", (bool*)&settings.respectVanillaFogFade);
 	if (auto _tt = Util::HoverTooltipWrapper()) {
@@ -477,7 +397,7 @@ void ExponentialHeightFog::Prepass()
 
 	EnsureVolumetricResources();
 
-	if (ResolveSettings().fogDensity <= 0.0f) {
+	if (settings.fogDensity <= 0.0f) {
 		hasLightScatteringHistory = false;
 		hasConservativeDepthHistory = false;
 		lastPrepassFrame = UINT32_MAX;
@@ -683,6 +603,13 @@ void ExponentialHeightFog::Prepass()
 
 void ExponentialHeightFog::RegisterWeatherVariables()
 {
+	if (globals::features::effect11.loaded) {
+		auto& enb = globals::features::effect11;
+		if (enb.enableEffect) {
+			return;
+		}
+	}
+
 	auto* registry = WeatherVariables::GlobalWeatherRegistry::GetSingleton()->GetOrCreateFeatureRegistry(GetShortName());
 	registry->RegisterVariable(std::make_shared<WeatherVariables::FloatVariable>(
 		"Start Distance",
