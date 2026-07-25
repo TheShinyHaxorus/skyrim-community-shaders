@@ -28,19 +28,37 @@ NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(
 	DALCMode,
 	DisableInInteriors,
 	DisableInWorldMap,
-	DisableInLoadingScreen)
+	DisableInLoadingScreen,
+	UseENBSkyIBLScale)
+
+namespace
+{
+	/** @brief True while ENB post-processing is active with its own image-based lighting enabled. */
+	bool IsENBManagingIBL()
+	{
+		if (!globals::features::effect11.loaded || !globals::features::effect11.enableEffect)
+			return false;
+		return SettingManager::GetSingleton().GetValue<bool>("EnableImageBasedLighting", "EFFECT");
+	}
+}
 
 void IBL::DrawSettings()
 {
-	if (globals::features::effect11.loaded) {
-		auto& enb = globals::features::effect11;
-		if (enb.enableEffect) {
-			auto& settingManager = SettingManager::GetSingleton();
-			if (settingManager.GetValue<bool>("EnableImageBasedLighting", "EFFECT")) {
-				ImGui::TextColored(ImVec4(1.0f, 1.0f, 0.0f, 1.0f), "Settings are currently managed by ENB.");
-				return;
-			}
+	const bool enbManaged = IsENBManagingIBL();
+	if (enbManaged) {
+		ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 1.0f, 0.0f, 1.0f));
+		ImGui::TextWrapped("%s", T(TKEY("enb_active"),
+									 "ENB post-processing is active and set these values the first time it was detected. "
+									 "They are no longer locked -- change them freely."));
+		ImGui::PopStyleColor();
+		if (ImGui::Button(T(TKEY("apply_enb_values"), "Apply ENB Values"))) {
+			ApplyENBDefaults();
 		}
+		if (auto _tt = Util::HoverTooltipWrapper()) {
+			ImGui::Text("%s", T(TKEY("apply_enb_values_tooltip"),
+								  "Re-applies the IBL settings ENB expects, discarding your changes to them."));
+		}
+		ImGui::Separator();
 	}
 
 	Util::WeatherUI::Checkbox(T(TKEY("enable_ibl"), "Enable IBL"), this, "EnableIBL", (bool*)&settings.EnableIBL);
@@ -51,10 +69,20 @@ void IBL::DrawSettings()
 	if (auto _tt = Util::HoverTooltipWrapper()) {
 		ImGui::Text("%s", T(TKEY("env_ibl_scale_tooltip"), "Intensity multiplier for the environment IBL (from Dynamic Cubemaps).\nControls how strongly the surrounding environment contributes to ambient lighting."));
 	}
+	if (enbManaged) {
+		ImGui::Checkbox(T(TKEY("use_enb_sky_ibl_scale"), "Use ENB Sky IBL Scale"), &settings.UseENBSkyIBLScale);
+		if (auto _tt = Util::HoverTooltipWrapper()) {
+			ImGui::Text("%s", T(TKEY("use_enb_sky_ibl_scale_tooltip"),
+								  "Drives Sky IBL Scale from ENB's [IMAGEBASEDLIGHTING] MultiplicativeAmount, which is a\n"
+								  "time-of-day curve. Uncheck to use the slider below instead."));
+		}
+	}
+	ImGui::BeginDisabled(enbManaged && settings.UseENBSkyIBLScale);
 	Util::WeatherUI::SliderFloat(T(TKEY("sky_ibl_scale"), "Sky IBL Scale"), this, "SkyIBLScale", &settings.SkyIBLScale, 0.0f, 10.0f, "%.2f");
 	if (auto _tt = Util::HoverTooltipWrapper()) {
 		ImGui::Text("%s", T(TKEY("sky_ibl_scale_tooltip"), "Intensity multiplier for the sky IBL (from the game's native reflections cubemap).\nControls how strongly the sky contributes to ambient lighting."));
 	}
+	ImGui::EndDisabled();
 	Util::WeatherUI::SliderFloat(T(TKEY("env_ibl_saturation"), "Env IBL Saturation"), this, "EnvIBLSaturation", &settings.EnvIBLSaturation, 0.0f, 2.0f, "%.2f");
 	if (auto _tt = Util::HoverTooltipWrapper()) {
 		ImGui::Text("%s", T(TKEY("env_ibl_saturation_tooltip"), "Color saturation of the environment IBL.\nLower values produce more neutral ambient light; higher values produce more vivid color."));
@@ -120,11 +148,14 @@ void IBL::DrawSettings()
 void IBL::LoadSettings(json& o_json)
 {
 	settings = o_json;
+	if (auto it = o_json.find("enbDefaultsApplied"); it != o_json.end() && it->is_boolean())
+		enbDefaultsApplied = it->get<bool>();
 }
 
 void IBL::SaveSettings(json& o_json)
 {
 	o_json = settings;
+	o_json["enbDefaultsApplied"] = enbDefaultsApplied;
 }
 
 void IBL::RestoreDefaultSettings()
@@ -132,18 +163,28 @@ void IBL::RestoreDefaultSettings()
 	settings = {};
 }
 
+void IBL::ApplyENBDefaults()
+{
+	settings.EnableIBL = 1;
+	settings.DisableInInteriors = true;
+	settings.EnvIBLScale = 0.0f;
+	settings.DALCAmount = 1.0f;
+	settings.EnvIBLSaturation = 1.0f;
+	settings.SkyIBLSaturation = 1.0f;
+	settings.DALCMode = 3;
+	settings.FogAmount = 0.0f;
+	settings.UseENBSkyIBLScale = true;
+	enbDefaultsApplied = true;
+}
+
+void IBL::EarlyPrepass()
+{
+	if (!enbDefaultsApplied && IsENBManagingIBL())
+		ApplyENBDefaults();
+}
+
 void IBL::RegisterWeatherVariables()
 {
-	if (globals::features::effect11.loaded) {
-		auto& enb = globals::features::effect11;
-		if (enb.enableEffect) {
-			auto& settingManager = SettingManager::GetSingleton();
-			if (settingManager.GetValue<bool>("EnableImageBasedLighting", "EFFECT")) {
-				return;
-			}
-		}
-	}
-
 	auto* registry = WeatherVariables::GlobalWeatherRegistry::GetSingleton()
 	                     ->GetOrCreateFeatureRegistry(GetShortName());
 	// Toggle IBL for this weather (SH-based ambient replaces vanilla)
@@ -227,23 +268,10 @@ IBL::PerFrame IBL::GetCommonBufferData() const
 		.DALCMode = settings.DALCMode
 	};
 
-	// When ENB post-processing manages IBL, drive it from the ENB preset instead of our settings.
-	if (globals::features::effect11.loaded) {
-		auto& enb = globals::features::effect11;
-		if (enb.enableEffect) {
-			auto& settingManager = SettingManager::GetSingleton();
-			if (settingManager.GetValue<bool>("EnableImageBasedLighting", "EFFECT")) {
-				data.EnableIBL = Util::IsInterior() ? 0u : 1u;
-				data.EnvIBLScale = 0.0f;
-				data.SkyIBLScale = settingManager.GetInterpolatedTimeOfDayValue("MultiplicativeAmount", "IMAGEBASEDLIGHTING");
-				data.DALCAmount = 1.0f;
-				data.EnvIBLSaturation = 1.0f;
-				data.SkyIBLSaturation = 1.0f;
-				data.DALCMode = 3;
-				data.FogAmount = 0.0f;
-			}
-		}
-	}
+	// ENB's IBL intensity is a time-of-day curve rather than a constant, so it stays live
+	// while the user opts in; every other value is a plain setting they own.
+	if (settings.UseENBSkyIBLScale && IsENBManagingIBL())
+		data.SkyIBLScale = SettingManager::GetSingleton().GetInterpolatedTimeOfDayValue("MultiplicativeAmount", "IMAGEBASEDLIGHTING");
 
 	return data;
 }

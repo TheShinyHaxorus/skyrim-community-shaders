@@ -42,6 +42,8 @@ public:
 	virtual void ReflectionsPrepass() override;
 	/** @brief Projects environment and sky cubemaps into spherical harmonics and binds the resulting IBL textures. */
 	virtual void Prepass() override;
+	/** @brief Applies the settings ENB post-processing expects the first time ENB is seen managing IBL. */
+	virtual void EarlyPrepass() override;
 	/** @brief Creates IBL textures, compiles the diffuse IBL compute shader, and loads static fallback cubemaps. */
 	virtual void SetupResources() override;
 	/** @brief Releases the cached diffuse IBL compute shader so it can be recompiled. */
@@ -62,7 +64,14 @@ public:
 		bool DisableInInteriors = true;
 		bool DisableInWorldMap = true;
 		bool DisableInLoadingScreen = true;
+		bool UseENBSkyIBLScale = true;
 	} settings;
+
+	/** @brief Set once ENB's values have been pushed into settings, so they are never re-applied over user edits. */
+	bool enbDefaultsApplied = false;
+
+	/** @brief Writes the IBL settings ENB post-processing expects into the user's settings. */
+	void ApplyENBDefaults();
 
 	struct alignas(16) PerFrame
 	{
