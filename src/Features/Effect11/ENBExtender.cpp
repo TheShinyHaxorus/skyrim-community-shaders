@@ -1026,6 +1026,25 @@ namespace ENBExtender
 		source = std::move(result);
 	}
 
+	// Rejects include names that escape a_root via "..", so a preset cannot pull in arbitrary files.
+	static bool ResolveContainedPath(const std::filesystem::path& a_root, const std::filesystem::path& a_name, std::filesystem::path& a_out)
+	{
+		std::error_code ec;
+		auto root = std::filesystem::weakly_canonical(a_root, ec);
+		if (ec)
+			return false;
+		auto candidate = std::filesystem::weakly_canonical(a_root / a_name, ec);
+		if (ec)
+			return false;
+
+		auto [rootEnd, _] = std::mismatch(root.begin(), root.end(), candidate.begin(), candidate.end());
+		if (rootEnd != root.end())
+			return false;
+
+		a_out = std::move(candidate);
+		return true;
+	}
+
 	static std::string ReadAndProcessInclude(const std::filesystem::path& fullPath,
 		const std::filesystem::path& basePath,
 		const std::string& iniPath,
@@ -1070,15 +1089,20 @@ namespace ENBExtender
 						std::filesystem::path inclPath;
 						bool found = false;
 						for (auto& dir : includeDirs) {
-							auto candidate = dir / includeName;
+							std::filesystem::path candidate;
+							if (!ResolveContainedPath(dir, includeName, candidate))
+								continue;
 							if (std::filesystem::exists(candidate)) {
 								inclPath = candidate;
 								found = true;
 								break;
 							}
 						}
-						if (!found)
-							inclPath = basePath / includeName;
+						if (!found && !ResolveContainedPath(basePath, includeName, inclPath)) {
+							logger::warn("[ENBEXTENDER] Include path escapes base directory: '{}'", includeName);
+							result += "\n";
+							continue;
+						}
 
 						std::string canonical = inclPath.string();
 						if (visited.count(canonical)) {
@@ -1150,7 +1174,9 @@ namespace ENBExtender
 		bool found = false;
 
 		for (auto& dir : includeDirs) {
-			auto candidate = dir / name;
+			std::filesystem::path candidate;
+			if (!ResolveContainedPath(dir, name, candidate))
+				continue;
 			if (std::filesystem::exists(candidate)) {
 				fullPath = candidate;
 				found = true;
@@ -1158,8 +1184,13 @@ namespace ENBExtender
 			}
 		}
 
-		if (!found) {
-			fullPath = basePath / name;
+		if (!found && !ResolveContainedPath(basePath, name, fullPath)) {
+			logger::warn("[ENBEXTENDER] Include path escapes base directory: '{}'", std::string(name));
+			auto* buf = new char[1];
+			buf[0] = '\n';
+			*ppData = buf;
+			*pBytes = 1;
+			return S_OK;
 		}
 
 		std::ifstream file(fullPath, std::ios::binary | std::ios::ate);

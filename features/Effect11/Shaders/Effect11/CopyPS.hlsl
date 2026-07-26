@@ -28,7 +28,9 @@ float3 TriDither(float2 screenPos, uint frameCount)
 {
 	uint3 seed1 = uint3(screenPos, frameCount);
 	uint3 seed2 = uint3(screenPos, frameCount + 4729u);
-	return (pcg3d(seed1) - pcg3d(seed2)) / float(0xFFFFFFFFu);
+	// Difference must be taken in float space; uint subtraction wraps and collapses the
+	// triangular PDF back to a rectangular one.
+	return (float3(pcg3d(seed1)) - float3(pcg3d(seed2))) / float(0xFFFFFFFFu);
 }
 
 float4 main(PS_INPUT input) : SV_TARGET

@@ -306,16 +306,13 @@ void Effect11::OverrideWeather(RE::Sky* a_sky)
 
 		auto dirLightColorF3 = NiToF3(dirLightColor);
 
-		auto imageSpaceManager = RE::ImageSpaceManager::GetSingleton();
-		if (!imageSpaceManager) {
-			return;
-		}
-
-		auto& data = imageSpaceManager->GetRuntimeData().data;
 		// The scale round-trip below only cancels for a linear curve. Storm imagespaces drive
 		// sunlightScale to ~0, where pow() either underflows the light to black or the divide
 		// blows it up by orders of magnitude, so apply the curve unscaled instead.
-		const float rawSunlightScale = data.baseData.hdr.sunlightScale;
+		float rawSunlightScale = 0.0f;
+		if (auto imageSpaceManager = RE::ImageSpaceManager::GetSingleton()) {
+			rawSunlightScale = imageSpaceManager->GetRuntimeData().data.baseData.hdr.sunlightScale;
+		}
 		const float sunlightScale = rawSunlightScale > 1e-3f ? rawSunlightScale : 1.0f;
 		dirLightColorF3 *= sunlightScale;
 
