@@ -650,6 +650,12 @@ float3 GetLightingShadow(float3 color, float3 worldPosition, float2 screenPositi
 }
 #	endif
 
+// ENB classifies an additive soft-particle draw that uses both greyscale remaps as FIRE;
+// every other additive draw is a LIGHTSPRITE.
+#	if defined(ADDBLEND) && defined(SOFT) && defined(GRAYSCALE_TO_COLOR) && defined(GRAYSCALE_TO_ALPHA)
+#		define IS_ENB_FIRE
+#	endif
+
 PS_OUTPUT main(PS_INPUT input)
 {
 	PS_OUTPUT psout = (PS_OUTPUT)0;
@@ -747,7 +753,7 @@ PS_OUTPUT main(PS_INPUT input)
 	lightingInfluence = 0;
 #	endif
 
-#	if !defined(IS_VOLUMETRIC_FOG) && !defined(GRAYSCALE_TO_COLOR)
+#	if !defined(IS_VOLUMETRIC_FOG) && !defined(IS_ENB_FIRE)
 	if (SharedData::enbSettings.Enable && !(Permutation::VertexShaderDescriptor & Permutation::EffectFlags::SkyObject))
 		propertyColor *= SharedData::enbSettings.ParticleIntensity;
 #	endif
@@ -879,11 +885,10 @@ PS_OUTPUT main(PS_INPUT input)
 	float3 blendedColor = lightColor * (1 - fogFactor);
 #			endif
 	if (SharedData::enbSettings.Enable) {
-		// ENB classifies by object properties: additive draws are FIRE; additive soft-particle (Soft_Effect) glows are LIGHTSPRITE.
-#			if defined(SOFT) && !defined(GRAYSCALE_TO_COLOR)
-		blendedColor *= SharedData::enbSettings.LightSpriteIntensity;
-#			else
+#			if defined(IS_ENB_FIRE)
 		blendedColor = pow(max(blendedColor, 0.0), SharedData::enbSettings.FireCurve) * SharedData::enbSettings.FireIntensity;
+#			else
+		blendedColor *= SharedData::enbSettings.LightSpriteIntensity;
 #			endif
 	}
 #		elif defined(MULTBLEND) || defined(MULTBLEND_DECAL)

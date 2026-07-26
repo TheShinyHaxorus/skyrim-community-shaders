@@ -288,7 +288,7 @@ void SnowCover::CheckFireSource(RE::BSRenderPass* a_pass, uint32_t a_descriptor)
 	if (a_pass->shaderProperty->GetRTTI() != globals::rtti::BSEffectShaderPropertyRTTI.get())
 		return;
 
-	// Mirrors Effect.hlsl's FIRE split: additive draws with GRAYSCALE_TO_COLOR are fire.
+	// Additive draws with GRAYSCALE_TO_COLOR; the texture filter below narrows this to actual flames.
 	using EffectFlags = SIE::ShaderCache::EffectShaderFlags;
 	const bool addBlend = a_descriptor & static_cast<uint32_t>(EffectFlags::AddBlend);
 	const bool grayscale = a_descriptor & static_cast<uint32_t>(EffectFlags::GrayscaleToColor);
