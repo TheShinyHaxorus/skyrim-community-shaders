@@ -1,10 +1,8 @@
 #pragma once
 
 #include "Buffer.h"
-#include "Features/LightLimitFix/ParticleLights.h"
 #include "OverlayFeature.h"
 
-#include <mutex>
 #include <shared_mutex>
 
 struct LightLimitFix : OverlayFeature
@@ -39,7 +37,6 @@ public:
 		Disabled = (1 << 9),
 		InverseSquare = (1 << 10),
 		Linear = (1 << 11),
-		Particle = (1 << 12),
 	};
 
 	struct PositionOpt
@@ -131,44 +128,45 @@ public:
 
 	ConstantBuffer* strictLightDataCB = nullptr;
 
-	struct CachedParticleLight
+	/** @brief Per-texture particle-light behaviour parsed from `Data\ParticleLights\*.ini`. */
+	struct ParticleLightConfig
 	{
-		float grey;
+		bool cull = false;
+	};
+
+	/** @brief Registry of particle-light configs keyed by lowercase source-texture stem. */
+	struct ParticleLightConfigStore
+	{
+		ankerl::unordered_dense::map<std::string, ParticleLightConfig> configs;
+
+		/** @brief Loads every `Data\ParticleLights\*.ini`; first entry wins on duplicate stems. */
+		void Load();
+	};
+
+	/** @brief A billboard emitter resolved into a point light for this frame. */
+	struct ResolvedParticleLight
+	{
 		RE::NiPoint3 position;
+		RE::NiColorA color;
 		float radius;
 	};
 
-	struct ParticleLightInfo
-	{
-		bool billboard;
-		RE::BSGeometry* node;
-		RE::NiColorA color;
-		float radiusMult = 1.0f;
-	};
-
-	struct ParticleLightReference
+	/** @brief Cached per-geometry emitter tint; invalidated by the BSGeometry destroy hook. */
+	struct VertexColorCacheEntry
 	{
 		bool valid = false;
-		bool billboard = false;
-		// keeps billboard effect-material/emittance tint after detection
 		bool applyEffectMaterialTint = true;
-		ParticleLights::Config config{};
-		bool hasGradientConfig = false;
-		ParticleLights::GradientConfig gradientConfig{};
+		ParticleLightConfig config{};
 		RE::NiColorA baseColor{ 1.0f, 1.0f, 1.0f, 1.0f };
-		std::uint64_t configVersion = 0;
 	};
 
 	// INI-driven particle-light configs (loaded in PostPostLoad).
-	ParticleLights particleLights;
+	ParticleLightConfigStore particleLightConfigs;
 
-	eastl::hash_map<RE::BSGeometry*, ParticleLightReference> particleLightsReferences;
-	eastl::vector<ParticleLightInfo> queuedParticleLights;
-	eastl::vector<ParticleLightInfo> currentParticleLights;
-	std::mutex particleLightsQueueMutex;
-
-	std::shared_mutex cachedParticleLightsMutex;
-	eastl::vector<CachedParticleLight> cachedParticleLights;
+	eastl::hash_map<RE::BSGeometry*, VertexColorCacheEntry> vertexColorCache;
+	eastl::vector<ResolvedParticleLight> queuedParticleLights;
+	eastl::vector<ResolvedParticleLight> currentParticleLights;
+	std::shared_mutex particleLightsMutex;
 
 	bool previousEnableLightsVisualisation = settings.EnableLightsVisualisation;
 	bool currentEnableLightsVisualisation = settings.EnableLightsVisualisation;
@@ -241,34 +239,16 @@ public:
 	void UpdateStructure();
 	/** @brief Runs the light update and binds clustered light SRVs for the frame. */
 	virtual void Prepass() override;
-	/** @brief Per-frame reset: recycles queued particle-light node refs and swaps the queue. */
-	virtual void Reset() override;
 
-	// Particle lights (implemented in LightLimitFix/Particle.cpp).
-	/** @brief NPC-detection luminance: mirrors BSLight::CalculateLuminance for a cached particle light. */
-	float CalculateLuminance(struct CachedParticleLight& light, RE::NiPoint3& point);
-	/** @brief Adds cached particle-light luminance into the engine's NPC light-detection total. */
-	void AddParticleLightLuminance(RE::NiPoint3& targetPosition, int& numHits, float& lightLevel);
 	/** @brief Resolves the INI-driven particle-light config for a render pass (cached per geometry). */
-	struct ParticleLightReference GetParticleLightConfigs(RE::BSRenderPass* a_pass);
-	/** @brief Queues a recognized particle-light emitter for this frame; returns false when not added. */
-	bool AddParticleLight(RE::BSRenderPass* a_pass, struct ParticleLightReference a_reference);
+	VertexColorCacheEntry GetParticleLightConfig(RE::BSRenderPass* a_pass);
+	/** @brief Queues a recognized billboard emitter for this frame; returns false when not added. */
+	bool QueueParticleLight(RE::BSRenderPass* a_pass, VertexColorCacheEntry& a_reference);
 	/** @brief Checks a render pass for particle-light emission; returns false to cull the pass. */
 	bool CheckParticleLights(RE::BSRenderPass* a_pass, uint32_t a_technique);
-	/** @brief Clusters queued particle lights and appends them to the frame's light buffer. */
-	void ProcessQueuedParticleLights(eastl::vector<LightData>& lightsData);
-	/** @brief Applies distance fade + Effect11 grading, then appends one particle light to the buffer. */
-	void AddCachedParticleLights(eastl::vector<LightData>& lightsData, LightLimitFix::LightData& light);
+	/** @brief Applies distance fade + Effect11 grading, then appends the frame's particle lights. */
+	void AddParticleLightsToBuffer(eastl::vector<LightData>& a_lightsData);
 
-	/** @brief Adjusts the saturation of an RGB color value. */
-	static inline float3 Saturation(float3 color, float saturation)
-	{
-		const float grey = color.Dot(float3(0.3f, 0.59f, 0.11f));
-		color.x = std::max(std::lerp(grey, color.x, saturation), 0.0f);
-		color.y = std::max(std::lerp(grey, color.y, saturation), 0.0f);
-		color.z = std::max(std::lerp(grey, color.z, saturation), 0.0f);
-		return color;
-	}
 	/**
 	 * @brief Checks whether a BSLight is valid (non-null and not hidden).
 	 * @param a_light The light to validate.
@@ -296,19 +276,9 @@ public:
 		float ContactShadowDepthFade = 0.05f;
 		float ContactShadowMinIntensity = 0.25f;
 
-		// Particle lights: fire/magic/effect emitters injected as clustered point lights.
+		// Particle lights: billboard effect emitters injected as clustered point lights.
 		bool EnableParticleLights = true;
 		bool EnableParticleLightsCulling = true;
-		bool EnableParticleLightsDetection = true;
-		bool EnableParticleLightsOptimization = true;
-		float ParticleLightsSaturation = 1.0f;
-		float ParticleBrightness = 1.0f;
-		float ParticleRadius = 1.0f;
-		float BillboardBrightness = 1.0f;
-		float BillboardRadius = 1.0f;
-		float ParticleClusterThreshold = 32.0f;
-		int MaxParticlesPerEmitter = 256;
-		float MaxParticleDistance = 6000.0f;
 	};
 
 	uint clusterSize[3] = { 16 };
@@ -347,15 +317,9 @@ public:
 			static inline REL::Relocation<decltype(thunk)> func;
 		};
 
-		struct AIProcess_CalculateLightValue_GetLuminance
+		struct BSGeometry_Destroy
 		{
-			static float thunk(RE::ShadowSceneNode* shadowSceneNode,
-				RE::NiPoint3& targetPosition,
-				int& numHits,
-				float& sunLightLevel,
-				float& lightLevel,
-				RE::NiLight& refLight,
-				int32_t shadowBitMask);
+			static void thunk(RE::BSGeometry* This);
 			static inline REL::Relocation<decltype(thunk)> func;
 		};
 
@@ -375,8 +339,6 @@ public:
 
 		static void Install()
 		{
-			stl::write_thunk_call<AIProcess_CalculateLightValue_GetLuminance>(
-				REL::RelocationID(38900, 39946).address() + REL::Relocate(0x1C9, 0x1D3));
 			stl::write_vfunc<0x6, BSLightingShader_SetupGeometry>(RE::VTABLE_BSLightingShader[0]);
 			stl::write_vfunc<0x6, BSEffectShader_SetupGeometry>(RE::VTABLE_BSEffectShader[0]);
 			stl::write_vfunc<0x6, BSWaterShader_SetupGeometry>(RE::VTABLE_BSWaterShader[0]);
@@ -384,6 +346,8 @@ public:
 			stl::write_thunk_call<ValidLight1>(REL::RelocationID(100994, 107781).address() + 0x92);
 			stl::write_thunk_call<ValidLight2>(REL::RelocationID(100997, 107784).address() + REL::Relocate(0x139, 0x12A));
 			stl::write_thunk_call<ValidLight3>(REL::RelocationID(101296, 108283).address() + REL::Relocate(0xB7, 0x7E));
+
+			stl::detour_thunk<BSGeometry_Destroy>(REL::RelocationID(69535, 70936));
 
 			logger::info("[LLF] Installed hooks");
 		}

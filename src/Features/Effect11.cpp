@@ -73,8 +73,8 @@ Effect11::PerFrame Effect11::GetCommonBufferData()
 	data.RainMotionTransparency = settingManager.GetInterpolatedTimeOfDayValue("MotionTransparency", "RAIN");
 	data.RainLightingInfluence = settingManager.GetInterpolatedTimeOfDayValue("LightingInfluence", "RAIN");
 
-	data.FireIntensity = settingManager.GetValue<float>("FireIntensity", "FIRE");
-	data.FireCurve = settingManager.GetValue<float>("FireCurve", "FIRE");
+	data.FireIntensity = settingManager.GetInterpolatedTimeOfDayValue("FireIntensity", "FIRE");
+	data.FireCurve = settingManager.GetInterpolatedTimeOfDayValue("FireCurve", "FIRE");
 
 	data.EnableWater = enableEffect && settingManager.GetValue<bool>("EnableWater", "EFFECT");
 	data.WaterWavesAmplitude = settingManager.GetInterpolatedTimeOfDayValue("WavesAmplitude", "WATER");
@@ -504,7 +504,7 @@ void Effect11::CheckCommonData()
 		bool isMapMenuOpen = ui->IsMenuOpen(RE::MapMenu::MENU_NAME);
 		bool isStatsMenuOpen = ui->IsMenuOpen(RE::StatsMenu::MENU_NAME);
 		enableEffect = !isMapMenuOpen && !isStatsMenuOpen && !globals::state->IsMainOrLoadingMenuOpen() &&
-		               settingManager.GetValue<bool>("UseEffect", "GLOBAL");
+		               globals::shaderCache->IsEnabled() && settingManager.GetValue<bool>("UseEffect", "GLOBAL");
 
 		auto& effectManager = EffectManager::GetSingleton();
 		auto& weatherManager = WeatherManager::GetSingleton();
