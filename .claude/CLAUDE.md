@@ -76,17 +76,10 @@ cmake --build ./build/ALL --target prepare_shaders
 hlslkit-compile --shader-dir build/ALL/aio/Shaders --output-dir build/ShaderCache --config .github/configs/shader-validation.yaml --max-warnings 0 --suppress-warnings X1519
 
 # Targeted testing for faster development (recommended during development)
-# Test specific base shader
-hlslkit-compile --shader-dir build/ALL/aio/Shaders/Lighting.hlsl --output-dir build/ShaderCache --config .github/configs/shader-validation.yaml
-
-# Test specific compute shader
-hlslkit-compile --shader-dir build/ALL/aio/Shaders/DeferredCompositeCS.hlsl --output-dir build/ShaderCache --config .github/configs/shader-validation.yaml
-
-# Test specific feature directory
+# --shader-dir MUST be a DIRECTORY. Passing a single .hlsl file silently compiles
+# NOTHING and still prints "0 errors" — a green run that proves nothing. To check one
+# shader, either point at its feature directory (below) or invoke fxc directly.
 hlslkit-compile --shader-dir build/ALL/aio/Shaders/ScreenSpaceGI/ --output-dir build/ShaderCache --config .github/configs/shader-validation.yaml
-
-# Test feature-specific compute shader
-hlslkit-compile --shader-dir build/ALL/aio/Shaders/LightLimitFix/ClusterBuildingCS.hlsl --output-dir build/ShaderCache --config .github/configs/shader-validation.yaml
 
 # Generate shader defines from game log (requires CommunityShaders.log from game)
 hlslkit-generate-defines --log CommunityShaders.log

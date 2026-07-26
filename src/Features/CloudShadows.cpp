@@ -237,6 +237,10 @@ void CloudShadows::EarlyPrepass()
 		previouslyRenderedSide = -1;
 	}
 
+	// Per-frame accumulator, like renderedLayersMask; without the reset cross-side propagation
+	// only ever runs on the first frame a layer index appears.
+	globalRenderedMask = 0;
+
 	auto sky = globals::game::sky;
 	if (!sky || (sky->mode.get() != RE::Sky::Mode::kFull) || !sky->currentClimate)
 		return;

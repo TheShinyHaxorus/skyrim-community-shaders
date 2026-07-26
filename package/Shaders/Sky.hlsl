@@ -182,6 +182,7 @@ cbuffer AlphaTestRefCB : register(b11)
 
 Texture2D<float> TexDepthSampler : register(t17);
 
+#if defined(EFFECT11)
 float3 LimbDarkenHestroffer(float norm_dist)
 {
 	float mu = sqrt(1.0 - norm_dist * norm_dist);
@@ -214,6 +215,7 @@ float3 ComputeProceduralSun(float2 uv)
 
 	return corona + disk * limb;
 }
+#endif
 
 // Absolute term covers kMAIN quantization, relative term survives tonemap compression of bright sky.
 float3 ApplySkyDither(float3 color, float2 pixelCoord)
@@ -270,7 +272,7 @@ PS_OUTPUT main(PS_INPUT input)
 
 #		endif
 
-#		if defined(TEX)
+#		if defined(TEX) && defined(EFFECT11)
 	if (SharedData::enbSettings.EnableProceduralSun && (Permutation::ExtraShaderDescriptor & Permutation::ExtraFlags::IsSun)) {
 		baseColor.xyz = ComputeProceduralSun(input.TexCoord0.xy);
 		baseColor.w = input.Color.w;
@@ -285,11 +287,13 @@ PS_OUTPUT main(PS_INPUT input)
 	psout.Color.w = baseColor.w * input.Color.w;
 #			else
 	float3 skyGradientColor = input.Color.xyz;
+#				if defined(EFFECT11)
 	if (SharedData::enbSettings.UseProceduralGradientWeights) {
 		float3 viewDirection = normalize(input.WorldPosition.xyz);
 		float gradientPosition = pow(1.0 - saturate(viewDirection.z), SharedData::enbSettings.ProceduralGradientWeightCurve);
 		skyGradientColor = BlendSkyGradient(input.SkyBlendColor0.xyz, input.SkyBlendColor1.xyz, input.SkyBlendColor2.xyz, gradientPosition);
 	}
+#				endif
 	psout.Color.xyz = ApplySkyDither(Color::Sky(skyGradientColor) + skyScale, input.Position.xy);
 	psout.Color.w = input.Color.w;
 #			endif  // TEX
@@ -306,7 +310,7 @@ PS_OUTPUT main(PS_INPUT input)
 	psout.Color.w = input.TexCoord2.x * (baseColor.w * input.Color.w);
 #		else  // not DITHER, not MOONMASK, not HORIZFADE
 
-#			if defined(CLOUDS)
+#			if defined(CLOUDS) && defined(EFFECT11)
 	if (SharedData::enbSettings.EnableSky)
 		baseColor.xyz = pow(abs(baseColor.xyz), SharedData::enbSettings.CloudsCurve);
 #			endif
@@ -314,7 +318,7 @@ PS_OUTPUT main(PS_INPUT input)
 	psout.Color.w = input.Color.w * baseColor.w;
 	psout.Color.xyz = Color::Sky(input.Color.xyz) * baseColor.xyz + skyScale;
 
-#			if defined(CLOUDS)
+#			if defined(CLOUDS) && defined(EFFECT11)
 	if (SharedData::enbSettings.EnableSky) {
 		float3 cloudColor = psout.Color.xyz;
 		float3 viewDirection = normalize(input.WorldPosition.xyz);

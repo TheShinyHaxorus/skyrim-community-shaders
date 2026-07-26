@@ -29,7 +29,7 @@ struct VS_OUTPUT
 #if defined(ENVCUBE)
 	float4 PrecipitationOcclusionTexCoord: TEXCOORD1;
 #endif
-#if defined(ENVCUBE) && defined(RAIN)
+#if defined(ENVCUBE) && defined(RAIN) && defined(EFFECT11)
 	float2 RaindropData: TEXCOORD2;
 #endif
 };
@@ -91,6 +91,7 @@ VS_OUTPUT main(VS_INPUT input)
 	float4 viewPosition = mul(WorldViewProj, msPosition);
 #		if defined(RAIN)
 	float3 rainVelocity = Velocity.xyz;
+#			if defined(EFFECT11)
 	if (SharedData::enbSettings.EnableRain) {
 		float velLength = length(rainVelocity);
 		if (velLength > 0.0) {
@@ -98,6 +99,7 @@ VS_OUTPUT main(VS_INPUT input)
 			rainVelocity = lerp(normVel, rainVelocity, SharedData::enbSettings.RainMotionStretch);
 		}
 	}
+#			endif
 	float4 adjustedMsPosition = msPosition - float4(rainVelocity, 0);
 	float positionBlendParam = 0.5 * (1 + input.TexCoord1.y);
 	float4 adjustedViewPosition = mul(WorldViewProj, adjustedMsPosition);
@@ -115,7 +117,7 @@ VS_OUTPUT main(VS_INPUT input)
 	float4 precipitationOcclusionTexCoord = mul(PrecipitationOcclusionWorldViewProj, msPosition);
 	precipitationOcclusionTexCoord.y = -precipitationOcclusionTexCoord.y;
 	vsout.PrecipitationOcclusionTexCoord = precipitationOcclusionTexCoord;
-#		if defined(RAIN)
+#		if defined(RAIN) && defined(EFFECT11)
 	vsout.RaindropData.xy = input.TexCoord1.xy * 0.5 + 0.5;
 #		endif
 #	else
@@ -231,7 +233,7 @@ Texture2D<float4> TexGrayscaleTexture : register(t1);
 Texture2D<float4> TexPrecipitationOcclusionTexture : register(t2);
 Texture2D<float4> TexUnderwaterMask : register(t3);
 #	endif
-#	if defined(ENVCUBE) && defined(RAIN)
+#	if defined(ENVCUBE) && defined(RAIN) && defined(EFFECT11)
 Texture2D<float4> TexRaindropNormals : register(t80);
 #	endif
 
@@ -248,7 +250,7 @@ cbuffer PerGeometry : register(b2)
 #		include "IBL/IBL.hlsli"
 #	endif
 
-#	if defined(RAIN) && defined(DYNAMIC_CUBEMAPS)
+#	if defined(RAIN) && defined(DYNAMIC_CUBEMAPS) && defined(EFFECT11)
 #		define SampColorSampler SampSourceTexture
 #		include "DynamicCubemaps/DynamicCubemaps.hlsli"
 #	endif
@@ -267,7 +269,7 @@ PS_OUTPUT main(PS_INPUT input, bool frontFace : SV_IsFrontFace)
 	}
 #	endif
 
-#	if defined(RAIN) && defined(DYNAMIC_CUBEMAPS)
+#	if defined(RAIN) && defined(DYNAMIC_CUBEMAPS) && defined(EFFECT11)
 	// ENB-style raindrop billboards: refract/reflect the dynamic cubemap through a raindrop normal map.
 	if (SharedData::enbSettings.EnableRain) {
 		float4 raindropNormal = TexRaindropNormals.Sample(SampSourceTexture, input.RaindropData.xy);
