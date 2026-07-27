@@ -2,6 +2,7 @@
 
 #include "../I18n/I18n.h"
 #include "Effects11.h"
+#include "Globals.h"
 #include "State.h"
 #include "Utils/UI.h"
 
@@ -90,7 +91,7 @@ void LinearLighting::DrawSettings()
 	if (globals::features::effects11.loaded) {
 		auto& enb = globals::features::effects11;
 		if (enb.enableEffect) {
-			ImGui::TextColored(ImVec4(1.0f, 1.0f, 0.0f, 1.0f), "Settings are currently managed by ENB.");
+			ImGui::TextColored(globals::menu->GetTheme().StatusPalette.Warning, "Settings are currently managed by ENB.");
 			ImGui::SeparatorText(T(TKEY("effect_brightness_enb"), "Effect Brightness (works under ENB)"));
 			ImGui::SliderFloat(T(TKEY("other_effects_multiplier"), "Other Effects Multiplier"), &settings.otherEffectMult, 0.0f, 10.0f, "%.2f");
 			if (auto _tt = Util::HoverTooltipWrapper())

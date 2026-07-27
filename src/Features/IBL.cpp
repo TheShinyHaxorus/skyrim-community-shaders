@@ -4,6 +4,7 @@
 #include "DynamicCubemaps.h"
 #include "Effects11.h"
 #include "Effects11/SettingManager.h"
+#include "Globals.h"
 #include "Shadercache.h"
 #include "State.h"
 #include "WeatherVariableRegistry.h"
@@ -37,7 +38,7 @@ void IBL::DrawSettings()
 		if (enb.enableEffect) {
 			auto& settingManager = SettingManager::GetSingleton();
 			if (settingManager.GetValue<bool>("EnableImageBasedLighting", "EFFECT")) {
-				ImGui::TextColored(ImVec4(1.0f, 1.0f, 0.0f, 1.0f), "Settings are currently managed by ENB.");
+				ImGui::TextColored(globals::menu->GetTheme().StatusPalette.Warning, "Settings are currently managed by ENB.");
 				return;
 			}
 		}

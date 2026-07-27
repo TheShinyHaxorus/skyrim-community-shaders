@@ -7,6 +7,7 @@
 #include "Features/LightLimitFix.h"
 #include "Features/Skylighting.h"
 #include "Features/TerrainShadows.h"
+#include "Globals.h"
 #include "I18n/I18n.h"
 #include "State.h"
 #include "Utils/D3D.h"
@@ -103,7 +104,7 @@ void ExponentialHeightFog::DrawSettings()
 	if (globals::features::effects11.loaded) {
 		auto& enb = globals::features::effects11;
 		if (enb.enableEffect) {
-			ImGui::TextColored(ImVec4(1.0f, 1.0f, 0.0f, 1.0f), "Settings are currently managed by ENB.");
+			ImGui::TextColored(globals::menu->GetTheme().StatusPalette.Warning, "Settings are currently managed by ENB.");
 			return;
 		}
 	}
