@@ -10,7 +10,7 @@ file_common_defines:
     BloodSplatter.hlsl:
         PSHADER:
             - IBL
-            - EFFECT11
+            - EFFECTS11
             - DYNAMIC_CUBEMAPS
             - LIGHT_LIMIT_FIX
             - SCREEN_SPACE_SHADOWS
@@ -24,7 +24,7 @@ file_common_defines:
             - SSS
         VSHADER:
             - IBL
-            - EFFECT11
+            - EFFECTS11
             - DYNAMIC_CUBEMAPS
             - LIGHT_LIMIT_FIX
             - SCREEN_SPACE_SHADOWS
@@ -40,7 +40,7 @@ file_common_defines:
     DistantTree.hlsl:
         PSHADER:
             - IBL
-            - EFFECT11
+            - EFFECTS11
             - SCREEN_SPACE_SHADOWS
             - LIGHT_LIMIT_FIX
             - DYNAMIC_CUBEMAPS
@@ -55,7 +55,7 @@ file_common_defines:
             - SSS
         VSHADER:
             - IBL
-            - EFFECT11
+            - EFFECTS11
             - SCREEN_SPACE_SHADOWS
             - LIGHT_LIMIT_FIX
             - DYNAMIC_CUBEMAPS
@@ -73,7 +73,7 @@ file_common_defines:
         PSHADER: []
         VSHADER:
             - IBL
-            - EFFECT11
+            - EFFECTS11
             - DYNAMIC_CUBEMAPS
             - LIGHT_LIMIT_FIX
             - SCREEN_SPACE_SHADOWS
@@ -92,7 +92,7 @@ file_common_defines:
     Sky.hlsl:
         PSHADER:
             - IBL
-            - EFFECT11
+            - EFFECTS11
             - SCREEN_SPACE_SHADOWS
             - LIGHT_LIMIT_FIX
             - DYNAMIC_CUBEMAPS
@@ -106,7 +106,7 @@ file_common_defines:
             - SSS
         VSHADER:
             - IBL
-            - EFFECT11
+            - EFFECTS11
             - SCREEN_SPACE_SHADOWS
             - LIGHT_LIMIT_FIX
             - DYNAMIC_CUBEMAPS
@@ -122,7 +122,7 @@ file_common_defines:
     Particle.hlsl:
         PSHADER:
             - IBL
-            - EFFECT11
+            - EFFECTS11
             - DYNAMIC_CUBEMAPS
             - LIGHT_LIMIT_FIX
             - SCREEN_SPACE_SHADOWS
@@ -136,7 +136,7 @@ file_common_defines:
             - SSS
         VSHADER:
             - IBL
-            - EFFECT11
+            - EFFECTS11
             - DYNAMIC_CUBEMAPS
             - LIGHT_LIMIT_FIX
             - SCREEN_SPACE_SHADOWS
@@ -152,7 +152,7 @@ file_common_defines:
     Effect.hlsl:
         PSHADER:
             - IBL
-            - EFFECT11
+            - EFFECTS11
             - DYNAMIC_CUBEMAPS
             - LIGHT_LIMIT_FIX
             - SCREEN_SPACE_SHADOWS
@@ -166,7 +166,7 @@ file_common_defines:
             - SSS
         VSHADER:
             - IBL
-            - EFFECT11
+            - EFFECTS11
             - SCREEN_SPACE_SHADOWS
             - LIGHT_LIMIT_FIX
             - DYNAMIC_CUBEMAPS
@@ -193,7 +193,7 @@ file_common_defines:
             - WATER_EFFECTS
             - SSS
             - IBL
-            - EFFECT11
+            - EFFECTS11
             - WETNESS_EFFECTS
             - LOD_BLENDING
             - SSGI
@@ -212,7 +212,7 @@ file_common_defines:
             - WATER_EFFECTS
             - SSS
             - IBL
-            - EFFECT11
+            - EFFECTS11
             - WETNESS_EFFECTS
             - LOD_BLENDING
             - SSGI
@@ -223,7 +223,7 @@ file_common_defines:
     Water.hlsl:
         PSHADER:
             - IBL
-            - EFFECT11
+            - EFFECTS11
             - SCREEN_SPACE_SHADOWS
             - SKYLIGHTING
             - DYNAMIC_CUBEMAPS
@@ -239,7 +239,7 @@ file_common_defines:
             - SSS
         VSHADER:
             - IBL
-            - EFFECT11
+            - EFFECTS11
             - SCREEN_SPACE_SHADOWS
             - SKYLIGHTING
             - DYNAMIC_CUBEMAPS
@@ -2059,7 +2059,7 @@ shaders:
                   - D3DCOMPILE_SKIP_OPTIMIZATION
                   - PSHADER
                   - IBL
-                  - EFFECT11
+                  - EFFECTS11
                   - DYNAMIC_CUBEMAPS
                   - LIGHT_LIMIT_FIX
                   - SCREEN_SPACE_SHADOWS
@@ -2084,7 +2084,7 @@ shaders:
                   - D3DCOMPILE_SKIP_OPTIMIZATION
                   - VSHADER
                   - IBL
-                  - EFFECT11
+                  - EFFECTS11
                   - DYNAMIC_CUBEMAPS
                   - LIGHT_LIMIT_FIX
                   - SCREEN_SPACE_SHADOWS
@@ -2111,7 +2111,7 @@ shaders:
                   - D3DCOMPILE_SKIP_OPTIMIZATION
                   - PSHADER
                   - IBL
-                  - EFFECT11
+                  - EFFECTS11
                   - SCREEN_SPACE_SHADOWS
                   - LIGHT_LIMIT_FIX
                   - DYNAMIC_CUBEMAPS
@@ -2150,7 +2150,7 @@ shaders:
                   - D3DCOMPILE_SKIP_OPTIMIZATION
                   - VSHADER
                   - IBL
-                  - EFFECT11
+                  - EFFECTS11
                   - SCREEN_SPACE_SHADOWS
                   - LIGHT_LIMIT_FIX
                   - DYNAMIC_CUBEMAPS
@@ -2182,7 +2182,7 @@ shaders:
                   - D3DCOMPILE_SKIP_OPTIMIZATION
                   - VSHADER
                   - IBL
-                  - EFFECT11
+                  - EFFECTS11
                   - DYNAMIC_CUBEMAPS
                   - LIGHT_LIMIT_FIX
                   - SCREEN_SPACE_SHADOWS
@@ -2212,7 +2212,7 @@ shaders:
                   - D3DCOMPILE_SKIP_OPTIMIZATION
                   - PSHADER
                   - IBL
-                  - EFFECT11
+                  - EFFECTS11
                   - SCREEN_SPACE_SHADOWS
                   - LIGHT_LIMIT_FIX
                   - DYNAMIC_CUBEMAPS
@@ -2304,7 +2304,7 @@ shaders:
                   - D3DCOMPILE_SKIP_OPTIMIZATION
                   - VSHADER
                   - IBL
-                  - EFFECT11
+                  - EFFECTS11
                   - SCREEN_SPACE_SHADOWS
                   - LIGHT_LIMIT_FIX
                   - DYNAMIC_CUBEMAPS
@@ -2359,7 +2359,7 @@ shaders:
                   - D3DCOMPILE_SKIP_OPTIMIZATION
                   - PSHADER
                   - IBL
-                  - EFFECT11
+                  - EFFECTS11
                   - DYNAMIC_CUBEMAPS
                   - LIGHT_LIMIT_FIX
                   - SCREEN_SPACE_SHADOWS
@@ -2398,7 +2398,7 @@ shaders:
                   - D3DCOMPILE_SKIP_OPTIMIZATION
                   - VSHADER
                   - IBL
-                  - EFFECT11
+                  - EFFECTS11
                   - DYNAMIC_CUBEMAPS
                   - LIGHT_LIMIT_FIX
                   - SCREEN_SPACE_SHADOWS
@@ -2439,7 +2439,7 @@ shaders:
                   - D3DCOMPILE_SKIP_OPTIMIZATION
                   - PSHADER
                   - IBL
-                  - EFFECT11
+                  - EFFECTS11
                   - DYNAMIC_CUBEMAPS
                   - LIGHT_LIMIT_FIX
                   - SCREEN_SPACE_SHADOWS
@@ -9665,7 +9665,7 @@ shaders:
                   - D3DCOMPILE_SKIP_OPTIMIZATION
                   - VSHADER
                   - IBL
-                  - EFFECT11
+                  - EFFECTS11
                   - SCREEN_SPACE_SHADOWS
                   - LIGHT_LIMIT_FIX
                   - DYNAMIC_CUBEMAPS
@@ -14233,7 +14233,7 @@ shaders:
                   - WATER_EFFECTS
                   - SSS
                   - IBL
-                  - EFFECT11
+                  - EFFECTS11
                   - WETNESS_EFFECTS
                   - LOD_BLENDING
                   - SSGI
@@ -17089,7 +17089,7 @@ shaders:
                   - WATER_EFFECTS
                   - SSS
                   - IBL
-                  - EFFECT11
+                  - EFFECTS11
                   - WETNESS_EFFECTS
                   - LOD_BLENDING
                   - SSGI
@@ -17236,7 +17236,7 @@ shaders:
                   - D3DCOMPILE_SKIP_OPTIMIZATION
                   - PSHADER
                   - IBL
-                  - EFFECT11
+                  - EFFECTS11
                   - SCREEN_SPACE_SHADOWS
                   - SKYLIGHTING
                   - DYNAMIC_CUBEMAPS
@@ -19482,7 +19482,7 @@ shaders:
                   - D3DCOMPILE_SKIP_OPTIMIZATION
                   - VSHADER
                   - IBL
-                  - EFFECT11
+                  - EFFECTS11
                   - SCREEN_SPACE_SHADOWS
                   - SKYLIGHTING
                   - DYNAMIC_CUBEMAPS

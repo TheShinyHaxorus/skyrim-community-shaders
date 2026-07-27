@@ -2,7 +2,7 @@
 
 #include "../SettingManager.h"
 #include "../TextureManager.h"
-#include "Features/Effect11.h"
+#include "Features/Effects11.h"
 #include "Globals.h"
 #include "Utils/Game.h"
 
@@ -37,11 +37,11 @@ void ENBEffect::UpdateEffectVariables()
 {
 	float4 params01[7]{};
 
-	auto& effect11 = globals::features::effect11;
-	if (effect11.vanillaTonemapParamsValid) {
-		std::memcpy(params01, effect11.vanillaTonemapParams, sizeof(params01));
+	auto& effects11 = globals::features::effects11;
+	if (effects11.vanillaTonemapParamsValid) {
+		std::memcpy(params01, effects11.vanillaTonemapParams, sizeof(params01));
 	} else {
-		auto imageSpaceManager = RE::ImageSpaceManager::GetSingleton();
+		auto imageSpaceManager = globals::game::imageSpaceManager;
 		if (!imageSpaceManager) {
 			return;
 		}

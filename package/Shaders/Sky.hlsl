@@ -182,7 +182,7 @@ cbuffer AlphaTestRefCB : register(b11)
 
 Texture2D<float> TexDepthSampler : register(t17);
 
-#if defined(EFFECT11)
+#if defined(EFFECTS11)
 float3 LimbDarkenHestroffer(float norm_dist)
 {
 	float mu = sqrt(1.0 - norm_dist * norm_dist);
@@ -272,7 +272,7 @@ PS_OUTPUT main(PS_INPUT input)
 
 #		endif
 
-#		if defined(TEX) && defined(EFFECT11)
+#		if defined(TEX) && defined(EFFECTS11)
 	if (SharedData::enbSettings.EnableProceduralSun && (Permutation::ExtraShaderDescriptor & Permutation::ExtraFlags::IsSun)) {
 		baseColor.xyz = ComputeProceduralSun(input.TexCoord0.xy);
 		baseColor.w = input.Color.w;
@@ -287,7 +287,7 @@ PS_OUTPUT main(PS_INPUT input)
 	psout.Color.w = baseColor.w * input.Color.w;
 #			else
 	float3 skyGradientColor = input.Color.xyz;
-#				if defined(EFFECT11)
+#				if defined(EFFECTS11)
 	if (SharedData::enbSettings.UseProceduralGradientWeights) {
 		float3 viewDirection = normalize(input.WorldPosition.xyz);
 		float gradientPosition = pow(1.0 - saturate(viewDirection.z), SharedData::enbSettings.ProceduralGradientWeightCurve);
@@ -310,7 +310,7 @@ PS_OUTPUT main(PS_INPUT input)
 	psout.Color.w = input.TexCoord2.x * (baseColor.w * input.Color.w);
 #		else  // not DITHER, not MOONMASK, not HORIZFADE
 
-#			if defined(CLOUDS) && defined(EFFECT11)
+#			if defined(CLOUDS) && defined(EFFECTS11)
 	if (SharedData::enbSettings.EnableSky)
 		baseColor.xyz = pow(abs(baseColor.xyz), SharedData::enbSettings.CloudsCurve);
 #			endif
@@ -318,7 +318,7 @@ PS_OUTPUT main(PS_INPUT input)
 	psout.Color.w = input.Color.w * baseColor.w;
 	psout.Color.xyz = Color::Sky(input.Color.xyz) * baseColor.xyz + skyScale;
 
-#			if defined(CLOUDS) && defined(EFFECT11)
+#			if defined(CLOUDS) && defined(EFFECTS11)
 	if (SharedData::enbSettings.EnableSky) {
 		float3 cloudColor = psout.Color.xyz;
 		float3 viewDirection = normalize(input.WorldPosition.xyz);

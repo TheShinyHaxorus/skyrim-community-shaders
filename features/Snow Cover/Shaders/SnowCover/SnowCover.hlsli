@@ -44,7 +44,7 @@ namespace SnowCover
 		return 1 - smoothstep(start, end, viewDist);
 	}
 
-	// Fire sources come from Effect11's FIRE classification of additive draws, one frame behind.
+	// Fire sources come from Effects11's FIRE classification of additive draws, one frame behind.
 	float GetFireAttenuation(float3 p)
 	{
 		if (SharedData::snowCoverSettings.EnableFireMelt == 0)

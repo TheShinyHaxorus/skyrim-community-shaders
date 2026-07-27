@@ -1,5 +1,5 @@
 // Particle rain (RAIN technique) reads ENB rain settings from FeatureData (b6) in the vertex
-// shader. The particle VS only uses b0/b2, and Effect11::ModifyParticle binds b5/b6 for it, so
+// shader. The particle VS only uses b0/b2, and Effects11::ModifyParticle binds b5/b6 for it, so
 // opting into the SharedData cbuffers here is safe (see SHARED_DATA_IN_VERTEX in SharedData.hlsli).
 #define SHARED_DATA_IN_VERTEX
 #include "Common/Color.hlsli"
@@ -29,7 +29,7 @@ struct VS_OUTPUT
 #if defined(ENVCUBE)
 	float4 PrecipitationOcclusionTexCoord: TEXCOORD1;
 #endif
-#if defined(ENVCUBE) && defined(RAIN) && defined(EFFECT11)
+#if defined(ENVCUBE) && defined(RAIN) && defined(EFFECTS11)
 	float2 RaindropData: TEXCOORD2;
 #endif
 };
@@ -91,7 +91,7 @@ VS_OUTPUT main(VS_INPUT input)
 	float4 viewPosition = mul(WorldViewProj, msPosition);
 #		if defined(RAIN)
 	float3 rainVelocity = Velocity.xyz;
-#			if defined(EFFECT11)
+#			if defined(EFFECTS11)
 	if (SharedData::enbSettings.EnableRain) {
 		float velLength = length(rainVelocity);
 		if (velLength > 0.0) {
@@ -117,7 +117,7 @@ VS_OUTPUT main(VS_INPUT input)
 	float4 precipitationOcclusionTexCoord = mul(PrecipitationOcclusionWorldViewProj, msPosition);
 	precipitationOcclusionTexCoord.y = -precipitationOcclusionTexCoord.y;
 	vsout.PrecipitationOcclusionTexCoord = precipitationOcclusionTexCoord;
-#		if defined(RAIN) && defined(EFFECT11)
+#		if defined(RAIN) && defined(EFFECTS11)
 	vsout.RaindropData.xy = input.TexCoord1.xy * 0.5 + 0.5;
 #		endif
 #	else
@@ -233,7 +233,7 @@ Texture2D<float4> TexGrayscaleTexture : register(t1);
 Texture2D<float4> TexPrecipitationOcclusionTexture : register(t2);
 Texture2D<float4> TexUnderwaterMask : register(t3);
 #	endif
-#	if defined(ENVCUBE) && defined(RAIN) && defined(EFFECT11)
+#	if defined(ENVCUBE) && defined(RAIN) && defined(EFFECTS11)
 Texture2D<float4> TexRaindropNormals : register(t80);
 #	endif
 
@@ -250,7 +250,7 @@ cbuffer PerGeometry : register(b2)
 #		include "IBL/IBL.hlsli"
 #	endif
 
-#	if defined(ENVCUBE) && defined(RAIN) && defined(DYNAMIC_CUBEMAPS) && defined(EFFECT11)
+#	if defined(ENVCUBE) && defined(RAIN) && defined(DYNAMIC_CUBEMAPS) && defined(EFFECTS11)
 #		define SampColorSampler SampSourceTexture
 #		include "DynamicCubemaps/DynamicCubemaps.hlsli"
 #	endif
@@ -269,7 +269,7 @@ PS_OUTPUT main(PS_INPUT input, bool frontFace : SV_IsFrontFace)
 	}
 #	endif
 
-#	if defined(ENVCUBE) && defined(RAIN) && defined(DYNAMIC_CUBEMAPS) && defined(EFFECT11)
+#	if defined(ENVCUBE) && defined(RAIN) && defined(DYNAMIC_CUBEMAPS) && defined(EFFECTS11)
 	// ENB-style raindrop billboards: refract/reflect the dynamic cubemap through a raindrop normal map.
 	if (SharedData::enbSettings.EnableRain) {
 		float4 raindropNormal = TexRaindropNormals.Sample(SampSourceTexture, input.RaindropData.xy);

@@ -5,7 +5,7 @@
 #include "TextureManager.h"
 #include "Utils/ShaderPatches.h"
 
-#include "Features/Effect11.h"
+#include "Features/Effects11.h"
 #include "Globals.h"
 
 #include <imgui_stdlib.h>
@@ -98,7 +98,7 @@ void MenuManager::RenderToolbar()
 void MenuManager::RenderSettingsFilter()
 {
 	ImGui::SetNextItemWidth(-FLT_MIN);
-	ImGui::InputTextWithHint("##Effect11SettingsFilter", "Search settings...", &settingsFilter);
+	ImGui::InputTextWithHint("##Effects11SettingsFilter", "Search settings...", &settingsFilter);
 	if (ImGui::IsItemHovered()) {
 		ImGui::SetTooltip("Filter settings by name or category across all tabs");
 	}
@@ -139,10 +139,10 @@ void MenuManager::RenderDebugControl()
 	auto& weatherManager = WeatherManager::GetSingleton();
 
 	if (ImGui::TreeNodeEx("Vanilla Tonemap Constants (Params01)", ImGuiTreeNodeFlags_DefaultOpen)) {
-		auto& effect11 = globals::features::effect11;
+		auto& effects11 = globals::features::effects11;
 
-		if (!effect11.vanillaTonemapParamsValid) {
-			ImGui::TextColored(ImVec4(1.0f, 0.8f, 0.2f, 1.0f), "Vanilla tonemap not rendered this frame (Effect11 active) - enbeffect.fx uses reconstructed values");
+		if (!effects11.vanillaTonemapParamsValid) {
+			ImGui::TextColored(ImVec4(1.0f, 0.8f, 0.2f, 1.0f), "Vanilla tonemap not rendered this frame (Effects11 active) - enbeffect.fx uses reconstructed values");
 		}
 
 		static const char* const rowNames[7] = {
@@ -158,7 +158,7 @@ void MenuManager::RenderDebugControl()
 				ImGui::TableSetColumnIndex(0);
 				ImGui::Text("%s", rowNames[i]);
 				ImGui::TableSetColumnIndex(1);
-				const auto& v = effect11.vanillaTonemapParams[i];
+				const auto& v = effects11.vanillaTonemapParams[i];
 				ImGui::Text("%.3f  %.3f  %.3f  %.3f", v.x, v.y, v.z, v.w);
 			}
 			ImGui::EndTable();
@@ -361,10 +361,10 @@ void MenuManager::RenderTabs()
 					if (ImGui::TreeNodeEx(category.c_str(), flags)) {
 						bool categoryDisabled = false;
 						if (category == "RAIN") {
-							if (!globals::features::effect11.raindropStatus.empty()) {
+							if (!globals::features::effects11.raindropStatus.empty()) {
 								categoryDisabled = true;
 								ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.6f, 0.2f, 1.0f));
-								ImGui::TextWrapped("Rain disabled: %s", globals::features::effect11.raindropStatus.c_str());
+								ImGui::TextWrapped("Rain disabled: %s", globals::features::effects11.raindropStatus.c_str());
 								ImGui::PopStyleColor();
 							}
 						}

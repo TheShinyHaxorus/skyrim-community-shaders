@@ -40,7 +40,7 @@ struct ExponentialHeightFog;
 struct HDRDisplay;
 struct ScreenshotFeature;
 struct Skin;
-struct Effect11;
+struct Effects11;
 
 class State;
 class Deferred;
@@ -133,7 +133,7 @@ namespace globals
 		extern ExponentialHeightFog exponentialHeightFog;
 		extern TruePBR truePBR;
 		extern Skin skin;
-		extern Effect11 effect11;
+		extern Effects11 effects11;
 
 	}
 

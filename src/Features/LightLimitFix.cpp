@@ -1,5 +1,5 @@
 #include "LightLimitFix.h"
-#include "Effect11.h"
+#include "Effects11.h"
 #include "InverseSquareLighting.h"
 #include "LinearLighting.h"
 
@@ -107,7 +107,7 @@ void LightLimitFix::DrawSettings()
 			"Turns configured billboard effects (candles, braziers, torches, magic) into dynamic lights. "
 			"Standard ENB Light meshes work out of the box; extra config packs shipping "
 			"Data\\ParticleLights\\*.ini (e.g. Embers HD, Lanterns of Skyrim) extend coverage.\n"
-			"When Effect11 (ENB) is enabled, these lights are graded by its point-light curve so fire tracks weather."));
+			"When Effects11 (ENB) is enabled, these lights are graded by its point-light curve so fire tracks weather."));
 	ImGui::Spacing();
 
 	ImGui::Checkbox(T(TKEY("enable_particle_lights"), "Enable Particle Lights"), &settings.EnableParticleLights);
@@ -365,7 +365,7 @@ void LightLimitFix::BSLightingShader_SetupGeometry_GeometrySetupConstantPointLig
 		light.fade *= bsLight->lodDimmer;
 
 		{
-			auto& enbpp = globals::features::effect11;
+			auto& enbpp = globals::features::effects11;
 			if (inWorld && enbpp.enableEffect)
 				enbpp.OverridePointLightColor(light.color);
 		}
@@ -552,7 +552,7 @@ void LightLimitFix::UpdateLights()
 					light.fade *= bsLight->lodDimmer;
 
 					{
-						auto& enbpp = globals::features::effect11;
+						auto& enbpp = globals::features::effects11;
 						if (enbpp.enableEffect)
 							enbpp.OverridePointLightColor(light.color);
 					}
@@ -962,11 +962,11 @@ bool LightLimitFix::CheckParticleLights(RE::BSRenderPass* a_pass, uint32_t)
 		return true;
 
 	using Flag = RE::BSShaderProperty::EShaderPropertyFlag;
-	if (!a_pass->shaderProperty->flags.any(Flag::kSoftEffect, Flag::kZBufferTest))
+	if (!a_pass->shaderProperty->flags.all(Flag::kSoftEffect, Flag::kZBufferTest))
 		return true;
 
 	auto* alphaProperty = static_cast<RE::NiAlphaProperty*>(a_pass->geometry->GetGeometryRuntimeData().alphaProperty.get());
-	if (!alphaProperty || !alphaProperty->GetAlphaBlending() || alphaProperty->GetDestBlendMode() != RE::NiAlphaProperty::AlphaFunction::kOne)
+	if (!alphaProperty || alphaProperty->alphaFlags != 4109)
 		return true;
 
 	auto reference = GetParticleLightConfig(a_pass);
@@ -990,7 +990,7 @@ void LightLimitFix::AddParticleLightsToBuffer(eastl::vector<LightData>& a_lights
 	currentParticleLights.clear();
 	std::swap(currentParticleLights, queuedParticleLights);
 
-	auto& effect11 = globals::features::effect11;
+	auto& effects11 = globals::features::effects11;
 
 	for (const auto& pl : currentParticleLights) {
 		if (a_lightsData.size() >= MAX_LIGHTS)
@@ -1003,8 +1003,8 @@ void LightLimitFix::AddParticleLightsToBuffer(eastl::vector<LightData>& a_lights
 		light.color.z = pl.color.blue * invPI;
 		light.color *= pl.color.alpha;
 
-		if (effect11.enableEffect)
-			effect11.OverridePointLightColor(light.color);
+		if (effects11.enableEffect)
+			effects11.OverridePointLightColor(light.color);
 
 		light.radius = pl.radius * 0.5f;
 

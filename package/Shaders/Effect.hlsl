@@ -540,7 +540,7 @@ float3 GetLightingColor(float3 msPosition, float3 worldPosition, float2 screenPo
 	ExtractEffectLighting(color, dirColor, ambientColor, 1.0);
 #		endif
 
-#		if defined(EFFECT11)
+#		if defined(EFFECTS11)
 	if (SharedData::enbSettings.Enable) {
 		dirColor = ShadowSampling::GetDirectionalLighting();
 		ambientColor = ShadowSampling::GetAmbientLighting(ShadowSampling::LightingSampleNormal);
@@ -588,7 +588,7 @@ float3 GetLightingColor(float3 msPosition, float3 worldPosition, float2 screenPo
 	{
 		float4 lightDistanceSquared = (PLightPositionX[0] - msPosition.xxxx) * (PLightPositionX[0] - msPosition.xxxx) + (PLightPositionY[0] - msPosition.yyyy) * (PLightPositionY[0] - msPosition.yyyy) + (PLightPositionZ[0] - msPosition.zzzz) * (PLightPositionZ[0] - msPosition.zzzz);
 		float4 lightFadeMul = 1.0.xxxx - saturate(PLightingRadiusInverseSquared * lightDistanceSquared);
-#		if defined(EFFECT11)
+#		if defined(EFFECTS11)
 		float pointScale = SharedData::enbSettings.Enable ? SharedData::enbSettings.ParticlePointLightingInfluence : 1.0;
 #		else
 		float pointScale = 1.0;
@@ -724,7 +724,7 @@ PS_OUTPUT main(PS_INPUT input)
 	float2 screenUV = FrameBuffer::ViewToUV(viewPosition);
 	bool inWorld = Permutation::ExtraShaderDescriptor & Permutation::ExtraFlags::InWorld;
 
-#		if defined(EFFECT11)
+#		if defined(EFFECTS11)
 	float clusteredPointScale = SharedData::enbSettings.Enable ? SharedData::enbSettings.ParticlePointLightingInfluence : 1.0;
 #		else
 	float clusteredPointScale = 1.0;
@@ -763,7 +763,7 @@ PS_OUTPUT main(PS_INPUT input)
 	lightingInfluence = 0;
 #	endif
 
-#	if !defined(IS_VOLUMETRIC_FOG) && !defined(IS_ENB_FIRE) && defined(EFFECT11)
+#	if !defined(IS_VOLUMETRIC_FOG) && !defined(IS_ENB_FIRE) && defined(EFFECTS11)
 	if (SharedData::enbSettings.Enable && !(Permutation::VertexShaderDescriptor & Permutation::EffectFlags::SkyObject))
 		propertyColor *= SharedData::enbSettings.ParticleIntensity;
 #	endif
@@ -894,7 +894,7 @@ PS_OUTPUT main(PS_INPUT input)
 #			else
 	float3 blendedColor = lightColor * (1 - fogFactor);
 #			endif
-#			if defined(EFFECT11)
+#			if defined(EFFECTS11)
 	if (SharedData::enbSettings.Enable) {
 #				if defined(IS_ENB_FIRE)
 		blendedColor = pow(max(blendedColor, 0.0), SharedData::enbSettings.FireCurve) * SharedData::enbSettings.FireIntensity;

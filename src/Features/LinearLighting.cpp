@@ -1,7 +1,7 @@
 #include "LinearLighting.h"
 
 #include "../I18n/I18n.h"
-#include "Effect11.h"
+#include "Effects11.h"
 #include "State.h"
 #include "Utils/UI.h"
 
@@ -87,8 +87,8 @@ void LinearLighting::ApplyPresetMaster(float a_master)
 
 void LinearLighting::DrawSettings()
 {
-	if (globals::features::effect11.loaded) {
-		auto& enb = globals::features::effect11;
+	if (globals::features::effects11.loaded) {
+		auto& enb = globals::features::effects11;
 		if (enb.enableEffect) {
 			ImGui::TextColored(ImVec4(1.0f, 1.0f, 0.0f, 1.0f), "Settings are currently managed by ENB.");
 			ImGui::SeparatorText(T(TKEY("effect_brightness_enb"), "Effect Brightness (works under ENB)"));
@@ -222,7 +222,7 @@ void LinearLighting::Prepass()
 	if (!settings.enableLinearLighting || isMainLoadingMenu)
 		return;
 
-	auto imageSpaceManager = RE::ImageSpaceManager::GetSingleton();
+	auto imageSpaceManager = globals::game::imageSpaceManager;
 	if (!imageSpaceManager)
 		return;
 
@@ -292,8 +292,8 @@ LinearLighting::PerFrameData LinearLighting::GetCommonBufferData()
 
 	// When ENB post-processing is active, ENB takes over linear lighting:
 	// neutralize all gammas and multipliers so we pass through untouched.
-	if (globals::features::effect11.loaded) {
-		auto& enb = globals::features::effect11;
+	if (globals::features::effects11.loaded) {
+		auto& enb = globals::features::effects11;
 		if (enb.enableEffect) {
 			data.enableLinearLighting = false;
 			data.lightGamma = 1.0f;

@@ -8,9 +8,9 @@
 #include "FeatureIssues.h"
 #include "Features/CSEditor.h"
 #include "Features/CloudShadows.h"
-#include "Features/Effect11.h"
-#include "Features/Effect11/EffectManager.h"
-#include "Features/Effect11/SettingManager.h"
+#include "Features/Effects11.h"
+#include "Features/Effects11/EffectManager.h"
+#include "Features/Effects11/SettingManager.h"
 #include "Features/ExponentialHeightFog.h"
 #include "Features/HDRDisplay.h"
 #include "Features/InteriorSun.h"
@@ -87,8 +87,8 @@ void State::Draw()
 		}
 
 		{
-			ZoneScopedN("Effect11::ParticleShaderHacks");
-			globals::features::effect11.ParticleShaderHacks();
+			ZoneScopedN("Effects11::ParticleShaderHacks");
+			globals::features::effects11.ParticleShaderHacks();
 		}
 
 		if (terrainHelper.loaded) {
@@ -188,8 +188,8 @@ void State::Debug()
 
 bool State::HandlePostProcessing(RE::RENDER_TARGET a_input, RE::RENDER_TARGET a_output)
 {
-	auto& effect11 = globals::features::effect11;
-	if (!effect11.loaded || !effect11.HandleTonemapRender(a_input, a_output))
+	auto& effects11 = globals::features::effects11;
+	if (!effects11.loaded || !effects11.HandleTonemapRender(a_input, a_output))
 		return false;
 
 	auto renderer = globals::game::renderer;
@@ -246,7 +246,7 @@ void State::Reset()
 	// Publish for off-thread readers (e.g. the MCP listener thread).
 	frameCountAtomic.store(frameCount, std::memory_order_relaxed);
 
-	if (auto* imageSpaceManager = RE::ImageSpaceManager::GetSingleton()) {
+	if (auto* imageSpaceManager = globals::game::imageSpaceManager) {
 		auto& BSImagespaceShaderApplyReflections = imageSpaceManager->GetRuntimeData().BSImagespaceShaderApplyReflections;
 
 		// Disable reflections being applied to things other than water
@@ -660,10 +660,10 @@ void State::Save(ConfigMode a_configMode)
 		logger::warn("Failed to write settings to file: {}. Error: {}", configPath, e.what());
 	}
 
-	// Effect11's ENB-style settings live in enbseries.ini / per-weather inis, not
+	// Effects11's ENB-style settings live in enbseries.ini / per-weather inis, not
 	// the CS JSON; flush them here so the global Save button persists panel edits
 	// too (dirty-tracked, so this is a no-op when nothing changed).
-	if (globals::features::effect11.loaded) {
+	if (globals::features::effects11.loaded) {
 		SettingManager::GetSingleton().Save();
 		EffectManager::GetSingleton().SaveDirty();
 	}
@@ -1008,8 +1008,7 @@ void State::UpdateSharedData([[maybe_unused]] bool a_inWorld, [[maybe_unused]] b
 		data.DirLightColor = { lightRuntimeData.diffuse.red, lightRuntimeData.diffuse.green, lightRuntimeData.diffuse.blue, 1.0f };
 		data.DirLightColor *= lightRuntimeData.fade;
 
-		auto imageSpaceManager = RE::ImageSpaceManager::GetSingleton();
-		data.DirLightColor *= imageSpaceManager->GetRuntimeData().data.baseData.hdr.sunlightScale;
+		data.DirLightColor *= globals::game::imageSpaceManager->GetRuntimeData().data.baseData.hdr.sunlightScale;
 
 		const auto& direction = dirLight->GetWorldDirection();
 		data.DirLightDirection = { -direction.x, -direction.y, -direction.z, 0.0f };

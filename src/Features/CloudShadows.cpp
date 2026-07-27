@@ -1,7 +1,7 @@
 #include "CloudShadows.h"
 
-#include "Effect11.h"
-#include "Effect11/SettingManager.h"
+#include "Effects11.h"
+#include "Effects11/SettingManager.h"
 #include "../I18n/I18n.h"
 #include "State.h"
 #include "Utils/D3D.h"
@@ -14,9 +14,12 @@ NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(
 
 void CloudShadows::DrawSettings()
 {
-	if (IsDrivenByENB()) {
-		ImGui::TextColored(ImVec4(1.0f, 1.0f, 0.0f, 1.0f), "Settings are currently managed by ENB.");
-		return;
+	if (globals::features::effects11.loaded) {
+		auto& enb = globals::features::effects11;
+		if (enb.enableEffect) {
+			ImGui::TextColored(ImVec4(1.0f, 1.0f, 0.0f, 1.0f), "Settings are currently managed by ENB.");
+			return;
+		}
 	}
 
 	ImGui::SliderFloat(T(TKEY("opacity"), "Opacity"), &settings.Opacity, 0.0f, 4.0f, "%.1f");
@@ -43,15 +46,6 @@ void CloudShadows::RestoreDefaultSettings()
 	settings = {};
 }
 
-bool CloudShadows::IsDrivenByENB()
-{
-	auto& enb = globals::features::effect11;
-	if (!enb.loaded || !enb.enableEffect)
-		return false;
-
-	return SettingManager::GetSingleton().GetValue<bool>("EnableCloudShadows", "EFFECT");
-}
-
 CloudShadows::Settings CloudShadows::GetCommonBufferData()
 {
 	if (!loaded)
@@ -59,8 +53,17 @@ CloudShadows::Settings CloudShadows::GetCommonBufferData()
 
 	auto data = settings;
 
-	if (IsDrivenByENB())
-		data.Opacity = SettingManager::GetSingleton().GetInterpolatedTimeOfDayValue("Amount", "CLOUDSHADOWS");
+	if (globals::features::effects11.loaded) {
+		auto& enb = globals::features::effects11;
+		if (enb.enableEffect) {
+			auto& settingManager = SettingManager::GetSingleton();
+			if (settingManager.GetValue<bool>("EnableCloudShadows", "EFFECT")) {
+				data.Opacity = settingManager.GetInterpolatedTimeOfDayValue("Amount", "CLOUDSHADOWS");
+			} else {
+				data.Opacity = 0.0f;
+			}
+		}
+	}
 
 	return data;
 }
@@ -230,28 +233,31 @@ void CloudShadows::ModifySky(RE::BSRenderPass* Pass)
 	}
 }
 
+void CloudShadows::ReflectionsPrepass()
+{
+	Util::FrameChecker frameChecker;
+	if (frameChecker.IsNewFrame()) {
+		if ((globals::game::sky->mode.get() != RE::Sky::Mode::kFull) ||
+			!globals::game::sky->currentClimate)
+			return;
+
+		auto context = globals::d3d::context;
+
+		context->CopyResource(texCubemapCloudOccCopy->resource.get(), texCloudShadowLayers[kMaxCloudLayers - 1]->resource.get());
+
+		ID3D11ShaderResourceView* srv = texCubemapCloudOccCopy->srv.get();
+		context->PSSetShaderResources(25, 1, &srv);
+		context->CSSetShaderResources(25, 1, &srv);
+	}
+}
+
 void CloudShadows::EarlyPrepass()
 {
 	if (previouslyRenderedSide >= 0) {
 		PropagateToCompletion(previouslyRenderedSide);
 		previouslyRenderedSide = -1;
 	}
-
-	// Per-frame accumulator, like renderedLayersMask; without the reset cross-side propagation
-	// only ever runs on the first frame a layer index appears.
 	globalRenderedMask = 0;
-
-	auto sky = globals::game::sky;
-	if (!sky || (sky->mode.get() != RE::Sky::Mode::kFull) || !sky->currentClimate)
-		return;
-
-	auto context = globals::d3d::context;
-
-	context->CopyResource(texCubemapCloudOccCopy->resource.get(), texCloudShadowLayers[kMaxCloudLayers - 1]->resource.get());
-
-	ID3D11ShaderResourceView* srv = texCubemapCloudOccCopy->srv.get();
-	context->PSSetShaderResources(25, 1, &srv);
-	context->CSSetShaderResources(25, 1, &srv);
 }
 
 void CloudShadows::SetupResources()

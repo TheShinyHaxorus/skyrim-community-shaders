@@ -246,7 +246,7 @@ public:
 	bool QueueParticleLight(RE::BSRenderPass* a_pass, VertexColorCacheEntry& a_reference);
 	/** @brief Checks a render pass for particle-light emission; returns false to cull the pass. */
 	bool CheckParticleLights(RE::BSRenderPass* a_pass, uint32_t a_technique);
-	/** @brief Applies distance fade + Effect11 grading, then appends the frame's particle lights. */
+	/** @brief Applies distance fade + Effects11 grading, then appends the frame's particle lights. */
 	void AddParticleLightsToBuffer(eastl::vector<LightData>& a_lightsData);
 
 	/**

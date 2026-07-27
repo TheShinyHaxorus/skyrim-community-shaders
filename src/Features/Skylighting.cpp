@@ -12,8 +12,7 @@ NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(
 	Skylighting::Settings,
 	MaxZenith,
 	MinDiffuseVisibility,
-	MinSpecularVisibility,
-	OcclusionUpdateInterval)
+	MinSpecularVisibility)
 
 void Skylighting::LoadSettings(json& o_json)
 {
@@ -48,10 +47,6 @@ void Skylighting::DrawSettings()
 	ImGui::Text("%s", T(TKEY("min_visibility_desc"), "Minimum visibility values. Diffuse darkens objects. Specular removes the sky from reflections."));
 	ImGui::SliderFloat(T(TKEY("diffuse_min_visibility"), "Diffuse Min Visibility"), &settings.MinDiffuseVisibility, 0.01f, 1.f, "%.2f");
 	ImGui::SliderFloat(T(TKEY("specular_min_visibility"), "Specular Min Visibility"), &settings.MinSpecularVisibility, 0.01f, 1.f, "%.2f");
-
-	ImGui::SliderFloat(T(TKEY("occlusion_update_interval"), "Occlusion Update Interval (ms)"), &settings.OcclusionUpdateInterval, 0.f, 66.f, "%.0f ms");
-	if (auto _tt = Util::HoverTooltipWrapper())
-		ImGui::Text("%s", T(TKEY("occlusion_update_interval_tooltip"), "Minimum time between sky-occlusion map updates. Higher values improve performance in geometry-dense areas by rendering the occlusion map less often, at the cost of slower skylighting response. 0 updates every frame."));
 
 	ImGui::Separator();
 
@@ -547,14 +542,6 @@ void Skylighting::RenderOcclusion()
 			}
 
 			{
-				bool forceOcclusionUpdate = queuedResetSkylighting;
-				if (!forceOcclusionUpdate) {
-					float elapsedMs = std::chrono::duration<float, std::milli>(std::chrono::system_clock::now() - lastUpdateTimer).count();
-					if (elapsedMs < settings.OcclusionUpdateInterval)
-						return;
-				}
-				lastUpdateTimer = std::chrono::system_clock::now();
-
 				TracyD3D11Zone(globals::state->tracyCtx, "Skylighting Mask");
 				state->BeginPerfEvent("Skylighting Mask");
 
