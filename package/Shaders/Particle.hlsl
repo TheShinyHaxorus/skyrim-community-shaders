@@ -250,7 +250,7 @@ cbuffer PerGeometry : register(b2)
 #		include "IBL/IBL.hlsli"
 #	endif
 
-#	if defined(RAIN) && defined(DYNAMIC_CUBEMAPS) && defined(EFFECT11)
+#	if defined(ENVCUBE) && defined(RAIN) && defined(DYNAMIC_CUBEMAPS) && defined(EFFECT11)
 #		define SampColorSampler SampSourceTexture
 #		include "DynamicCubemaps/DynamicCubemaps.hlsli"
 #	endif
@@ -269,7 +269,7 @@ PS_OUTPUT main(PS_INPUT input, bool frontFace : SV_IsFrontFace)
 	}
 #	endif
 
-#	if defined(RAIN) && defined(DYNAMIC_CUBEMAPS) && defined(EFFECT11)
+#	if defined(ENVCUBE) && defined(RAIN) && defined(DYNAMIC_CUBEMAPS) && defined(EFFECT11)
 	// ENB-style raindrop billboards: refract/reflect the dynamic cubemap through a raindrop normal map.
 	if (SharedData::enbSettings.EnableRain) {
 		float4 raindropNormal = TexRaindropNormals.Sample(SampSourceTexture, input.RaindropData.xy);
