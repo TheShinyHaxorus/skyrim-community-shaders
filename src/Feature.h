@@ -53,6 +53,10 @@ virtual const void* GetSettingsBlob() const { return nullptr; }
 	virtual std::string GetShortName() = 0;
 	virtual std::string GetDisplayName() { return GetName(); }
 	std::string GetDisplayCategory() const;
+
+	/** @brief Localized label for a category key. Single source of truth for every UI that shows one. */
+	static std::string TranslateCategory(std::string_view category);
+
 	virtual std::string GetFeatureModLink() { return ""; }
 	virtual std::string_view GetShaderDefineName() { return ""; }
 

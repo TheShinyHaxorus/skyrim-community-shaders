@@ -32,33 +32,12 @@ MenuManager& MenuManager::GetSingleton()
 
 void MenuManager::RenderImGui()
 {
-	if (!ImGui::BeginTable("Effect11", 2, ImGuiTableFlags_Resizable | ImGuiTableFlags_BordersOuter | ImGuiTableFlags_BordersV, ImVec2(0, 0))) {
-		return;
-	}
-
-	ImGui::TableSetupColumn("Settings", ImGuiTableColumnFlags_WidthFixed, 400.0f);
-	ImGui::TableSetupColumn("Effects", ImGuiTableColumnFlags_WidthStretch);
-
-	ImGui::TableNextRow();
-
-	// Left side - Settings
-	ImGui::TableSetColumnIndex(0);
-	if (ImGui::BeginChild("Settings", ImVec2(0, 0), false)) {
-		RenderSettingsPanel();
-	}
-	ImGui::EndChild();
-
-	// Right side - Effects
-	ImGui::TableSetColumnIndex(1);
-	if (ImGui::BeginChild("Effects", ImVec2(0, 0), false)) {
-		EffectManager::GetSingleton().RenderEffectsList();
-	}
-	ImGui::EndChild();
-
-	ImGui::EndTable();
+	RenderToolbar();
+	ImGui::Separator();
+	RenderTabs();
 }
 
-void MenuManager::RenderSettingsPanel()
+void MenuManager::RenderToolbar()
 {
 	auto& settingManager = SettingManager::GetSingleton();
 	auto& effectManager = EffectManager::GetSingleton();
@@ -114,7 +93,10 @@ void MenuManager::RenderSettingsPanel()
 			ImGui::SetTooltip("Settings or effect parameters differ from what is on disk. Click Save to persist them.");
 		}
 	}
+}
 
+void MenuManager::RenderSettingsFilter()
+{
 	ImGui::SetNextItemWidth(-FLT_MIN);
 	ImGui::InputTextWithHint("##Effect11SettingsFilter", "Search settings...", &settingsFilter);
 	if (ImGui::IsItemHovered()) {
@@ -122,11 +104,6 @@ void MenuManager::RenderSettingsPanel()
 	}
 
 	ImGui::Separator();
-
-	if (ImGui::BeginChild("SettingsScroll", ImVec2(0, 0), false)) {
-		RenderAllSettings();
-	}
-	ImGui::EndChild();
 }
 
 void MenuManager::RenderWeatherControl()
@@ -323,12 +300,10 @@ float MenuManager::GetTimeOfDayBlendFactor(int timeIndex) const
 	}
 }
 
-void MenuManager::RenderAllSettings()
+void MenuManager::RenderTabs()
 {
 	auto& settingManager = SettingManager::GetSingleton();
 	auto categorizedSettings = settingManager.GetCategorizedSettings();
-
-	const bool filtering = !settingsFilter.empty();
 
 	// Define explicit order for tabs
 	const std::vector<std::string> tabOrder = { "Main", "Weather", "Debug" };
@@ -341,6 +316,9 @@ void MenuManager::RenderAllSettings()
 			const auto& categories = categorizedSettings[tabName];
 
 			if (ImGui::BeginTabItem(tabName.c_str())) {
+				RenderSettingsFilter();
+				const bool filtering = !settingsFilter.empty();
+
 				// Add weather control to the Weather tab
 				if (tabName == "Weather") {
 					RenderWeatherControl();
@@ -448,6 +426,12 @@ void MenuManager::RenderAllSettings()
 				ImGui::EndTabItem();
 			}
 		}
+
+		if (ImGui::BeginTabItem("Effects")) {
+			EffectManager::GetSingleton().RenderEffectsList();
+			ImGui::EndTabItem();
+		}
+
 		ImGui::EndTabBar();
 	}
 }

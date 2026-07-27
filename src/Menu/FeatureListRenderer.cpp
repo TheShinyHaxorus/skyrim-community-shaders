@@ -139,34 +139,6 @@ namespace
 		return MenuFonts::BeginTabItemWithFont(label, role, flags);
 	}
 
-	std::string TranslateFeatureCategory(std::string_view category)
-	{
-		if (category == FeatureCategories::kCharacters)
-			return T("feature.category.characters", "Characters");
-		if (category == FeatureCategories::kDisplay)
-			return T("feature.category.display", "Display");
-		if (category == FeatureCategories::kGrass)
-			return T("feature.category.grass", "Grass");
-		if (category == FeatureCategories::kLandscapeAndTextures)
-			return T("feature.category.landscape_and_textures", "Landscape & Textures");
-		if (category == FeatureCategories::kLighting)
-			return T("feature.category.lighting", "Lighting");
-		if (category == FeatureCategories::kMaterials)
-			return T("feature.category.materials", "Materials");
-		if (category == "Post-Processing")
-			return T("feature.category.post_processing", "Post-Processing");
-		if (category == FeatureCategories::kOther)
-			return T("feature.category.other", "Other");
-		if (category == FeatureCategories::kSky)
-			return T("feature.category.sky", "Sky");
-		if (category == FeatureCategories::kUtility)
-			return T("feature.category.utility", "Utility");
-		if (category == FeatureCategories::kWater)
-			return T("feature.category.water", "Water");
-
-		return std::string(category);
-	}
-
 	/**
 	 * @brief Draws a feature header with the feature name in large text and version in smaller text
 	 * @param featureName The display name of the feature
@@ -385,10 +357,9 @@ std::vector<FeatureListRenderer::MenuFuncInfo> FeatureListRenderer::BuildMenuLis
 		});
 	}
 
-	// Define category order
-	std::vector<std::string> categoryOrder = { "Display", "Utility", "Characters", "Grass", "Lighting", "Materials", "Post-Processing", "Sky", "Landscape & Textures", "Water", "Other" };
 	// Add categorized features to menu with collapsible headers
-	for (const std::string& category : categoryOrder) {
+	for (const std::string_view categoryKey : FeatureCategories::kOrdered) {
+		const std::string category{ categoryKey };
 		if (categorizedFeatures.find(category) != categorizedFeatures.end() && !categorizedFeatures[category].empty()) {
 			// Initialize expansion state if not exists
 			if (categoryExpansionStates.find(category) == categoryExpansionStates.end()) {
@@ -407,7 +378,7 @@ std::vector<FeatureListRenderer::MenuFuncInfo> FeatureListRenderer::BuildMenuLis
 
 	// Add any categories not in the predefined order
 	for (const auto& [category, features] : categorizedFeatures) {
-		if (std::find(categoryOrder.begin(), categoryOrder.end(), category) == categoryOrder.end() && !features.empty()) {
+		if (std::ranges::find(FeatureCategories::kOrdered, category) == FeatureCategories::kOrdered.end() && !features.empty()) {
 			// Initialize expansion state if not exists
 			if (categoryExpansionStates.find(category) == categoryExpansionStates.end()) {
 				categoryExpansionStates[category] = true;  // Default to expanded
@@ -570,7 +541,7 @@ void FeatureListRenderer::ListMenuVisitor::operator()(const CategoryHeader& head
 	{
 		MenuFonts::FontRoleGuard fontGuard(Menu::FontRole::Heading);
 		int count = Menu::categoryCounts[std::string(header.name)];
-		const auto categoryLabel = TranslateFeatureCategory(header.name);
+		const auto categoryLabel = Feature::TranslateCategory(header.name);
 		Util::DrawCategoryHeader(header.name.c_str(), categoryLabel.c_str(), isExpanded, count);
 	}
 

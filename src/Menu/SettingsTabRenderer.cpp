@@ -405,6 +405,10 @@ void SettingsTabRenderer::RenderInterfaceTab()
 {
 	auto tabLabel = std::format("{}##{}", T("menu.settings.tab_interface", "Interface"), "GeneralInterfaceTab");
 	if (BeginTabItemWithFont(tabLabel.c_str(), Menu::FontRole::Heading)) {
+		// Every sub-tab edits theme settings, so the caveat belongs here once
+		// rather than repeated at the top of each one.
+		RenderSaveInfoText();
+
 		MenuFonts::TabBarPaddingGuard tabPaddingGuard(Menu::FontRole::Subheading);
 		if (ImGui::BeginTabBar("##tabs", ImGuiTabBarFlags_None)) {
 			RenderBehaviorTab();
@@ -423,7 +427,6 @@ void SettingsTabRenderer::RenderBehaviorTab()
 	auto tabLabel = std::format("{}##{}", T("menu.settings.tab_behavior", "Behavior"), "InterfaceBehaviorTab");
 	if (BeginTabItemWithFont(tabLabel.c_str(), Menu::FontRole::Heading)) {
 		auto& themeSettings = globals::menu->GetSettings().Theme;
-		RenderSaveInfoText();
 
 		SeparatorTextWithFont(T("menu.settings.section_language", "Language"), Menu::FontRole::Subheading);
 
@@ -935,7 +938,6 @@ void SettingsTabRenderer::RenderFontsTab()
 	if (BeginTabItemWithFont(tabLabel.c_str(), Menu::FontRole::Heading)) {
 		auto* menuInstance = globals::menu;
 		auto& themeSettings = menuInstance->GetSettings().Theme;
-		RenderSaveInfoText();
 
 		SeparatorTextWithFont(T("menu.settings.font", "Font"), Menu::FontRole::Subheading);
 
@@ -1023,7 +1025,6 @@ void SettingsTabRenderer::RenderStylingTab()
 	if (BeginTabItemWithFont(tabLabel.c_str(), Menu::FontRole::Heading)) {
 		auto& themeSettings = globals::menu->GetSettings().Theme;
 		auto& style = themeSettings.Style;
-		RenderSaveInfoText();
 
 		SeparatorTextWithFont(T("menu.settings.section_main", "Main"), Menu::FontRole::Subheading);
 		if (ImGui::SliderFloat(T("menu.settings.global_scale", "Global Scale"), &themeSettings.GlobalScale, -1.f, 1.f, "%.2f")) {
@@ -1113,7 +1114,6 @@ void SettingsTabRenderer::RenderColorsTab()
 	if (BeginTabItemWithFont(tabLabel.c_str(), Menu::FontRole::Heading)) {
 		auto& themeSettings = globals::menu->GetSettings().Theme;
 		auto& colors = themeSettings.FullPalette;
-		RenderSaveInfoText();
 
 		// Color filter at the top with search icon
 		static ImGuiTextFilter colorFilter;

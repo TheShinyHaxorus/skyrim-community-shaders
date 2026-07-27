@@ -13,13 +13,13 @@ public:
 
 private:
 	// UI section rendering methods
-	void RenderEffectsList();
-	void RenderSettingsPanel();
+	void RenderToolbar();
 	void RenderWeatherControl();
 	void RenderDebugControl();
 
 	// Helper UI methods
-	void RenderAllSettings();
+	void RenderTabs();
+	void RenderSettingsFilter();
 	void RenderSettingRows(const std::string& settingKey, const std::string& category);
 	std::vector<int> GetActiveTimeOfDayIndices() const;
 	float GetTimeOfDayBlendFactor(int timeIndex) const;

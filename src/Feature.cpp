@@ -325,9 +325,8 @@ bool Feature::ReapplyOverrideSettings()
 	return false;
 }
 
-std::string Feature::GetDisplayCategory() const
+std::string Feature::TranslateCategory(std::string_view category)
 {
-	const auto category = GetCategory();
 	if (category == FeatureCategories::kCharacters)
 		return T("feature.category.characters", "Characters");
 	if (category == FeatureCategories::kDisplay)
@@ -342,6 +341,8 @@ std::string Feature::GetDisplayCategory() const
 		return T("feature.category.materials", "Materials");
 	if (category == FeatureCategories::kOther)
 		return T("feature.category.other", "Other");
+	if (category == FeatureCategories::kPostProcessing)
+		return T("feature.category.post_processing", "Post-Processing");
 	if (category == FeatureCategories::kSky)
 		return T("feature.category.sky", "Sky");
 	if (category == FeatureCategories::kUtility)
@@ -350,6 +351,11 @@ std::string Feature::GetDisplayCategory() const
 		return T("feature.category.water", "Water");
 
 	return std::string(category);
+}
+
+std::string Feature::GetDisplayCategory() const
+{
+	return TranslateCategory(GetCategory());
 }
 
 std::string Feature::GetReleaseStageTag(ReleaseStage stage)

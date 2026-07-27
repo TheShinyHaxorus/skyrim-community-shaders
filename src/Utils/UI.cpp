@@ -835,26 +835,23 @@ namespace Util
 		ID3D11ShaderResourceView* categoryIcon = nullptr;
 		auto& menu = Menu::GetSingleton()->uiIcons;
 
-		if (strcmp(categoryKey, "Characters") == 0) {
-			categoryIcon = menu.characters.texture;
-		} else if (strcmp(categoryKey, "Display") == 0) {
-			categoryIcon = menu.display.texture;
-		} else if (strcmp(categoryKey, "Grass") == 0) {
-			categoryIcon = menu.grass.texture;
-		} else if (strcmp(categoryKey, "Lighting") == 0) {
-			categoryIcon = menu.lighting.texture;
-		} else if (strcmp(categoryKey, "Sky") == 0) {
-			categoryIcon = menu.sky.texture;
-		} else if (strcmp(categoryKey, "Landscape & Textures") == 0) {
-			categoryIcon = menu.landscape.texture;
-		} else if (strcmp(categoryKey, "Water") == 0) {
-			categoryIcon = menu.water.texture;
-		} else if (strcmp(categoryKey, "Utility") == 0) {
-			categoryIcon = menu.debug.texture;
-		} else if (strcmp(categoryKey, "Materials") == 0) {
-			categoryIcon = menu.materials.texture;
-		} else if (strcmp(categoryKey, "Post-Processing") == 0) {
-			categoryIcon = menu.postProcessing.texture;
+		const std::pair<std::string_view, ID3D11ShaderResourceView*> categoryIcons[]{
+			{ FeatureCategories::kCharacters, menu.characters.texture },
+			{ FeatureCategories::kDisplay, menu.display.texture },
+			{ FeatureCategories::kGrass, menu.grass.texture },
+			{ FeatureCategories::kLighting, menu.lighting.texture },
+			{ FeatureCategories::kSky, menu.sky.texture },
+			{ FeatureCategories::kLandscapeAndTextures, menu.landscape.texture },
+			{ FeatureCategories::kWater, menu.water.texture },
+			{ FeatureCategories::kUtility, menu.debug.texture },
+			{ FeatureCategories::kMaterials, menu.materials.texture },
+			{ FeatureCategories::kPostProcessing, menu.postProcessing.texture },
+		};
+		for (const auto& [key, icon] : categoryIcons) {
+			if (key == categoryKey) {
+				categoryIcon = icon;
+				break;
+			}
 		}
 
 		// Keep icon lookup on the stable category key and render the translated label separately.
