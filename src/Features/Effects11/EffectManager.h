@@ -150,4 +150,8 @@ public:
 
 private:
 	bool initialized = false;
+
+	// Sky::lastWeather is cleared before currentWeatherPct reaches 1.0, so hold on to it for
+	// the rest of the transition. Mirrors WeatherManager::GetCurrentWeathers.
+	RE::TESWeather* cachedLastWeather = nullptr;
 };
