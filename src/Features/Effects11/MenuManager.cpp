@@ -90,6 +90,14 @@ void MenuManager::RenderSettingsPanel()
 		ImGui::SetTooltip("Save all settings to enbseries.ini, weather files, and effect configurations");
 	}
 
+	if (settingManager.HasUnsavedChanges() || effectManager.AnyUnsaved()) {
+		ImGui::SameLine();
+		ImGui::TextColored(globals::menu->GetSettings().Theme.StatusPalette.Warning, "unsaved changes");
+		if (ImGui::IsItemHovered()) {
+			ImGui::SetTooltip("Settings or effect parameters differ from what is on disk. Click Save to persist them.");
+		}
+	}
+
 	ImGui::Separator();
 
 	if (ImGui::BeginChild("SettingsScroll", ImVec2(0, 0), false)) {

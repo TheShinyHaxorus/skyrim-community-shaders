@@ -24,6 +24,8 @@ public:
 	bool Load();
 	void Save();
 
+	bool uiDirty = false;
+
 	// Effect lifecycle
 	virtual bool Apply();   // Clear resources, load settings, recompile, create resources
 	virtual void Unload();  // Clear all resources
@@ -150,6 +152,10 @@ public:
 
 	std::vector<UIVariable> uiVariables;
 
+	// Weather override persistence (implemented by ExtendedEffect)
+	virtual void SaveWeatherOverrides() {}
+	virtual bool ShouldSkipBaseIniWrite(const UIVariable&) const { return false; }
+
 	struct GroupMeta
 	{
 		std::string displayName;
@@ -271,7 +277,7 @@ public:
 
 protected:
 	static bool IsPerComponentVector(const UIVariable& uiVar);
-	std::string GetVariableIniKey(const UIVariable& uiVar);
+	std::string GetVariableIniKey(const UIVariable& uiVar) const;
 
 private:
 	bool LoadFXFile();

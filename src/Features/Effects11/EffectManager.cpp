@@ -130,6 +130,23 @@ void EffectManager::Save()
 	enbEffectPostPass.Save();
 }
 
+void EffectManager::SaveDirty()
+{
+	Effect* allEffects[] = { &enbDepthOfField, &enbBloom, &enbLens, &enbAdaptation, &enbEffect, &enbEffectPostPass };
+	for (auto* effect : allEffects)
+		if (effect->uiDirty)
+			effect->Save();
+}
+
+bool EffectManager::AnyUnsaved() const
+{
+	const Effect* allEffects[] = { &enbDepthOfField, &enbBloom, &enbLens, &enbAdaptation, &enbEffect, &enbEffectPostPass };
+	for (const auto* effect : allEffects)
+		if (effect->uiDirty)
+			return true;
+	return false;
+}
+
 void EffectManager::RegisterSettings()
 {
 	auto& settingManager = SettingManager::GetSingleton();
