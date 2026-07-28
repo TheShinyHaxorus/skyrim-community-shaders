@@ -1026,25 +1026,6 @@ namespace ENBExtender
 		source = std::move(result);
 	}
 
-	// Rejects include names that escape a_root via "..", so a preset cannot pull in arbitrary files.
-	static bool ResolveContainedPath(const std::filesystem::path& a_root, const std::filesystem::path& a_name, std::filesystem::path& a_out)
-	{
-		std::error_code ec;
-		auto root = std::filesystem::weakly_canonical(a_root, ec);
-		if (ec)
-			return false;
-		auto candidate = std::filesystem::weakly_canonical(a_root / a_name, ec);
-		if (ec)
-			return false;
-
-		auto [rootEnd, _] = std::mismatch(root.begin(), root.end(), candidate.begin(), candidate.end());
-		if (rootEnd != root.end())
-			return false;
-
-		a_out = std::move(candidate);
-		return true;
-	}
-
 	static std::string ReadAndProcessInclude(const std::filesystem::path& fullPath,
 		const std::filesystem::path& basePath,
 		const std::string& iniPath,
@@ -1089,8 +1070,10 @@ namespace ENBExtender
 						std::filesystem::path inclPath;
 						bool found = false;
 						for (auto& dir : includeDirs) {
-							std::filesystem::path candidate;
-							if (!ResolveContainedPath(dir, includeName, candidate))
+							auto candidate = std::filesystem::weakly_canonical(dir / includeName);
+							auto dirCanonical = std::filesystem::weakly_canonical(dir);
+							auto [dirEnd, _] = std::mismatch(dirCanonical.begin(), dirCanonical.end(), candidate.begin(), candidate.end());
+							if (dirEnd != dirCanonical.end())
 								continue;
 							if (std::filesystem::exists(candidate)) {
 								inclPath = candidate;
@@ -1098,10 +1081,15 @@ namespace ENBExtender
 								break;
 							}
 						}
-						if (!found && !ResolveContainedPath(basePath, includeName, inclPath)) {
-							logger::warn("[ENBEXTENDER] Include path escapes base directory: '{}'", includeName);
-							result += "\n";
-							continue;
+						if (!found) {
+							auto candidate = std::filesystem::weakly_canonical(basePath / includeName);
+							auto baseCanonical = std::filesystem::weakly_canonical(basePath);
+							auto [baseEnd, _] = std::mismatch(baseCanonical.begin(), baseCanonical.end(), candidate.begin(), candidate.end());
+							if (baseEnd != baseCanonical.end()) {
+								result += "\n";
+								continue;
+							}
+							inclPath = candidate;
 						}
 
 						std::string canonical = inclPath.string();
@@ -1174,8 +1162,10 @@ namespace ENBExtender
 		bool found = false;
 
 		for (auto& dir : includeDirs) {
-			std::filesystem::path candidate;
-			if (!ResolveContainedPath(dir, name, candidate))
+			auto candidate = std::filesystem::weakly_canonical(dir / name);
+			auto dirCanonical = std::filesystem::weakly_canonical(dir);
+			auto [dirEnd, _] = std::mismatch(dirCanonical.begin(), dirCanonical.end(), candidate.begin(), candidate.end());
+			if (dirEnd != dirCanonical.end())
 				continue;
 			if (std::filesystem::exists(candidate)) {
 				fullPath = candidate;
@@ -1184,13 +1174,19 @@ namespace ENBExtender
 			}
 		}
 
-		if (!found && !ResolveContainedPath(basePath, name, fullPath)) {
-			logger::warn("[ENBEXTENDER] Include path escapes base directory: '{}'", std::string(name));
-			auto* buf = new char[1];
-			buf[0] = '\n';
-			*ppData = buf;
-			*pBytes = 1;
-			return S_OK;
+		if (!found) {
+			auto candidate = std::filesystem::weakly_canonical(basePath / name);
+			auto baseCanonical = std::filesystem::weakly_canonical(basePath);
+			auto [baseEnd, _] = std::mismatch(baseCanonical.begin(), baseCanonical.end(), candidate.begin(), candidate.end());
+			if (baseEnd != baseCanonical.end()) {
+				logger::warn("[ENBEXTENDER] Include path escapes base directory: '{}'", std::string(name));
+				auto* buf = new char[1];
+				buf[0] = '\n';
+				*ppData = buf;
+				*pBytes = 1;
+				return S_OK;
+			}
+			fullPath = candidate;
 		}
 
 		std::ifstream file(fullPath, std::ios::binary | std::ios::ate);

@@ -659,14 +659,6 @@ void State::Save(ConfigMode a_configMode)
 	} catch (const std::exception& e) {
 		logger::warn("Failed to write settings to file: {}. Error: {}", configPath, e.what());
 	}
-
-	// Effects11's ENB-style settings live in enbseries.ini / per-weather inis, not
-	// the CS JSON; flush them here so the global Save button persists panel edits
-	// too (dirty-tracked, so this is a no-op when nothing changed).
-	if (globals::features::effects11.loaded) {
-		SettingManager::GetSingleton().Save();
-		EffectManager::GetSingleton().SaveDirty();
-	}
 }
 
 bool State::ValidateCache(CSimpleIniA& a_ini)

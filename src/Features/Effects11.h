@@ -39,69 +39,59 @@ public:
 		float CloudsEdgeIntensity;
 		float CloudsEdgeMoonMultiplier;
 
-		float VolumetricRaysDesaturation;
-		float3 VolumetricRaysColorFilter;
-
-		uint UseProceduralGradientWeights;
-		float ProceduralGradientWeightCurve;
 		uint EnableProceduralSun;
 		float ProceduralSunDiskRadiusSq;
-
 		float ProceduralSunDiskEdgeScale;
 		float ProceduralSunGlowIntensity;
+
 		float ProceduralSunCoronaFalloff;
 		float ProceduralSunCoronaScale;
+		uint UseProceduralGradientWeights;
+		float ProceduralGradientWeightCurve;
 
 		float ParticleIntensity;
 		float ParticleLightingInfluence;
 		float ParticleAmbientInfluence;
 		float ParticlePointLightingInfluence;
 
-		uint EnableCloudsScattering;
-		uint EnableCloudsLightingFromMoon;
-		float SkyScatteringIntensity;
-		float SkyScatteringAmount;
-
-		float3 SkyScatteringColor;
-		float SkyScatteringColorFromSun;
-
-		float SkyScatteringCloudsLightingSunMultiplier;
-		float SkyScatteringCloudsLightingMoonIntensity;
-		float SkyScatteringPadding;
-
 		uint EnableVolumetricRays;
 		float VolumetricRaysIntensity;
 		float VolumetricRaysExtinction;
 		float VolumetricRaysSkyColorAmount;
 
+		float VolumetricRaysDesaturation;
+		float3 VolumetricRaysColorFilter;
+
+		uint EnableCloudsScattering;
+		float SkyScatteringIntensity;
+		float SkyScatteringAmount;
+		float SkyScatteringColorFromSun;
+
+		float3 SkyScatteringColor;
+		float SkyScatteringCloudsLightingSunMultiplier;
+
+		float SkyScatteringCloudsLightingMoonIntensity;
 		uint EnableRain;
 		float RainMotionStretch;
 		float RainMotionTransparency;
-		float RainLightingInfluence;
 
 		float FireIntensity;
 		float FireCurve;
+		float RainLightingInfluence;
 		uint EnableWater;
-		float WaterWavesAmplitude;
 
+		float WaterWavesAmplitude;
 		float WaterMuddiness;
 		float WaterSunLightingMultiplier;
 		float WaterSunSpecularMultiplier;
-		float WaterFresnelMin;
 
+		float WaterFresnelMin;
 		float WaterFresnelMax;
 		float WaterFresnelMultiplier;
 		float WaterReflectionAmount;
-		float2 EnbPadding;
 	};
 
 	bool enableEffect = false;
-	float4 vanillaTonemapParams[7]{};
-	bool vanillaTonemapParamsValid = false;
-	winrt::com_ptr<ID3D11Buffer> tonemapParamsStaging[2];
-	bool tonemapParamsStagingHasData[2]{};
-	uint32_t tonemapParamsSwap = 0;
-	void CaptureVanillaTonemapParams();
 
 	ID3D11PixelShader* raymarchVolumetricRaysPS = nullptr;
 	ID3D11PixelShader* applyVolumetricRaysPS = nullptr;
@@ -112,7 +102,6 @@ public:
 
 	std::unique_ptr<Texture2D> vlTexA;
 	std::unique_ptr<Texture2D> vlTexB;
-	// Depth each half-res texel raymarched with; the bilateral blur + upsample weight against it.
 	std::unique_ptr<Texture2D> vlDepthHalf;
 	std::unique_ptr<ConstantBuffer> vlBlurCB;
 
@@ -125,7 +114,6 @@ public:
 
 	virtual void DrawSettings() override;
 	virtual void SetupResources() override;
-	virtual void Reset() override;
 	virtual void Prepass() override;
 	virtual void ClearShaderCache() override;
 

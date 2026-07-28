@@ -278,11 +278,8 @@ namespace Effects11Extensions
 		{
 			if (!globals::state->HandlePostProcessing(
 					static_cast<RE::RENDER_TARGET>(a3),
-					static_cast<RE::RENDER_TARGET>(a4))) {
+					static_cast<RE::RENDER_TARGET>(a4)))
 				func(a1, a2, a3, a4, a5);
-				if (globals::features::effects11.loaded)
-					globals::features::effects11.CaptureVanillaTonemapParams();
-			}
 			if (globals::features::waterEffects.loaded)
 				globals::features::waterEffects.DrawUnderwater(static_cast<RE::RENDER_TARGET>(a4));
 		}

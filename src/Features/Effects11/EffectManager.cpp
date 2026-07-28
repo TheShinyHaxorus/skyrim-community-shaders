@@ -87,6 +87,7 @@ void EffectManager::Initialize()
 	} else {
 		initialized = true;
 	}
+
 }
 
 void EffectManager::Apply()
@@ -129,23 +130,6 @@ void EffectManager::Save()
 	enbEffectPostPass.Save();
 }
 
-void EffectManager::SaveDirty()
-{
-	Effect* allEffects[] = { &enbDepthOfField, &enbBloom, &enbLens, &enbAdaptation, &enbEffect, &enbEffectPostPass };
-	for (auto* effect : allEffects)
-		if (effect->uiDirty)
-			effect->Save();
-}
-
-bool EffectManager::AnyUnsaved() const
-{
-	const Effect* allEffects[] = { &enbDepthOfField, &enbBloom, &enbLens, &enbAdaptation, &enbEffect, &enbEffectPostPass };
-	for (const auto* effect : allEffects)
-		if (effect->uiDirty)
-			return true;
-	return false;
-}
-
 void EffectManager::RegisterSettings()
 {
 	auto& settingManager = SettingManager::GetSingleton();
@@ -155,9 +139,9 @@ void EffectManager::RegisterSettings()
 	settingManager.RegisterBoolSetting("UseOriginalPostProcessing", "EFFECT", false, false);
 	settingManager.RegisterBoolSetting("EnableAdaptation", "EFFECT", false, false);
 	settingManager.RegisterBoolSetting("EnableBloom", "EFFECT", false, false);
-	settingManager.RegisterBoolSetting("EnableLens", "EFFECT", false, false);
 	settingManager.RegisterBoolSetting("EnableDepthOfField", "EFFECT", false, false);
 	settingManager.RegisterBoolSetting("EnableWater", "EFFECT", false, false);
+	settingManager.RegisterBoolSetting("EnableLens", "EFFECT", false, false);
 	settingManager.RegisterBoolSetting("EnablePostPassShader", "EFFECT", false, false);
 	settingManager.RegisterBoolSetting("EnableProceduralSun", "EFFECT", false, false);
 	settingManager.RegisterBoolSetting("EnableCloudShadows", "EFFECT", false, false);
@@ -186,19 +170,6 @@ void EffectManager::RegisterSettings()
 
 	settingManager.RegisterTimeOfDaySetting("FireIntensity", "FIRE", 1.0f, 0.0f, 30000.0f, 0.01f, true);
 	settingManager.RegisterTimeOfDaySetting("FireCurve", "FIRE", 1.0f, 0.1f, 8.0f, 0.01f, true);
-
-	settingManager.RegisterFloatSetting("FocusingTime", "DEPTHOFFIELD", 1.0f, 0.1f, 10.0f, 0.01f, false);
-	settingManager.RegisterFloatSetting("ApertureTime", "DEPTHOFFIELD", 1.0f, 0.1f, 10.0f, 0.01f, false);
-
-	settingManager.RegisterTimeOfDaySetting("Brightness", "WATER", 1.0f, 0.0f, 10.0f, 0.01f, true);
-	settingManager.RegisterTimeOfDaySetting("WavesAmplitude", "WATER", 1.0f, 0.0f, 4.0f, 0.01f, true);
-	settingManager.RegisterFloatSetting("Muddiness", "WATER", 1.0f, 0.0f, 1.0f, 0.01f, false);
-	settingManager.RegisterFloatSetting("SunLightingMultiplier", "WATER", 1.0f, 0.0f, 1.0f, 0.01f, false);
-	settingManager.RegisterFloatSetting("SunSpecularMultiplier", "WATER", 1.0f, 0.0f, 1.0f, 0.01f, false);
-	settingManager.RegisterFloatSetting("FresnelMin", "WATER", 1.0f, 0.0f, 1.0f, 0.01f, false);
-	settingManager.RegisterFloatSetting("FresnelMax", "WATER", 1.0f, 0.0f, 1.0f, 0.01f, false);
-	settingManager.RegisterFloatSetting("FresnelMultiplier", "WATER", 1.0f, 0.0f, 4.0f, 0.01f, false);
-	settingManager.RegisterFloatSetting("ReflectionAmount", "WATER", 1.0f, 0.0f, 1.0f, 0.01f, false);
 
 	settingManager.RegisterTimeOfDaySetting("Amount", "BLOOM", 0.1f, 0.0f, 10.0f, 0.01f, true);
 
@@ -251,7 +222,6 @@ void EffectManager::RegisterSettings()
 	settingManager.RegisterBoolSetting("UseProceduralGradientWeights", "SKY", false, false);
 	settingManager.RegisterTimeOfDaySetting("ProceduralGradientWeightCurve", "SKY", 4.0f, 1.0f, 32.0f, 0.01f, true);
 
-	settingManager.RegisterBoolSetting("EnableCloudsLightingFromMoon", "SKYSCATTERING", true, false);
 	settingManager.RegisterTimeOfDaySetting("Intensity", "SKYSCATTERING", 1.0f, 0.0f, 30000.0f, 0.01f, true);
 	settingManager.RegisterTimeOfDaySetting("Amount", "SKYSCATTERING", 0.0f, 0.0f, 1.0f, 0.01f, true);
 	settingManager.RegisterTimeOfDaySetting("ColorFromSun", "SKYSCATTERING", 0.0f, 0.0f, 1.0f, 0.01f, true);
@@ -282,6 +252,20 @@ void EffectManager::RegisterSettings()
 	settingManager.RegisterTimeOfDaySetting("MotionTransparency", "RAIN", 0.1f, 0.0f, 1.0f, 0.01f, true);
 	settingManager.RegisterTimeOfDaySetting("LightingInfluence", "RAIN", 1.0f, 0.0f, 10.0f, 0.01f, true);
 
+	settingManager.RegisterFloatSetting("FocusingTime", "DEPTHOFFIELD", 1.0f, 0.1f, 10.0f, 0.01f, false);
+	settingManager.RegisterFloatSetting("ApertureTime", "DEPTHOFFIELD", 1.0f, 0.1f, 10.0f, 0.01f, false);
+
+	settingManager.RegisterTimeOfDaySetting("Brightness", "WATER", 1.0f, 0.0f, 10.0f, 0.01f, true);
+	settingManager.RegisterTimeOfDaySetting("WavesAmplitude", "WATER", 1.0f, 0.0f, 4.0f, 0.01f, true);
+	settingManager.RegisterFloatSetting("Muddiness", "WATER", 1.0f, 0.0f, 1.0f, 0.01f, false);
+	settingManager.RegisterFloatSetting("SunLightingMultiplier", "WATER", 1.0f, 0.0f, 1.0f, 0.01f, false);
+	settingManager.RegisterFloatSetting("SunSpecularMultiplier", "WATER", 1.0f, 0.0f, 1.0f, 0.01f, false);
+	settingManager.RegisterFloatSetting("FresnelMin", "WATER", 1.0f, 0.0f, 1.0f, 0.01f, false);
+	settingManager.RegisterFloatSetting("FresnelMax", "WATER", 1.0f, 0.0f, 1.0f, 0.01f, false);
+	settingManager.RegisterFloatSetting("FresnelMultiplier", "WATER", 1.0f, 0.0f, 4.0f, 0.01f, false);
+	settingManager.RegisterFloatSetting("ReflectionAmount", "WATER", 1.0f, 0.0f, 1.0f, 0.01f, false);
+	settingManager.SetCategoryTab("WATER", "Weather");
+
 	settingManager.RegisterTimeOfDaySetting("Amount", "CLOUDSHADOWS", 0.8f, 0.0f, 4.0f, 0.01f, true);
 
 	settingManager.RegisterTimeOfDaySetting("Intensity", "GAMEVOLUMETRICRAYS", 1.0f, 0.0f, 1000.0f, 0.01f, true);
@@ -292,23 +276,6 @@ void EffectManager::RegisterSettings()
 	settingManager.RegisterTimeOfDaySetting("Intensity", "VOLUMETRICRAYS", 0.2f, 0.0f, 1000.0f, 0.01f, true);
 	settingManager.RegisterTimeOfDaySetting("Density", "VOLUMETRICRAYS", 1.0f, 0.1f, 100.0f, 0.01f, true);
 	settingManager.RegisterTimeOfDaySetting("SkyColorAmount", "VOLUMETRICRAYS", 0.5f, 0.0f, 10.0f, 0.01f, true);
-
-	settingManager.SetCategoryTab("BLOOM", "Weather");
-	settingManager.SetCategoryTab("LENS", "Weather");
-	settingManager.SetCategoryTab("ENVIRONMENT", "Weather");
-	settingManager.SetCategoryTab("SKY", "Weather");
-	settingManager.SetCategoryTab("SKYSCATTERING", "Weather");
-	settingManager.SetCategoryTab("PROCEDURALSUN", "Weather");
-	settingManager.SetCategoryTab("VOLUMETRICFOG", "Weather");
-	settingManager.SetCategoryTab("VOLUMETRICRAYS", "Weather");
-	settingManager.SetCategoryTab("IMAGEBASEDLIGHTING", "Weather");
-	settingManager.SetCategoryTab("PARTICLE", "Weather");
-	settingManager.SetCategoryTab("RAIN", "Weather");
-	settingManager.SetCategoryTab("LIGHTSPRITE", "Weather");
-	settingManager.SetCategoryTab("GAMEVOLUMETRICRAYS", "Weather");
-	settingManager.SetCategoryTab("SUNGLARE", "Weather");
-	settingManager.SetCategoryTab("CLOUDSHADOWS", "Weather");
-	settingManager.SetCategoryTab("WATER", "Weather");
 
 	settingManager.SetCategoryDependency("BLOOM", "EnableBloom", "EFFECT");
 	settingManager.SetCategoryDependency("LENS", "EnableLens", "EFFECT");
@@ -322,7 +289,7 @@ void EffectManager::RegisterSettings()
 	settingManager.SetSettingDependency("ProceduralGradientWeightCurve", "SKY", "UseProceduralGradientWeights", "SKY");
 	settingManager.SetSettingDependency("AdaptationMin", "ADAPTATION", "ForceMinMaxValues", "ADAPTATION");
 	settingManager.SetSettingDependency("AdaptationMax", "ADAPTATION", "ForceMinMaxValues", "ADAPTATION");
-	settingManager.SetSettingDependency("CloudsLightingMoonIntensity", "SKYSCATTERING", "EnableCloudsLightingFromMoon", "SKYSCATTERING");
+
 
 	settingManager.SetCategoryExteriorOnly("RAIN", true);
 	settingManager.SetCategoryExteriorOnly("SKYLIGHTING", true);
@@ -425,10 +392,9 @@ void EffectManager::ExecuteEffects(RE::BSGraphics::RenderTargetData& a_input, [[
 
 	auto& textureManager = TextureManager::GetSingleton();
 
-	ExecuteEffect(enbDepthOfField, ids.useDepthOfField);
-
 	textureManager.UpdateDownsampledTexture(textureOriginal.SRV);
 
+	ExecuteEffect(enbDepthOfField, ids.useDepthOfField);
 	ExecuteEffect(enbBloom, ids.useBloom);
 	ExecuteEffect(enbLens, ids.useLens);
 	ExecuteEffect(enbAdaptation, ids.useAdaptation);
@@ -677,13 +643,8 @@ void EffectManager::UpdateCommonData()
 
 		if (sky) {
 			auto& weatherManager = WeatherManager::GetSingleton();
-
-			if (sky->lastWeather)
-				cachedLastWeather = sky->lastWeather;
-			auto* lastWeather = sky->lastWeather ? sky->lastWeather : cachedLastWeather;
-
 			uint32_t currentID = sky->currentWeather ? stripPluginIndex(sky->currentWeather->formID) : 0;
-			uint32_t lastID = lastWeather ? stripPluginIndex(lastWeather->formID) : 0;
+			uint32_t lastID = sky->lastWeather ? stripPluginIndex(sky->lastWeather->formID) : 0;
 
 			commonData.weather[0] = static_cast<float>(weatherManager.GetEffectiveWeatherID(currentID));
 			commonData.weather[1] = static_cast<float>(weatherManager.GetEffectiveWeatherID(lastID));
@@ -1042,7 +1003,7 @@ void EffectManager::RenderEffectsList()
 		if (!effect->IsFilePresent())
 			continue;
 		if (!effect->GetErrors().empty()) {
-			ImGui::TextColored(globals::menu->GetTheme().StatusPalette.Error, "%s:", effect->GetName().c_str());
+			ImGui::TextColored(globals::menu->GetSettings().Theme.StatusPalette.Error, "%s:", effect->GetName().c_str());
 			for (const auto& err : effect->GetErrors())
 				ImGui::TextWrapped("%s", err.c_str());
 		}

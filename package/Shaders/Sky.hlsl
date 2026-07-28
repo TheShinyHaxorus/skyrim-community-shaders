@@ -42,7 +42,6 @@ struct VS_OUTPUT
 
 #if !defined(OCCLUSION) && !defined(MOONMASK) && !defined(HORIZFADE)
 	float4 SkyBlendColor0: TEXCOORD5;
-	float4 SkyBlendColor1: TEXCOORD7;
 	float4 SkyBlendColor2: TEXCOORD6;
 #endif
 
@@ -118,10 +117,8 @@ VS_OUTPUT main(VS_INPUT input)
 	vsout.Color.xyz = VParams * skyColor;
 	vsout.Color.w = BlendColor[0].w * input.Color.w;
 	vsout.SkyBlendColor0 = float4(BlendColor[0].xyz * VParams, 0);
-	vsout.SkyBlendColor1 = float4(BlendColor[1].xyz * VParams, 0);
 	vsout.SkyBlendColor2 = float4(BlendColor[2].xyz * VParams, 0);
-
-#	endif  // OCCLUSION MOONMASK HORIZFADE
+#	endif      // OCCLUSION MOONMASK HORIZFADE
 
 	vsout.Position = mul(WorldViewProj, inputPosition).xyww;
 	vsout.WorldPosition = mul(World, inputPosition);
@@ -165,6 +162,7 @@ cbuffer AlphaTestRefCB : register(b11)
 
 #	include "Common/MotionBlur.hlsli"
 #	include "Common/SharedData.hlsli"
+#	include "Common/Random.hlsli"
 
 #	if defined(CLOUD_SHADOWS)
 #		include "CloudShadows/CloudShadows.hlsli"
@@ -177,63 +175,24 @@ cbuffer AlphaTestRefCB : register(b11)
 
 #	ifdef HDR_OUTPUT
 #		include "HDRDisplay/HDRSun.hlsli"
-#		include "Common/Random.hlsli"
 #	endif
 
 Texture2D<float> TexDepthSampler : register(t17);
 
 #if defined(EFFECTS11)
-float3 LimbDarkenHestroffer(float norm_dist)
-{
-	float mu = sqrt(1.0 - norm_dist * norm_dist);
-	float3 a0 = float3(0.34685, 0.26073, 0.15248);
-	float3 a1 = float3(1.37539, 1.27428, 1.38517);
-	float3 a2 = float3(-2.04425, -1.30352, -1.49615);
-	float3 a3 = float3(2.70493, 1.47085, 1.99886);
-	float3 a4 = float3(-1.94290, -0.96618, -1.48155);
-	float3 a5 = float3(0.55999, 0.26384, 0.44119);
-	float mu2 = mu * mu;
-	float mu3 = mu2 * mu;
-	float mu4 = mu2 * mu2;
-	float mu5 = mu4 * mu;
-	return a0 + a1 * mu + a2 * mu2 + a3 * mu3 + a4 * mu4 + a5 * mu5;
-}
-
-float3 ComputeProceduralSun(float2 uv)
+float ComputeProceduralSun(float2 uv)
 {
 	float2 p = uv * 2.0 - 1.0;
-	float r2 = dot(p, p);
-	float dist = r2 - SharedData::enbSettings.ProceduralSunDiskRadiusSq;
+	float dist = dot(p, p) - SharedData::enbSettings.ProceduralSunDiskRadiusSq;
 
 	float c = saturate(dist * SharedData::enbSettings.ProceduralSunCoronaScale);
 	float corona = (1.0 - c) * rcp(SharedData::enbSettings.ProceduralSunCoronaFalloff * c + 1.0) * SharedData::enbSettings.ProceduralSunGlowIntensity;
 
 	float disk = saturate(-dist * SharedData::enbSettings.ProceduralSunDiskEdgeScale);
 
-	float normDist = saturate(sqrt(r2 / max(SharedData::enbSettings.ProceduralSunDiskRadiusSq, 1e-8)));
-	float3 limb = LimbDarkenHestroffer(normDist);
-
-	return corona + disk * limb;
+	return corona + disk;
 }
 #endif
-
-// Absolute term covers kMAIN quantization, relative term survives tonemap compression of bright sky.
-float3 ApplySkyDither(float3 color, float2 pixelCoord)
-{
-	const float absoluteStep = 1.5 / 255.0;
-	const float relativeStep = 0.03;
-	float3 noise = Random::TriDither(pixelCoord, SharedData::FrameCount);
-	return color + noise * (absoluteStep + abs(color) * relativeStep);
-}
-
-// Smoothstep weights keep the curve C1 at the middle stop; a two-segment lerp kinks into a Mach band.
-float3 BlendSkyGradient(float3 horizonColor, float3 middleColor, float3 zenithColor, float gradientPosition)
-{
-	float horizonWeight = smoothstep(0.5, 1.0, gradientPosition);
-	float zenithWeight = 1.0 - smoothstep(0.0, 0.5, gradientPosition);
-	float middleWeight = 1.0 - horizonWeight - zenithWeight;
-	return zenithColor * zenithWeight + middleColor * middleWeight + horizonColor * horizonWeight;
-}
 
 PS_OUTPUT main(PS_INPUT input)
 {
@@ -257,19 +216,9 @@ PS_OUTPUT main(PS_INPUT input)
 	baseColor = PParams.xxxx * (-baseColor + blendColor) + baseColor;
 #		endif
 
-#		ifdef HDR_OUTPUT
-	float hdrSunGain = HDRSun::GetHdrSunGain(
-		input.TexCoord0.xy,
-		baseColor);
+#		if defined(HDR_OUTPUT)
+	float hdrSunGain = HDRSun::GetHdrSunGain(input.TexCoord0.xy, baseColor);
 	baseColor.xyz *= hdrSunGain;
-	if (HDRSun::IsHdrSunActive()) {
-		// Dither bright output to reduce banding in high-boost sun path.
-		// Same baseColor/skyScale treatment for DITHER and non-DITHER; DITHER adds its own later.
-		baseColor.xyz += (Random::InterleavedGradientNoise(input.Position.xy) - 0.5f) *
-		                 (saturate(hdrSunGain - 1.0f) / 255.0f);
-		skyScale = 0.0f;
-	}
-
 #		endif
 
 #		if defined(TEX) && defined(EFFECTS11)
@@ -281,20 +230,25 @@ PS_OUTPUT main(PS_INPUT input)
 #		endif
 
 #		if defined(DITHER)
+	float2 noiseGradUv = float2(0.125, 0.125) * input.Position.xy;
+	float noiseGrad = TexNoiseGradSampler.Sample(SampNoiseGradSampler, noiseGradUv).x * 0.03125 - 0.0078125;
+	noiseGrad *= 10.0;
 
 #			ifdef TEX
-	psout.Color.xyz = ApplySkyDither(Color::Sky(input.Color.xyz) * baseColor.xyz + skyScale, input.Position.xy);
+	psout.Color.xyz = Color::Sky(input.Color.xyz) * baseColor.xyz + skyScale;
+	psout.Color.xyz *= 1.0 + noiseGrad;
 	psout.Color.w = baseColor.w * input.Color.w;
 #			else
 	float3 skyGradientColor = input.Color.xyz;
-#				if defined(EFFECTS11)
+#if defined(EFFECTS11)
 	if (SharedData::enbSettings.UseProceduralGradientWeights) {
 		float3 viewDirection = normalize(input.WorldPosition.xyz);
 		float gradientPosition = pow(1.0 - saturate(viewDirection.z), SharedData::enbSettings.ProceduralGradientWeightCurve);
-		skyGradientColor = BlendSkyGradient(input.SkyBlendColor0.xyz, input.SkyBlendColor1.xyz, input.SkyBlendColor2.xyz, gradientPosition);
+		skyGradientColor = lerp(input.SkyBlendColor2.xyz, input.SkyBlendColor0.xyz, gradientPosition);
 	}
-#				endif
-	psout.Color.xyz = ApplySkyDither(Color::Sky(skyGradientColor) + skyScale, input.Position.xy);
+#endif
+	psout.Color.xyz = Color::Sky(skyGradientColor) + skyScale;
+	psout.Color.xyz *= 1.0 + noiseGrad;
 	psout.Color.w = input.Color.w;
 #			endif  // TEX
 
@@ -308,12 +262,12 @@ PS_OUTPUT main(PS_INPUT input)
 #		elif defined(HORIZFADE)
 	psout.Color.xyz = float3(1.5, 1.5, 1.5) * (Color::Sky(input.Color.xyz) * baseColor.xyz + skyScale);
 	psout.Color.w = input.TexCoord2.x * (baseColor.w * input.Color.w);
-#		else  // not DITHER, not MOONMASK, not HORIZFADE
+#		else
 
-#			if defined(CLOUDS) && defined(EFFECTS11)
+#		if defined(CLOUDS) && defined(EFFECTS11)
 	if (SharedData::enbSettings.EnableSky)
 		baseColor.xyz = pow(abs(baseColor.xyz), SharedData::enbSettings.CloudsCurve);
-#			endif
+#		endif
 
 	psout.Color.w = input.Color.w * baseColor.w;
 	psout.Color.xyz = Color::Sky(input.Color.xyz) * baseColor.xyz + skyScale;
@@ -327,17 +281,18 @@ PS_OUTPUT main(PS_INPUT input)
 
 		float cloudLuminance = dot(cloudColor.xyz, 1.0 / 3.0);
 
-		float sunShadow = 0.0;
-		float masserShadow = 0.0;
-		float secundaShadow = 0.0;
+		float sunShadow = 1.0;
+		float masserShadow = 1.0;
+		float secundaShadow = 1.0;
 
-		if (SharedData::enbSettings.EnableCloudsScattering) {
+		if (SharedData::enbSettings.EnableCloudsScattering){
 #			if defined(CLOUD_SHADOWS)
-			float screenNoise = Random::InterleavedGradientNoise(input.Position.xy);
+			float screenNoise = Random::InterleavedGradientNoise(input.Position.xy, SharedData::FrameCount);
 
 			const uint sampleCount = 8;
 			const float rcpSampleCount = 1.0 / float(sampleCount);
 
+			sunShadow = 0.0;
 			if (SharedData::SunColor.w > 0.0){
 				for (uint i = 0; i < sampleCount; i++) {
 					float t = (float(i) + screenNoise) * rcpSampleCount;
@@ -347,45 +302,39 @@ PS_OUTPUT main(PS_INPUT input)
 				sunShadow = 1.0 - sunShadow * rcpSampleCount;
 			}
 
-			if (SharedData::enbSettings.EnableCloudsLightingFromMoon) {
-				if (SharedData::MasserColor.w > 0.0){
-					for (uint i = 0; i < sampleCount; i++) {
-						float t = (float(i) + screenNoise) * rcpSampleCount;
-						float3 samplePosition = normalize(lerp(viewDirection, SharedData::MasserDirection.xyz, t * 0.1));
-						masserShadow += CloudShadows::CloudShadowsTexture.SampleLevel(SampBaseSampler, samplePosition, 0);
-					}
-					masserShadow = 1.0 - masserShadow * rcpSampleCount;
+			masserShadow = 0.0;
+			if (SharedData::MasserColor.w > 0.0){
+				for (uint i = 0; i < sampleCount; i++) {
+					float t = (float(i) + screenNoise) * rcpSampleCount;
+					float3 samplePosition = normalize(lerp(viewDirection, SharedData::MasserDirection.xyz, t * 0.1));
+					masserShadow += CloudShadows::CloudShadowsTexture.SampleLevel(SampBaseSampler, samplePosition, 0);
 				}
-				if (SharedData::SecundaColor.w > 0.0){
-					for (uint i = 0; i < sampleCount; i++) {
-						float t = (float(i) + screenNoise) * rcpSampleCount;
-						float3 samplePosition = normalize(lerp(viewDirection, SharedData::SecundaDirection.xyz, t * 0.1));
-						secundaShadow += CloudShadows::CloudShadowsTexture.SampleLevel(SampBaseSampler, samplePosition, 0);
-					}
-					secundaShadow = 1.0 - secundaShadow * rcpSampleCount;
-				}
+				masserShadow = 1.0 - masserShadow * rcpSampleCount;
 			}
-#			else
-			sunShadow = 1.0;
-			masserShadow = 1.0;
-			secundaShadow = 1.0;
-#			endif  // CLOUD_SHADOWS
+
+			secundaShadow = 0.0;
+			if (SharedData::SecundaColor.w > 0.0){
+				for (uint i = 0; i < sampleCount; i++) {
+					float t = (float(i) + screenNoise) * rcpSampleCount;
+					float3 samplePosition = normalize(lerp(viewDirection, SharedData::SecundaDirection.xyz, t * 0.1));
+					secundaShadow += CloudShadows::CloudShadowsTexture.SampleLevel(SampBaseSampler, samplePosition, 0);
+				}
+				secundaShadow = 1.0 - secundaShadow * rcpSampleCount;
+			}
+#			endif
 
 			float3 sunScatterColor = SharedData::enbSettings.SkyScatteringColor * SharedData::enbSettings.SkyScatteringIntensity * lerp(1.0, SharedData::SunColor.xyz, SharedData::enbSettings.SkyScatteringColorFromSun);
 			float sunLighting = saturate(dot(viewDirection, SharedData::SunDirection.xyz));
 			float3 sunDirectLit = sunScatterColor * sunLighting * sunShadow;
 
-			float3 moonDirectLit = 0.0;
-			if (SharedData::enbSettings.EnableCloudsLightingFromMoon) {
-				float3 masserScatterColor = SharedData::enbSettings.SkyScatteringColor * SharedData::enbSettings.SkyScatteringIntensity * lerp(1.0, SharedData::MasserColor.xyz, SharedData::enbSettings.SkyScatteringColorFromSun);
-				float masserLighting = saturate(dot(viewDirection, SharedData::MasserDirection.xyz));
+			float3 masserScatterColor = SharedData::enbSettings.SkyScatteringColor * SharedData::enbSettings.SkyScatteringIntensity * lerp(1.0, SharedData::MasserColor.xyz, SharedData::enbSettings.SkyScatteringColorFromSun);
+			float masserLighting = saturate(dot(viewDirection, SharedData::MasserDirection.xyz));
 
-				float3 secundaScatterColor = SharedData::enbSettings.SkyScatteringColor * SharedData::enbSettings.SkyScatteringIntensity * lerp(1.0, SharedData::SecundaColor.xyz, SharedData::enbSettings.SkyScatteringColorFromSun);
-				float secundaLighting = saturate(dot(viewDirection, SharedData::SecundaDirection.xyz));
+			float3 secundaScatterColor = SharedData::enbSettings.SkyScatteringColor * SharedData::enbSettings.SkyScatteringIntensity * lerp(1.0, SharedData::SecundaColor.xyz, SharedData::enbSettings.SkyScatteringColorFromSun);
+			float secundaLighting = saturate(dot(viewDirection, SharedData::SecundaDirection.xyz));
 
-				moonDirectLit = masserScatterColor * masserLighting * masserShadow + secundaScatterColor * secundaLighting * secundaShadow;
-				moonDirectLit *= SharedData::enbSettings.SkyScatteringCloudsLightingMoonIntensity * 0.5;
-			}
+			float3 moonDirectLit = masserScatterColor * masserLighting * masserShadow + secundaScatterColor * secundaLighting * secundaShadow;
+			moonDirectLit *= SharedData::enbSettings.SkyScatteringCloudsLightingMoonIntensity * 0.5;
 
 			float3 directLit = sunDirectLit + moonDirectLit;
 
@@ -409,7 +358,7 @@ PS_OUTPUT main(PS_INPUT input)
 		psout.Color.xyz = cloudColor;
 		psout.Color.w = saturate(psout.Color.w);
 	}
-#			endif  // CLOUDS
+#			endif
 #		endif
 
 #	else

@@ -52,7 +52,6 @@ Effects11::PerFrame Effects11::GetCommonBufferData()
 	data.ParticleAmbientInfluence = settingManager.GetInterpolatedTimeOfDayValue("AmbientInfluence", "PARTICLE");
 	data.ParticlePointLightingInfluence = settingManager.GetInterpolatedTimeOfDayValue("PointLightingInfluence", "PARTICLE");
 
-	data.EnableCloudsLightingFromMoon = settingManager.GetValue<bool>("EnableCloudsLightingFromMoon", "SKYSCATTERING");
 	data.SkyScatteringIntensity = settingManager.GetInterpolatedTimeOfDayValue("Intensity", "SKYSCATTERING");
 	data.SkyScatteringAmount = settingManager.GetInterpolatedTimeOfDayValue("Amount", "SKYSCATTERING");
 	data.SkyScatteringColorFromSun = settingManager.GetInterpolatedTimeOfDayValue("ColorFromSun", "SKYSCATTERING");
@@ -74,10 +73,11 @@ Effects11::PerFrame Effects11::GetCommonBufferData()
 	data.EnableRain = enableEffect && raindropSRV;
 	data.RainMotionStretch = settingManager.GetInterpolatedTimeOfDayValue("MotionStretch", "RAIN");
 	data.RainMotionTransparency = settingManager.GetInterpolatedTimeOfDayValue("MotionTransparency", "RAIN");
-	data.RainLightingInfluence = settingManager.GetInterpolatedTimeOfDayValue("LightingInfluence", "RAIN");
 
 	data.FireIntensity = settingManager.GetInterpolatedTimeOfDayValue("FireIntensity", "FIRE");
 	data.FireCurve = settingManager.GetInterpolatedTimeOfDayValue("FireCurve", "FIRE");
+
+	data.RainLightingInfluence = settingManager.GetInterpolatedTimeOfDayValue("LightingInfluence", "RAIN");
 
 	data.EnableWater = enableEffect && settingManager.GetValue<bool>("EnableWater", "EFFECT");
 	data.WaterWavesAmplitude = settingManager.GetInterpolatedTimeOfDayValue("WavesAmplitude", "WATER");
@@ -202,11 +202,6 @@ void Effects11::SetupResources()
 	LoadRaindropTexture();
 }
 
-void Effects11::Reset()
-{
-	vanillaTonemapParamsValid = false;
-}
-
 void Effects11::ClearShaderCache()
 {
 	if (raymarchVolumetricRaysPS) {
@@ -309,14 +304,11 @@ void Effects11::OverrideWeather(RE::Sky* a_sky)
 
 		auto dirLightColorF3 = NiToF3(dirLightColor);
 
-		// The scale round-trip below only cancels for a linear curve. Storm imagespaces drive
-		// sunlightScale to ~0, where pow() either underflows the light to black or the divide
-		// blows it up by orders of magnitude, so apply the curve unscaled instead.
-		float rawSunlightScale = 0.0f;
-		if (auto imageSpaceManager = globals::game::imageSpaceManager) {
-			rawSunlightScale = imageSpaceManager->GetRuntimeData().data.baseData.hdr.sunlightScale;
+		float sunlightScale = FLT_MIN;
+		auto imageSpaceManager = globals::game::imageSpaceManager;
+		if (imageSpaceManager) {
+			sunlightScale = std::max(imageSpaceManager->GetRuntimeData().data.baseData.hdr.sunlightScale, FLT_MIN);
 		}
-		const float sunlightScale = rawSunlightScale > 1e-3f ? rawSunlightScale : 1.0f;
 		dirLightColorF3 *= sunlightScale;
 
 		dirLightColorF3 = Curve(dirLightColorF3, settingManager.GetInterpolatedTimeOfDayValue("DirectLightingCurve", "ENVIRONMENT"));
@@ -495,19 +487,14 @@ void Effects11::OverrideWeather(RE::Sky* a_sky)
 
 void Effects11::CheckCommonData()
 {
-	if (!loaded)
-		return;
-
 	static Util::FrameChecker checker;
 	if (checker.IsNewFrame()) {
 		ENBHelper::Update();
 
 		auto& settingManager = SettingManager::GetSingleton();
 		auto ui = globals::game::ui;
-		bool isMapMenuOpen = ui->IsMenuOpen(RE::MapMenu::MENU_NAME);
-		bool isStatsMenuOpen = ui->IsMenuOpen(RE::StatsMenu::MENU_NAME);
-		enableEffect = !isMapMenuOpen && !isStatsMenuOpen && !globals::state->IsMainOrLoadingMenuOpen() &&
-		               globals::shaderCache->IsEnabled() && settingManager.GetValue<bool>("UseEffect", "GLOBAL");
+		bool isMenuOpen = ui->IsMenuOpen(RE::MapMenu::MENU_NAME);
+		enableEffect = !isMenuOpen && globals::shaderCache->IsEnabled() && settingManager.GetValue<bool>("UseEffect", "GLOBAL");
 
 		auto& effectManager = EffectManager::GetSingleton();
 		auto& weatherManager = WeatherManager::GetSingleton();
@@ -560,58 +547,6 @@ void Effects11::OnSkyUpdateColors(RE::Sky* a_sky)
 		OverrideWeather(a_sky);
 }
 
-void Effects11::CaptureVanillaTonemapParams()
-{
-	auto context = globals::d3d::context;
-	auto device = globals::d3d::device;
-	if (!context || !device)
-		return;
-
-	winrt::com_ptr<ID3D11Buffer> constantBuffer;
-	context->PSGetConstantBuffers(2, 1, constantBuffer.put());
-	if (!constantBuffer)
-		return;
-
-	D3D11_BUFFER_DESC srcDesc{};
-	constantBuffer->GetDesc(&srcDesc);
-	if (srcDesc.ByteWidth < sizeof(vanillaTonemapParams))
-		return;
-
-	if (!tonemapParamsStaging[0]) {
-		D3D11_BUFFER_DESC desc{};
-		desc.ByteWidth = sizeof(vanillaTonemapParams);
-		desc.Usage = D3D11_USAGE_STAGING;
-		desc.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
-		for (int i = 0; i < 2; i++) {
-			if (FAILED(device->CreateBuffer(&desc, nullptr, tonemapParamsStaging[i].put()))) {
-				tonemapParamsStaging[0] = nullptr;
-				tonemapParamsStaging[1] = nullptr;
-				return;
-			}
-			Util::SetResourceName(tonemapParamsStaging[i].get(), "Effects11::TonemapParamsStaging%d", i);
-		}
-	}
-
-	const uint32_t writeIdx = tonemapParamsSwap & 1;
-	const uint32_t readIdx = writeIdx ^ 1;
-	tonemapParamsSwap++;
-
-	D3D11_BOX box{ 0, 0, 0, sizeof(vanillaTonemapParams), 1, 1 };
-	context->CopySubresourceRegion(tonemapParamsStaging[writeIdx].get(), 0, 0, 0, 0, constantBuffer.get(), 0, &box);
-	tonemapParamsStagingHasData[writeIdx] = true;
-
-	if (!tonemapParamsStagingHasData[readIdx])
-		return;
-
-	D3D11_MAPPED_SUBRESOURCE mapped{};
-	HRESULT hr = context->Map(tonemapParamsStaging[readIdx].get(), 0, D3D11_MAP_READ, D3D11_MAP_FLAG_DO_NOT_WAIT, &mapped);
-	if (SUCCEEDED(hr)) {
-		std::memcpy(vanillaTonemapParams, mapped.pData, sizeof(vanillaTonemapParams));
-		context->Unmap(tonemapParamsStaging[readIdx].get(), 0);
-		vanillaTonemapParamsValid = true;
-	}
-}
-
 bool Effects11::HandleTonemapRender(RE::RENDER_TARGET a_input, RE::RENDER_TARGET a_output)
 {
 	CheckCommonData();
@@ -644,6 +579,7 @@ void Effects11::ModifySky(RE::BSRenderPass* Pass)
 	}
 }
 
+
 void Effects11::ModifyParticle(RE::BSRenderPass* Pass)
 {
 	if (!enableEffect || !raindropSRV)
@@ -660,9 +596,10 @@ void Effects11::ModifyParticle(RE::BSRenderPass* Pass)
 	ID3D11ShaderResourceView* srv = raindropSRV.get();
 	context->PSSetShaderResources(80, 1, &srv);
 
-	ID3D11Buffer* cbs[] = { state->sharedDataCB->CB(), state->featureDataCB->CB() };
+	ID3D11Buffer* cbs[] = { globals::state->sharedDataCB->CB(), globals::state->featureDataCB->CB() };
 	context->VSSetConstantBuffers(5, 2, cbs);
 }
+
 
 void Effects11::ParticleShaderHacks()
 {
@@ -813,7 +750,6 @@ void Effects11::DrawVolumetricRays()
 		vlTexB->CreateSRV(srvDesc);
 		vlTexB->CreateUAV(uavDesc);
 
-		// R32F to preserve the raw depth precision the bilateral weights compare against.
 		D3D11_TEXTURE2D_DESC depthDesc = desc;
 		depthDesc.Format = DXGI_FORMAT_R32_FLOAT;
 		depthDesc.BindFlags = D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE;
@@ -973,3 +909,4 @@ void Effects11::DrawVolumetricRays()
 	stateBackup.Restore(context);
 	stateBackup.Release();
 }
+

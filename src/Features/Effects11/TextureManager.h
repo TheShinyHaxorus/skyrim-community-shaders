@@ -42,6 +42,7 @@ public:
 	void IncrementTextureSwap() { textureSwap++; }
 
 private:
+	void CreateCommonTextures();
 	void CreateDownsampleResources();
 	static Texture CreateTexture(uint32_t width, uint32_t height, DXGI_FORMAT format, const std::string& debugName);
 	static DownsampleTexture CreateDownsampleTexture(DXGI_FORMAT format);
