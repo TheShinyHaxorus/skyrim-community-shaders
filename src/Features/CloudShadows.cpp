@@ -238,8 +238,8 @@ void CloudShadows::ReflectionsPrepass()
 {
 	Util::FrameChecker frameChecker;
 	if (frameChecker.IsNewFrame()) {
-		if ((globals::game::sky->mode.get() != RE::Sky::Mode::kFull) ||
-			!globals::game::sky->currentClimate)
+		auto sky = globals::game::sky;
+		if (!sky || sky->mode.get() != RE::Sky::Mode::kFull || !sky->currentClimate)
 			return;
 
 		auto context = globals::d3d::context;

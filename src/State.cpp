@@ -1008,7 +1008,10 @@ void State::UpdateSharedData([[maybe_unused]] bool a_inWorld, [[maybe_unused]] b
 		data.DirLightColor = { lightRuntimeData.diffuse.red, lightRuntimeData.diffuse.green, lightRuntimeData.diffuse.blue, 1.0f };
 		data.DirLightColor *= lightRuntimeData.fade;
 
-		data.DirLightColor *= globals::game::imageSpaceManager->GetRuntimeData().data.baseData.hdr.sunlightScale;
+		// Cached global is only populated at kDataLoaded; this runs from the UI draw path before that.
+		auto* imageSpaceManager = globals::game::imageSpaceManager ? globals::game::imageSpaceManager : RE::ImageSpaceManager::GetSingleton();
+		if (imageSpaceManager)
+			data.DirLightColor *= imageSpaceManager->GetRuntimeData().data.baseData.hdr.sunlightScale;
 
 		const auto& direction = dirLight->GetWorldDirection();
 		data.DirLightDirection = { -direction.x, -direction.y, -direction.z, 0.0f };
