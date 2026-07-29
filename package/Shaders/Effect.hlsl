@@ -657,9 +657,16 @@ float3 GetLightingShadow(float3 color, float3 worldPosition, float2 screenPositi
 #	endif
 
 // ENB classifies an additive soft-particle draw that uses both greyscale remaps as FIRE;
-// every other additive draw is a LIGHTSPRITE.
-#	if defined(ADDBLEND) && defined(SOFT) && defined(GRAYSCALE_TO_COLOR) && defined(GRAYSCALE_TO_ALPHA)
-#		define IS_ENB_FIRE
+// every other additive draw is a LIGHTSPRITE. Non-soft indexed particle sheets are also fire
+// (EmbersXD emits its embers this way).
+#	if defined(ADDBLEND)
+#		if defined(SOFT)
+#			if defined(GRAYSCALE_TO_COLOR) && defined(GRAYSCALE_TO_ALPHA)
+#				define IS_ENB_FIRE
+#			endif
+#		elif defined(PARTICLES) && defined(TEXCOORD_INDEX) && defined(INDEXED_TEXTURE)
+#			define IS_ENB_FIRE
+#		endif
 #	endif
 
 PS_OUTPUT main(PS_INPUT input)

@@ -52,12 +52,6 @@ struct TimeOfDayValue
 	{
 		return std::equal(std::begin(values), std::end(values), std::begin(other.values));
 	}
-
-	float& GetByName(const std::string& name)
-	{
-		auto idx = TimeOfDayIndexFromName(name);
-		return values[idx.value_or(0)];
-	}
 };
 
 struct ColorTimeOfDayValue
@@ -91,12 +85,6 @@ struct ColorTimeOfDayValue
 			}
 		}
 		return true;
-	}
-
-	float3& GetByName(const std::string& name)
-	{
-		auto idx = TimeOfDayIndexFromName(name);
-		return values[idx.value_or(0)];
 	}
 };
 
@@ -143,9 +131,6 @@ public:
 	T GetValue(uint32_t id, bool rawValue = false);
 
 	template <typename T>
-	void SetValue(const std::string& key, const std::string& category, const T& value);
-
-	template <typename T>
 	void SetValue(uint32_t id, const T& value);
 
 	uint32_t GetSettingID(const std::string& key, const std::string& category) const;
@@ -153,11 +138,8 @@ public:
 	float GetInterpolatedTimeOfDayValue(const std::string& key, const std::string& category);
 	float3 GetInterpolatedColorTimeOfDayValue(const std::string& key, const std::string& category);
 
-	bool HasSetting(const std::string& key, const std::string& category) const;
 	const Setting* GetSettingInfo(const std::string& key, const std::string& category) const;
-	const Setting* GetSettingInfo(uint32_t id) const;
 	std::vector<std::string> GetSettingsByCategory(const std::string& category) const;
-	std::vector<std::string> GetAllCategories() const;
 	bool CategoryHasWeatherSupport(const std::string& category) const;
 	void SetCategoryExteriorOnly(const std::string& category, bool exteriorOnly);
 	bool IsCategoryExteriorOnly(const std::string& category) const;
@@ -188,7 +170,6 @@ public:
 	bool HasUnsavedChanges() const;
 
 	// Weather ignore settings management
-	void LoadWeatherIgnoreSettings(const std::string& filePath);
 	bool GetIgnoreWeatherSystem(const std::string& category) const;
 	bool GetIgnoreWeatherSystemInterior(const std::string& category) const;
 	void SetIgnoreWeatherSystem(const std::string& category, bool ignore);
@@ -232,6 +213,7 @@ private:
 	mutable std::shared_mutex mutex;
 
 	void RegisterSettingInternal(Setting& setting);
+	void LoadWeatherIgnoreSettings(const std::string& filePath);
 
 	template <typename T>
 	T GetValueInternal(uint32_t id, bool rawValue = false) const;
