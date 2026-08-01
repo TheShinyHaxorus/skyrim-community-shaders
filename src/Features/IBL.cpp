@@ -36,11 +36,8 @@ void IBL::DrawSettings()
 	if (globals::features::effects11.loaded) {
 		auto& enb = globals::features::effects11;
 		if (enb.enableEffect) {
-			auto& settingManager = SettingManager::GetSingleton();
-			if (settingManager.GetValue<bool>("EnableImageBasedLighting", "EFFECT")) {
-				ImGui::TextColored(globals::menu->GetTheme().StatusPalette.Warning, "Settings are currently managed by ENB.");
-				return;
-			}
+			ImGui::TextColored(globals::menu->GetTheme().StatusPalette.Warning, "Settings are currently managed by ENB.");
+			return;
 		}
 	}
 
