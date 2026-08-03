@@ -119,25 +119,6 @@ struct LinearLighting : Feature
 	/** @brief Populates and returns the per-frame constant buffer data with gamma and multiplier settings. */
 	PerFrameData GetCommonBufferData();
 
-	// Simple-mode helpers. These operate on the existing per-domain gamma/multiplier
-	// fields so they stay fully backward compatible with saved configs and require no
-	// shader/buffer changes; the Advanced tabs still expose every field individually.
-
-	/// Shifts every per-domain gamma by the same delta (anchored on colorGamma) so the
-	/// overall response curve moves as one while intentional relative offsets between
-	/// domains (e.g. fog/effect) are preserved.
-	void ApplyMasterGamma(float a_newMaster);
-
-	/// Sets every per-domain gamma to the same value so all surfaces share one response
-	/// curve - the most reliable way to make domains match by construction.
-	void UnifyGammas(float a_gamma);
-
-	/// Scales directional, point, and ambient light multipliers together.
-	void SetLightingBrightness(float a_brightness);
-
-	/// Resets gamma/multiplier values to defaults while preserving the enable state.
-	void ApplyPresetMaster(float a_master);
-
 	/**
 	 * @brief Converts an NiColor from gamma space to linear space using the specified gamma value.
 	 * @param inColor The input color in gamma space.

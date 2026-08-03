@@ -1,10 +1,12 @@
 #include "LinearLighting.h"
 
 #include "../I18n/I18n.h"
-#include "Effects11.h"
-#include "Globals.h"
 #include "State.h"
-#include "Utils/UI.h"
+
+#include "Effects11.h"
+#include "Effects11/SettingManager.h"
+#include "Globals.h"
+#include "Utils/Game.h"
 
 #define I18N_KEY_PREFIX "feature.linear_lighting."
 
@@ -36,69 +38,12 @@ NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(
 	deferredEffectMult,
 	otherEffectMult)
 
-void LinearLighting::ApplyMasterGamma(float a_newMaster)
-{
-	const float delta = a_newMaster - settings.colorGamma;
-	const auto shift = [delta](float& a_gamma) { a_gamma = std::clamp(a_gamma + delta, 0.1f, 3.0f); };
-	shift(settings.lightGamma);
-	shift(settings.colorGamma);
-	shift(settings.emitColorGamma);
-	shift(settings.glowmapGamma);
-	shift(settings.ambientGamma);
-	shift(settings.fogGamma);
-	shift(settings.fogAlphaGamma);
-	shift(settings.effectGamma);
-	shift(settings.effectAlphaGamma);
-	shift(settings.skyGamma);
-	shift(settings.waterGamma);
-	shift(settings.vlGamma);
-}
-
-void LinearLighting::UnifyGammas(float a_gamma)
-{
-	a_gamma = std::clamp(a_gamma, 0.1f, 3.0f);
-	settings.lightGamma = a_gamma;
-	settings.colorGamma = a_gamma;
-	settings.emitColorGamma = a_gamma;
-	settings.glowmapGamma = a_gamma;
-	settings.ambientGamma = a_gamma;
-	settings.fogGamma = a_gamma;
-	settings.fogAlphaGamma = a_gamma;
-	settings.effectGamma = a_gamma;
-	settings.effectAlphaGamma = a_gamma;
-	settings.skyGamma = a_gamma;
-	settings.waterGamma = a_gamma;
-	settings.vlGamma = a_gamma;
-}
-
-void LinearLighting::SetLightingBrightness(float a_brightness)
-{
-	settings.directionalLightMult = a_brightness;
-	settings.pointLightMult = a_brightness;
-	settings.ambientMult = a_brightness;
-}
-
-void LinearLighting::ApplyPresetMaster(float a_master)
-{
-	const bool wasEnabled = settings.enableLinearLighting;
-	RestoreDefaultSettings();
-	settings.enableLinearLighting = wasEnabled;
-	ApplyMasterGamma(a_master);
-}
-
 void LinearLighting::DrawSettings()
 {
 	if (globals::features::effects11.loaded) {
 		auto& enb = globals::features::effects11;
 		if (enb.enableEffect) {
-			ImGui::TextColored(globals::menu->GetTheme().StatusPalette.Warning, "Settings are currently managed by ENB.");
-			ImGui::SeparatorText(T(TKEY("effect_brightness_enb"), "Effect Brightness (works under ENB)"));
-			ImGui::SliderFloat(T(TKEY("other_effects_multiplier"), "Other Effects Multiplier"), &settings.otherEffectMult, 0.0f, 10.0f, "%.2f");
-			if (auto _tt = Util::HoverTooltipWrapper())
-				ImGui::Text("%s", T(TKEY("other_effects_multiplier_tooltip"), "Brightness of additive effects such as fire and magic. Raise to compensate for dim flames under ENB."));
-			ImGui::SliderFloat(T(TKEY("deferred_effects_multiplier"), "Deferred Effects Multiplier"), &settings.deferredEffectMult, 0.0f, 10.0f, "%.2f");
-			if (auto _tt = Util::HoverTooltipWrapper())
-				ImGui::Text("%s", T(TKEY("deferred_effects_multiplier_tooltip"), "Brightness of effects rendered through the deferred path. Pair with Other Effects Multiplier if some fire still reads dim."));
+			ImGui::TextColored(globals::menu->GetSettings().Theme.StatusPalette.Warning, "%s", T("common.settings_managed_by_enb", "Settings are currently managed by ENB."));
 			return;
 		}
 	}
@@ -106,48 +51,6 @@ void LinearLighting::DrawSettings()
 	ImGui::Checkbox(T(TKEY("enable"), "Enable Linear Lighting"), (bool*)&settings.enableLinearLighting);
 
 	if (ImGui::BeginTabBar("##LinearLightingTabs", ImGuiTabBarFlags_None)) {
-		if (ImGui::BeginTabItem(T(TKEY("tab_simple"), "Simple"))) {
-			ImGui::TextWrapped("%s", T(TKEY("simple_help"), "Quick controls that affect the whole image. For per-domain control, use the General and Advanced tabs."));
-
-			ImGui::SeparatorText(T(TKEY("presets"), "Presets"));
-			if (ImGui::Button(T(TKEY("preset_vanilla"), "Vanilla Match")))
-				ApplyPresetMaster(1.8f);
-			if (auto _tt = Util::HoverTooltipWrapper())
-				ImGui::Text("%s", T(TKEY("preset_vanilla_tooltip"), "The shipped default balance. Closest match to the vanilla look."));
-			ImGui::SameLine();
-			if (ImGui::Button(T(TKEY("preset_srgb"), "sRGB (2.2)")))
-				ApplyPresetMaster(2.2f);
-			if (auto _tt = Util::HoverTooltipWrapper())
-				ImGui::Text("%s", T(TKEY("preset_srgb_tooltip"), "Standard sRGB response. Deeper midtones and more contrast."));
-			ImGui::SameLine();
-			if (ImGui::Button(T(TKEY("preset_soft"), "Soft (1.5)")))
-				ApplyPresetMaster(1.5f);
-			if (auto _tt = Util::HoverTooltipWrapper())
-				ImGui::Text("%s", T(TKEY("preset_soft_tooltip"), "Lifted midtones for a softer, brighter look."));
-
-			ImGui::SeparatorText(T(TKEY("quick_adjust"), "Quick Adjust"));
-
-			float master = settings.colorGamma;
-			if (ImGui::SliderFloat(T(TKEY("master_gamma"), "Master Gamma"), &master, 0.1f, 3.0f, "%.2f"))
-				ApplyMasterGamma(master);
-			if (auto _tt = Util::HoverTooltipWrapper())
-				ImGui::Text("%s", T(TKEY("master_gamma_tooltip"), "Shifts every gamma curve together, preserving the relative balance between domains. Higher = darker midtones."));
-
-			float brightness = settings.directionalLightMult;
-			if (ImGui::SliderFloat(T(TKEY("lighting_brightness"), "Lighting Brightness"), &brightness, 0.0f, 5.0f, "%.2f"))
-				SetLightingBrightness(brightness);
-			if (auto _tt = Util::HoverTooltipWrapper())
-				ImGui::Text("%s", T(TKEY("lighting_brightness_tooltip"), "Scales directional, point, and ambient light together."));
-
-			ImGui::Spacing();
-			if (ImGui::Button(T(TKEY("unify_gammas"), "Match all domains to Master")))
-				UnifyGammas(master);
-			if (auto _tt = Util::HoverTooltipWrapper())
-				ImGui::Text("%s", T(TKEY("unify_gammas_tooltip"), "Sets every domain to the same gamma so all surfaces share one response curve - the most reliable way to make everything match."));
-
-			ImGui::EndTabItem();
-		}
-
 		if (ImGui::BeginTabItem(T(TKEY("tab_general"), "General"))) {
 			ImGui::SeparatorText(T(TKEY("gamma_settings"), "Gamma Settings"));
 			ImGui::SliderFloat(T(TKEY("fog_gamma"), "Fog Gamma"), &settings.fogGamma, 0.1f, 3.0f, "%.2f");
@@ -278,21 +181,7 @@ LinearLighting::PerFrameData LinearLighting::GetCommonBufferData()
 	data.skyGamma = settings.skyGamma;
 	data.waterGamma = settings.waterGamma;
 	data.vlGamma = settings.vlGamma;
-	data.vanillaDiffuseColorMult = settings.vanillaDiffuseColorMult;
-	data.directionalLightMult = settings.directionalLightMult;
-	data.pointLightMult = settings.pointLightMult;
-	data.ambientMult = settings.ambientMult;
-	data.emitColorMult = settings.emitColorMult;
-	data.glowmapMult = settings.glowmapMult;
-	data.effectLightingMult = settings.effectLightingMult;
-	data.membraneEffectMult = settings.membraneEffectMult;
-	data.bloodEffectMult = settings.bloodEffectMult;
-	data.projectedEffectMult = settings.projectedEffectMult;
-	data.deferredEffectMult = settings.deferredEffectMult;
-	data.otherEffectMult = settings.otherEffectMult;
 
-	// When ENB post-processing is active, ENB takes over linear lighting:
-	// neutralize all gammas and multipliers so we pass through untouched.
 	if (globals::features::effects11.loaded) {
 		auto& enb = globals::features::effects11;
 		if (enb.enableEffect) {
@@ -307,7 +196,28 @@ LinearLighting::PerFrameData LinearLighting::GetCommonBufferData()
 			data.effectGamma = 1.0f;
 			data.effectAlphaGamma = 1.0f;
 			data.skyGamma = 1.0f;
+			data.waterGamma = 1.0f;
 			data.vlGamma = 1.0f;
+		}
+	}
+
+	data.vanillaDiffuseColorMult = settings.vanillaDiffuseColorMult;
+	data.directionalLightMult = settings.directionalLightMult;
+	data.pointLightMult = settings.pointLightMult;
+	data.ambientMult = settings.ambientMult;
+	data.emitColorMult = settings.emitColorMult;
+	data.glowmapMult = settings.glowmapMult;
+	data.effectLightingMult = settings.effectLightingMult;
+	data.membraneEffectMult = settings.membraneEffectMult;
+	data.bloodEffectMult = settings.bloodEffectMult;
+	data.projectedEffectMult = settings.projectedEffectMult;
+	data.deferredEffectMult = settings.deferredEffectMult;
+	data.otherEffectMult = settings.otherEffectMult;
+
+	// Override multipliers to neutral values when ENB PP is active
+	if (globals::features::effects11.loaded) {
+		auto& enb = globals::features::effects11;
+		if (enb.enableEffect) {
 			data.vanillaDiffuseColorMult = 1.0f;
 			data.directionalLightMult = 1.0f;
 			data.pointLightMult = 1.0f;
@@ -318,6 +228,8 @@ LinearLighting::PerFrameData LinearLighting::GetCommonBufferData()
 			data.membraneEffectMult = 1.0f;
 			data.bloodEffectMult = 1.0f;
 			data.projectedEffectMult = 1.0f;
+			data.deferredEffectMult = 1.0f;
+			data.otherEffectMult = 1.0f;
 		}
 	}
 	return data;

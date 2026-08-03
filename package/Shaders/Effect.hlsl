@@ -478,7 +478,7 @@ cbuffer PerGeometry : register(b2)
 
 float3 GetEffectAmbientLighting(float skylightingDiffuse)
 {
-	float3 ambientColor = ShadowSampling::GetRawAmbientLighting(ShadowSampling::LightingSampleNormal);
+	float3 ambientColor = ShadowSampling::GetRawAmbientLighting();
 
 #	if defined(IBL)
 	if (SharedData::iblSettings.EnableIBL) {
@@ -543,7 +543,7 @@ float3 GetLightingColor(float3 msPosition, float3 worldPosition, float2 screenPo
 #		if defined(EFFECTS11)
 	if (SharedData::enbSettings.Enable) {
 		dirColor = ShadowSampling::GetDirectionalLighting();
-		ambientColor = ShadowSampling::GetAmbientLighting(ShadowSampling::LightingSampleNormal);
+		ambientColor = ShadowSampling::GetAmbientLighting();
 		dirColor *= SharedData::enbSettings.ParticleLightingInfluence;
 		ambientColor *= SharedData::enbSettings.ParticleAmbientInfluence;
 	}

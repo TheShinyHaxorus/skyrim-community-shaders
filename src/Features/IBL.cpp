@@ -2,12 +2,13 @@
 
 #include "Deferred.h"
 #include "DynamicCubemaps.h"
-#include "Effects11.h"
-#include "Effects11/SettingManager.h"
-#include "Globals.h"
 #include "Shadercache.h"
 #include "State.h"
 #include "WeatherVariableRegistry.h"
+
+#include "Effects11.h"
+#include "Effects11/SettingManager.h"
+#include "Globals.h"
 
 #include "../I18n/I18n.h"
 #include <DDSTextureLoader.h>
@@ -36,7 +37,7 @@ void IBL::DrawSettings()
 	if (globals::features::effects11.loaded) {
 		auto& enb = globals::features::effects11;
 		if (enb.enableEffect) {
-			ImGui::TextColored(globals::menu->GetTheme().StatusPalette.Warning, "Settings are currently managed by ENB.");
+			ImGui::TextColored(globals::menu->GetSettings().Theme.StatusPalette.Warning, "%s", T("common.settings_managed_by_enb", "Settings are currently managed by ENB."));
 			return;
 		}
 	}
@@ -225,7 +226,6 @@ IBL::PerFrame IBL::GetCommonBufferData() const
 		.DALCMode = settings.DALCMode
 	};
 
-	// When ENB post-processing manages IBL, drive it from the ENB preset instead of our settings.
 	if (globals::features::effects11.loaded) {
 		auto& enb = globals::features::effects11;
 		if (enb.enableEffect) {

@@ -315,7 +315,7 @@ namespace Color
 
 	float3 EffectMult(float3 color)
 	{
-		if (ENABLE_LL || SharedData::enbSettings.Enable) {
+		if (ENABLE_LL) {
 #	if defined(MEMBRANE)
 			color *= SharedData::linearLightingSettings.membraneEffectMult;
 #	elif defined(BLOOD)
@@ -348,11 +348,7 @@ namespace Color
 
 	float3 Water(float3 color)
 	{
-		if (ENABLE_LL)
-			return pow(abs(color), SharedData::linearLightingSettings.waterGamma);
-		if (SharedData::enbSettings.Enable && SharedData::InInterior)
-			return pow(abs(color), SharedData::linearLightingSettings.waterGamma);
-		return color;
+		return ENABLE_LL ? pow(abs(color), SharedData::linearLightingSettings.waterGamma) : color;
 	}
 
 	float3 VolumetricLighting(float3 color)
