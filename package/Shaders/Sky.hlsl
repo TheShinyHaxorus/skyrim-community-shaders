@@ -2,7 +2,6 @@
 #include "Common/FrameBuffer.hlsli"
 #include "Common/Math.hlsli"
 #include "Common/Permutation.hlsli"
-#include "Common/Random.hlsli"
 #include "Common/SharedData.hlsli"
 
 struct VS_INPUT
@@ -162,10 +161,9 @@ cbuffer AlphaTestRefCB : register(b11)
 
 #	include "Common/MotionBlur.hlsli"
 #	include "Common/SharedData.hlsli"
-#	include "Common/Random.hlsli"
-
-#	if defined(CLOUD_SHADOWS)
-#		include "CloudShadows/CloudShadows.hlsli"
+#	if defined(CLOUDS)
+#		define LinearSampler SampBaseSampler
+#		include "Common/ShadowSampling.hlsli"
 #	endif
 
 #	if defined(EXP_HEIGHT_FOG)
@@ -250,15 +248,6 @@ PS_OUTPUT main(PS_INPUT input)
 #endif
 	psout.Color.xyz = Color::Sky(skyGradientColor) + skyScale;
 
-#if defined(EFFECTS11)
-	if (SharedData::enbSettings.Enable) {
-		float sunLighting = dot(viewDirection, SharedData::SunDirection.xyz) * 0.5 + 0.5;
-		float sunGlow = pow(saturate(sunLighting), 32.0) * 0.25;
-		float3 sunScatterColor = sunGlow * SharedData::enbSettings.SkyScatteringColor * SharedData::enbSettings.SkyScatteringIntensity * lerp(1.0, SharedData::SunColor.xyz, SharedData::enbSettings.SkyScatteringColorFromSun);
-		psout.Color.xyz += SharedData::enbSettings.SkyScatteringAmount * sunScatterColor;
-	}
-#endif
-
 	psout.Color.xyz *= 1.0 + noiseGrad;
 	psout.Color.w = input.Color.w;
 #			endif  // TEX
@@ -283,107 +272,65 @@ PS_OUTPUT main(PS_INPUT input)
 	psout.Color.w = input.Color.w * baseColor.w;
 	psout.Color.xyz = Color::Sky(input.Color.xyz) * baseColor.xyz + skyScale;
 
-#			if defined(CLOUDS) && defined(EFFECTS11)
-	if (SharedData::enbSettings.Enable) {
-		float3 cloudColor = psout.Color.xyz;
-		float3 viewDirection = normalize(input.WorldPosition.xyz);
+#			if defined(CLOUDS)
+	float3 cloudColor = psout.Color.xyz;
+	float3 viewDirection = normalize(input.WorldPosition.xyz);
 
+#				if defined(EFFECTS11)
+	if (SharedData::enbSettings.Enable)
 		cloudColor.xyz = lerp(abs(cloudColor.xyz), dot(cloudColor.xyz, 1.0 / 3.0), SharedData::enbSettings.CloudsDesaturation);
+#				endif
+
+#				if defined(EFFECTS11)
+	if (SharedData::enbSettings.Enable) {
 
 		float cloudLuminance = dot(cloudColor.xyz, 1.0 / 3.0);
-
-		float sunShadow = 0.0;
-		float masserShadow = 0.0;
-		float secundaShadow = 0.0;
 
 		float sunLighting = saturate(dot(viewDirection, SharedData::SunDirection.xyz) * 0.5 + 0.5);
 		float masserLighting = saturate(dot(viewDirection, SharedData::MasserDirection.xyz) * 0.5 + 0.5);
 		float secundaLighting = saturate(dot(viewDirection, SharedData::SecundaDirection.xyz) * 0.5 + 0.5);
 
-		if (SharedData::enbSettings.EnableCloudsScattering){
-			float screenNoise = Random::InterleavedGradientNoise(input.Position.xy);
-
-			const uint sampleCount = 8;
-			const float rcpSampleCount = 1.0 / float(sampleCount);
-
-			sunShadow = 0.0;
-			if (SharedData::SunColor.w > 0.0){
-				for (uint i = 0; i < sampleCount; i++) {
-					float t = (float(i) + screenNoise) * rcpSampleCount;
-					float3 samplePosition = normalize(lerp(viewDirection, SharedData::SunDirection.xyz, t * 0.1));
-					if (samplePosition.z > 0)
-#			if defined(CLOUD_SHADOWS)
-						sunShadow += CloudShadows::CloudShadowsTexture.SampleLevel(SampBaseSampler, samplePosition, 0);
-#			else
-						sunShadow++;
-#			endif
-				}
-				sunShadow = 1.0 - sunShadow * rcpSampleCount;
-			}
-
-			masserShadow = 0.0;
-			if (SharedData::MasserColor.w > 0.0){
-				for (uint i = 0; i < sampleCount; i++) {
-					float t = (float(i) + screenNoise) * rcpSampleCount;
-					float3 samplePosition = normalize(lerp(viewDirection, SharedData::MasserDirection.xyz, t * 0.1));
-					if (samplePosition.z > 0)
-#			if defined(CLOUD_SHADOWS)
-						masserShadow += CloudShadows::CloudShadowsTexture.SampleLevel(SampBaseSampler, samplePosition, 0);
-#			else
-						masserShadow++;
-#			endif						
-				}
-				masserShadow = 1.0 - masserShadow * rcpSampleCount;
-			}
-
-			secundaShadow = 0.0;
-			if (SharedData::SecundaColor.w > 0.0){
-				for (uint i = 0; i < sampleCount; i++) {
-					float t = (float(i) + screenNoise) * rcpSampleCount;
-					float3 samplePosition = normalize(lerp(viewDirection, SharedData::SecundaDirection.xyz, t * 0.1));
-					if (samplePosition.z > 0)
-#			if defined(CLOUD_SHADOWS)
-						secundaShadow += CloudShadows::CloudShadowsTexture.SampleLevel(SampBaseSampler, samplePosition, 0);
-#			else
-						secundaShadow++;
-#			endif						
-				}
-				secundaShadow = 1.0 - secundaShadow * rcpSampleCount;
-			}
-
-			float3 sunScatterColor = SharedData::enbSettings.SkyScatteringColor * SharedData::enbSettings.SkyScatteringIntensity * lerp(1.0, SharedData::SunColor.xyz, SharedData::enbSettings.SkyScatteringColorFromSun);
-			float3 sunDirectLit = sunScatterColor * sunLighting * sunLighting * sunShadow;
-
-			float3 masserScatterColor = SharedData::enbSettings.SkyScatteringColor * SharedData::enbSettings.SkyScatteringIntensity * SharedData::MasserColor.xyz;
-			float3 moonDirectLit = masserScatterColor * masserLighting * masserLighting * masserShadow;
-			
-			float3 secundaScatterColor = SharedData::enbSettings.SkyScatteringColor * SharedData::enbSettings.SkyScatteringIntensity * SharedData::SecundaColor.xyz;
-			moonDirectLit += secundaScatterColor * secundaLighting * secundaLighting * secundaShadow;
-			
-			moonDirectLit *= SharedData::enbSettings.SkyScatteringCloudsLightingMoonIntensity * 0.5;
-
-			float3 directLit = sunDirectLit + moonDirectLit;
-
-			float3 colorLit = cloudColor;
-			colorLit += directLit * cloudLuminance * SharedData::enbSettings.SkyScatteringCloudsLightingSunMultiplier;
-			cloudColor = lerp(cloudColor, colorLit, SharedData::enbSettings.SkyScatteringAmount);
-		}
-
 		if (SharedData::enbSettings.CloudsEdgeIntensity > 0.0) {
 			float cloudsEdgeAlpha = saturate(1.0 - baseColor.w);
 			
-			float3 sunPhase = pow(sunLighting, 32.0) * SharedData::SunColor.xyz * max(cloudsEdgeAlpha, sunShadow);
-			float3 masserPhase = pow(masserLighting, 32.0) * SharedData::MasserColor.xyz * SharedData::enbSettings.CloudsEdgeMoonMultiplier * max(cloudsEdgeAlpha, masserShadow);
-			float3 secundaPhase = pow(secundaLighting, 32.0) * SharedData::SecundaColor.xyz * SharedData::enbSettings.CloudsEdgeMoonMultiplier * max(cloudsEdgeAlpha, secundaShadow);
+			float3 sunPhase = pow(sunLighting, 32.0) * SharedData::SunColor.xyz * cloudsEdgeAlpha;
+			float3 masserPhase = pow(masserLighting, 32.0) * SharedData::MasserColor.xyz * SharedData::enbSettings.CloudsEdgeMoonMultiplier * cloudsEdgeAlpha;
+			float3 secundaPhase = pow(secundaLighting, 32.0) * SharedData::SecundaColor.xyz * SharedData::enbSettings.CloudsEdgeMoonMultiplier * cloudsEdgeAlpha;
 
 			float3 cloudsScatter = (sunPhase + masserPhase + secundaPhase) * SharedData::enbSettings.CloudsEdgeIntensity;
 
-			cloudColor += cloudLuminance * cloudsScatter * 0.5;
+			cloudColor += cloudLuminance * cloudsScatter;
 		}
-
-		psout.Color.xyz = cloudColor;
-		psout.Color.w = saturate(psout.Color.w);
 	}
+#				endif
+
+#				if defined(CLOUD_SHADOWS)
+	float3 directionalColor;
+	float3 ambientColor;
+	ShadowSampling::ExtractLighting(cloudColor, directionalColor, ambientColor);
+
+	float directionalShadow = 1.0;
+
+	float screenNoise = Random::InterleavedGradientNoise(input.Position.xy, SharedData::FrameCount);
+
+	const uint sampleCount = 8;
+	const float rcpSampleCount = 1.0 / float(sampleCount);
+	float3 lightDirection = normalize(SharedData::DirLightDirection.xyz);
+
+	directionalShadow = 0.0;
+	for (uint i = 0; i < sampleCount; i++) {
+		float t = (float(i) + screenNoise) * rcpSampleCount;
+		float3 sampleDirection = normalize(lerp(viewDirection, lightDirection, t * 0.1));
+		if (sampleDirection.z > 0.0)
+			directionalShadow += CloudShadows::CloudShadowsTexture.SampleLevel(SampBaseSampler, sampleDirection, 0);
+	}
+	directionalShadow = 1.0 - directionalShadow * rcpSampleCount;
+	
+	cloudColor = directionalColor * directionalShadow + ambientColor;
+#				endif
+
+	psout.Color.xyz = cloudColor;
+	psout.Color.w = saturate(psout.Color.w);
 #			endif
 #		endif
 
