@@ -1,3 +1,7 @@
+// The distant tree vertex shader only uses b0/b2, so opting into the SharedData cbuffers
+// here is safe (see SHARED_DATA_IN_VERTEX in SharedData.hlsli).
+#define SHARED_DATA_IN_VERTEX
+
 #include "Common/Color.hlsli"
 #include "Common/FrameBuffer.hlsli"
 #include "Common/GBuffer.hlsli"
@@ -47,6 +51,19 @@ cbuffer PerGeometry : register(b2)
 	row_major float4x4 PreviousWorld : packoffset(c8);
 };
 
+#	if defined(LOD_BLENDING)
+// Distant tree billboards are static in vanilla, so the treeline freezes at the distance
+// where swaying TREE_ANIM geometry is swapped for LOD. Bend each billboard about its base,
+// phase-offset per instance so the canopy does not move in lockstep.
+float2 GetTreeLODSway(float3 instancePosition, float heightAboveBase, float timer)
+{
+	float phase = dot(instancePosition.xy, float2(0.0037, 0.0051));
+	float t = timer * SharedData::lodBlendingSettings.TreeWindSpeed;
+	float2 sway = float2(sin(t + phase), sin(0.83 * t + 1.7 * phase));
+	return sway * (SharedData::lodBlendingSettings.TreeWindAmplitude * max(0, heightAboveBase));
+}
+#	endif  // LOD_BLENDING
+
 VS_OUTPUT main(VS_INPUT input)
 {
 	VS_OUTPUT vsout = (VS_OUTPUT)0;
@@ -57,6 +74,15 @@ VS_OUTPUT main(VS_INPUT input)
 	adjustedModelPosition.y = dot(input.InstanceData2.yx, scaledModelPosition.xy);
 	adjustedModelPosition.z = scaledModelPosition.z;
 	float4 finalModelPosition = float4(input.InstanceData1.xyz + adjustedModelPosition.xyz, 1.0);
+	float4 previousModelPosition = finalModelPosition;
+
+#	if defined(LOD_BLENDING)
+	if (SharedData::lodBlendingSettings.EnableTreeWind) {
+		finalModelPosition.xy += GetTreeLODSway(input.InstanceData1.xyz, adjustedModelPosition.z, SharedData::lodBlendingSettings.TreeWindTimer);
+		previousModelPosition.xy += GetTreeLODSway(input.InstanceData1.xyz, adjustedModelPosition.z, SharedData::lodBlendingSettings.TreeWindPreviousTimer);
+	}
+#	endif  // LOD_BLENDING
+
 	float4 viewPosition = mul(WorldViewProj, finalModelPosition);
 
 #	ifdef RENDER_DEPTH
@@ -64,7 +90,7 @@ VS_OUTPUT main(VS_INPUT input)
 	vsout.Depth.zw = input.InstanceData2.zw;
 #	else
 	vsout.WorldPosition = mul(World, finalModelPosition);
-	vsout.PreviousWorldPosition = mul(PreviousWorld, finalModelPosition);
+	vsout.PreviousWorldPosition = mul(PreviousWorld, previousModelPosition);
 	vsout.ViewPosition = viewPosition;
 #	endif  // RENDER_DEPTH
 

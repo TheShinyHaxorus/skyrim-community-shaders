@@ -172,7 +172,11 @@ namespace SharedData
 		float LODTerrainGamma;
 		float LODObjectGamma;
 		float LODObjectSnowGamma;
-		float pad0;
+		bool EnableTreeWind;
+		float TreeWindAmplitude;
+		float TreeWindSpeed;
+		float TreeWindTimer;
+		float TreeWindPreviousTimer;
 	};
 
 	struct HairSpecularSettings
