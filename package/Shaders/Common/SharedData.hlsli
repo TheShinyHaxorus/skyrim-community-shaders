@@ -34,8 +34,7 @@ namespace SharedData
 		bool HideSky;             // HideSky flag in WorldSpace, e.g. Blackreach
 		float MipBias;            // Offset to mip level for TAA sharpness
 		float WaterSystemHeight;  // TES::GetWaterHeight in camera-relative Z; -FLT_MAX when no water body found
-		bool InMainOrLoadingMenu;
-		float2 pad0;
+		float3 pad0;
 		float4 AmbientSHR;
 		float4 AmbientSHG;
 		float4 AmbientSHB;
@@ -301,18 +300,10 @@ namespace SharedData
 		float VolumetricRaysDesaturation;
 		float3 VolumetricRaysColorFilter;
 
-		uint EnableCloudsScattering;
-		float SkyScatteringIntensity;
-		float SkyScatteringAmount;
-		float SkyScatteringColorFromSun;
-
-		float3 SkyScatteringColor;
-		float SkyScatteringCloudsLightingSunMultiplier;
-
-		float SkyScatteringCloudsLightingMoonIntensity;
 		float RainLightingInfluence;
 		uint EnableWater;
 		uint pad0;
+		uint pad1;
 
 		float WaterWavesAmplitude;
 		float WaterMuddiness;

@@ -67,18 +67,10 @@ public:
 		float VolumetricRaysDesaturation;
 		float3 VolumetricRaysColorFilter;
 
-		uint EnableCloudsScattering;
-		float SkyScatteringIntensity;
-		float SkyScatteringAmount;
-		float SkyScatteringColorFromSun;
-
-		float3 SkyScatteringColor;
-		float SkyScatteringCloudsLightingSunMultiplier;
-
-		float SkyScatteringCloudsLightingMoonIntensity;
 		float RainLightingInfluence;
 		uint EnableWater;
 		uint pad0;
+		uint pad1;
 
 		float WaterWavesAmplitude;
 		float WaterMuddiness;
