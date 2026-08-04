@@ -176,14 +176,14 @@ VS_OUTPUT main(VS_INPUT input)
 	float3x4 previousWorldMatrix =
 		Skinned::GetBoneTransformMatrix(PreviousBones, actualIndices, PreviousBonesPivot, input.BoneWeights);
 	precise float4 previousWorldPosition =
-		float4(mul(inputPosition, transpose(previousWorldMatrix)), 1);
+		float4(mul(previousInputPosition, transpose(previousWorldMatrix)), 1);
 
 	float3x4 worldMatrix = Skinned::GetBoneTransformMatrix(Bones, actualIndices, BonesPivot, input.BoneWeights);
 	precise float4 worldPosition = float4(mul(inputPosition, transpose(worldMatrix)), 1);
 
 	float4 viewPos = mul(ViewProj, worldPosition);
 #	else   // !SKINNED
-	precise float4 previousWorldPosition = float4(mul(PreviousWorld, inputPosition), 1);
+	precise float4 previousWorldPosition = float4(mul(PreviousWorld, previousInputPosition), 1);
 	precise float4 worldPosition = float4(mul(World, inputPosition), 1);
 	precise float4x4 world4x4 = float4x4(World[0], World[1], World[2], float4(0, 0, 0, 1));
 	precise float4x4 modelView = mul(ViewProj, world4x4);
