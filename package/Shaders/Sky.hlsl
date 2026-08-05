@@ -311,7 +311,7 @@ PS_OUTPUT main(PS_INPUT input)
 
 	float directionalShadow = 1.0;
 
-	float screenNoise = Random::InterleavedGradientNoise(input.Position.xy, SharedData::FrameCount);
+	float screenNoise = Random::InterleavedGradientNoise(input.Position.xy);
 
 	const uint sampleCount = 8;
 	const float rcpSampleCount = 1.0 / float(sampleCount);
