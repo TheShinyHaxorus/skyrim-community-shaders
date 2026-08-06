@@ -155,6 +155,9 @@ public:
 	std::vector<std::string> GetAllErrors() const;
 
 private:
+	/** @brief Logs the resolved preset location, or why no preset is in use. */
+	void LogPresetStatus() const;
+
 	bool initialized = false;
 
 	// Sky::lastWeather is cleared before currentWeatherPct reaches 1.0, so hold on to it for
