@@ -139,43 +139,6 @@ cbuffer VS_PerFrame : register(b12)
 #	endif  // SKINNED
 };
 
-#	if defined(LOD_BLENDING)
-// DynDOLOD 3D/Ultra tree LOD merges trees into the object LOD, so they never reach
-// DistantTree.hlsl and carry no per-instance data. One merged shape covers a whole block, so the
-// wind weight has to come from the vertex's height above the Terrain Shadows heightmap; anything
-// per-shape would lean every tree in the block about the same plane.
-Texture2D<float> LODTreeHeightMap : register(t61);
-
-cbuffer LODTreeWind : register(b4)
-{
-	float4 LODTreeWindParams : packoffset(c0);    // enabled, invTreeHeight, amplitude, speed
-	float4 LODTreeWindTiming : packoffset(c1);    // timer, previousTimer
-	float4 LODTreeWindMapXform : packoffset(c2);  // heightmap scale in xy, offset in zw
-	float4 LODTreeWindMapRange : packoffset(c3);  // heightmap z range in xy, dimensions in zw
-};
-
-// Wavelength runs to thousands of units so every vertex of one tree moves together and the forest
-// reads as a travelling gust rather than per-vertex noise.
-float2 GetLODTreeSway(float2 worldXY, float weight, float timer)
-{
-	float phase = dot(worldXY, float2(0.00037, 0.00051));
-	float t = timer * LODTreeWindParams.w;
-	float2 sway = float2(sin(t + phase), sin(0.83 * t + 1.7 * phase));
-	return sway * (LODTreeWindParams.z * weight);
-}
-
-float GetLODTreeWindWeight(float2 worldXY, float worldZ)
-{
-	float2 uv = worldXY * LODTreeWindMapXform.xy + LODTreeWindMapXform.zw;
-	if (any(uv < 0.0) || any(uv > 1.0))
-		return 0.0;
-
-	float rawHeight = LODTreeHeightMap.Load(int3(int2(uv * LODTreeWindMapRange.zw), 0));
-	float groundZ = lerp(LODTreeWindMapRange.x, LODTreeWindMapRange.y, rawHeight) - 256;
-	return saturate((worldZ - groundZ) * LODTreeWindParams.y);
-}
-#	endif  // LOD_BLENDING
-
 #	if defined(TREE_ANIM)
 float2 GetTreeShiftVector(float4 position, float4 color)
 {
@@ -198,18 +161,6 @@ VS_OUTPUT main(VS_INPUT input)
 #	endif  // defined(LODLANDNOISE) || defined(LODLANDSCAPE)                                                                   \
 
 	precise float4 previousInputPosition = inputPosition;
-
-#	if defined(LOD_BLENDING) && !defined(SKINNED) && !defined(LANDSCAPE) && !defined(LODLANDSCAPE) && !defined(LODLANDNOISE)
-	[branch] if (LODTreeWindParams.x > 0.5)
-	{
-		float2 worldXY = float2(dot(World[0], inputPosition), dot(World[1], inputPosition));
-		float worldZ = dot(World[2], inputPosition);
-		float weight = GetLODTreeWindWeight(worldXY, worldZ);
-
-		inputPosition.xy += GetLODTreeSway(worldXY, weight, LODTreeWindTiming.x);
-		previousInputPosition.xy += GetLODTreeSway(worldXY, weight, LODTreeWindTiming.y);
-	}
-#	endif
 
 #	if defined(TREE_ANIM)
 	precise float2 treeShiftVector = GetTreeShiftVector(input.Position, input.Color);
