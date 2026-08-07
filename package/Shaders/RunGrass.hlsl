@@ -68,6 +68,9 @@ struct VS_OUTPUT
 #endif
 #	ifdef GRASS_OPTIMIZATIONS
 	nointerpolation float IsComplex: TEXCOORD8;
+#	if !defined(RENDER_DEPTH)
+	nointerpolation float IsFar: TEXCOORD9;
+#	endif
 #	endif
 };
 #endif
@@ -171,7 +174,7 @@ VS_OUTPUT main(VS_INPUT input, uint instanceID : SV_InstanceID)
 	const float4 e1 = InstanceExtras[instanceID * 2 + 1];
 	vsout.IsComplex = e0.w;
 
-	// e1.w packs 1.0 = in collision range and 2.0 = far. Unpack before testing, or a far instance out of collision range reads as colliding.
+	// e1.w packs 2.0 = far and 1.0 = in collision range. Unpack before testing, or a far instance out of collision range reads as colliding.
 	const float isFarFlag = (e1.w >= 2.0) ? 1.0 : 0.0;
 	const float collisionFlag = e1.w - 2.0 * isFarFlag;
 #			if !defined(RENDER_DEPTH)
@@ -210,7 +213,14 @@ VS_OUTPUT main(VS_INPUT input, uint instanceID : SV_InstanceID)
 #			endif
 	{
 		float3 displacement, previousDisplacement;
+#			ifdef GRASS_OPTIMIZATIONS
+		// msPosition is already absolute world, so only the camera offset is left to apply.
+		const float3 collisionPos = msPosition.xyz - FrameBuffer::CameraPosAdjust.xyz;
+		const float3 collisionCentre = input.InstanceData1.xyz + e0.xyz - FrameBuffer::CameraPosAdjust.xyz;
+		GrassCollision::GetDisplacedPosition(input, collisionPos, collisionCentre, displacement, previousDisplacement);
+#			else
 		GrassCollision::GetDisplacedPosition(input, msPosition.xyz, displacement, previousDisplacement);
+#			endif
 		msPosition.xyz += displacement;
 #			if !defined(RENDER_DEPTH)
 		previousMsPosition.xyz += previousDisplacement;
@@ -284,9 +294,12 @@ VS_OUTPUT main(VS_INPUT input, uint instanceID : SV_InstanceID)
 	const float4 e1 = InstanceExtras[instanceID * 2 + 1];
 	vsout.IsComplex = e0.w;
 
-	// e1.w packs collision (1.0) and far (2.0), as above.
+	// e1.w packs the flags, as above.
 	const float isFarFlag = (e1.w >= 2.0) ? 1.0 : 0.0;
 	const float collisionFlag = e1.w - 2.0 * isFarFlag;
+#			if !defined(RENDER_DEPTH)
+	vsout.IsFar = isFarFlag;
+#			endif
 #		endif
 
 	float4 msPosition = GetMSPosition(input);
@@ -318,7 +331,14 @@ VS_OUTPUT main(VS_INPUT input, uint instanceID : SV_InstanceID)
 #			endif
 	{
 		float3 displacement, previousDisplacement;
+#			ifdef GRASS_OPTIMIZATIONS
+		// msPosition is already absolute world, so only the camera offset is left to apply.
+		const float3 collisionPos = msPosition.xyz - FrameBuffer::CameraPosAdjust.xyz;
+		const float3 collisionCentre = input.InstanceData1.xyz + e0.xyz - FrameBuffer::CameraPosAdjust.xyz;
+		GrassCollision::GetDisplacedPosition(input, collisionPos, collisionCentre, displacement, previousDisplacement);
+#			else
 		GrassCollision::GetDisplacedPosition(input, msPosition.xyz, displacement, previousDisplacement);
+#			endif
 		msPosition.xyz += displacement;
 #			if !defined(RENDER_DEPTH)
 		previousMsPosition.xyz += previousDisplacement;
@@ -832,7 +852,12 @@ PS_OUTPUT main(PS_INPUT input)
 		dirDetailedShadow = shadowColor.x;
 
 #			if defined(SCREEN_SPACE_SHADOWS)
-	if (!SharedData::InInterior)
+#				ifdef GRASS_OPTIMIZATIONS
+	const bool isFar = input.IsFar > 0.5;
+#				else
+	const bool isFar = false;
+#				endif
+	if (!SharedData::InInterior && !isFar)
 		dirDetailedShadow *= ScreenSpaceShadows::GetScreenSpaceShadow(input.HPosition.xyz, screenUV, screenNoise);
 #			endif  // SCREEN_SPACE_SHADOWS
 
