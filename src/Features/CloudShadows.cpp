@@ -234,6 +234,24 @@ void CloudShadows::ModifySky(RE::BSRenderPass* Pass)
 	}
 }
 
+void CloudShadows::ReflectionsPrepass()
+{
+	Util::FrameChecker frameChecker;
+	if (frameChecker.IsNewFrame()) {
+		if ((globals::game::sky->mode.get() != RE::Sky::Mode::kFull) ||
+			!globals::game::sky->currentClimate)
+			return;
+
+		auto context = globals::d3d::context;
+
+		context->CopyResource(texCubemapCloudOccCopy->resource.get(), texCloudShadowLayers[kMaxCloudLayers - 1]->resource.get());
+
+		ID3D11ShaderResourceView* srv = texCubemapCloudOccCopy->srv.get();
+		context->PSSetShaderResources(25, 1, &srv);
+		context->CSSetShaderResources(25, 1, &srv);
+	}
+}
+
 void CloudShadows::EarlyPrepass()
 {
 	if (previouslyRenderedSide >= 0) {
@@ -241,18 +259,6 @@ void CloudShadows::EarlyPrepass()
 		previouslyRenderedSide = -1;
 	}
 	globalRenderedMask = 0;
-
-	auto sky = globals::game::sky;
-	if (!sky || sky->mode.get() != RE::Sky::Mode::kFull || !sky->currentClimate)
-		return;
-
-	auto context = globals::d3d::context;
-
-	context->CopyResource(texCubemapCloudOccCopy->resource.get(), texCloudShadowLayers[kMaxCloudLayers - 1]->resource.get());
-
-	ID3D11ShaderResourceView* srv = texCubemapCloudOccCopy->srv.get();
-	context->PSSetShaderResources(25, 1, &srv);
-	context->CSSetShaderResources(25, 1, &srv);
 }
 
 void CloudShadows::SetupResources()

@@ -66,18 +66,6 @@ Effects11::PerFrame Effects11::GetCommonBufferData()
 	data.FireIntensity = settingManager.GetInterpolatedTimeOfDayValue("FireIntensity", "FIRE");
 	data.FireCurve = settingManager.GetInterpolatedTimeOfDayValue("FireCurve", "FIRE");
 
-	data.RainLightingInfluence = settingManager.GetInterpolatedTimeOfDayValue("LightingInfluence", "RAIN");
-
-	data.EnableWater = enableEffect && settingManager.GetValue<bool>("EnableWater", "EFFECT");
-	data.WaterWavesAmplitude = settingManager.GetInterpolatedTimeOfDayValue("WavesAmplitude", "WATER");
-	data.WaterMuddiness = settingManager.GetValue<float>("Muddiness", "WATER");
-	data.WaterSunLightingMultiplier = settingManager.GetValue<float>("SunLightingMultiplier", "WATER");
-	data.WaterSunSpecularMultiplier = settingManager.GetValue<float>("SunSpecularMultiplier", "WATER");
-	data.WaterFresnelMin = settingManager.GetValue<float>("FresnelMin", "WATER");
-	data.WaterFresnelMax = settingManager.GetValue<float>("FresnelMax", "WATER");
-	data.WaterFresnelMultiplier = settingManager.GetValue<float>("FresnelMultiplier", "WATER");
-	data.WaterReflectionAmount = settingManager.GetValue<float>("ReflectionAmount", "WATER");
-
 	data.EnableProceduralSun = enableEffect && settingManager.GetValue<bool>("EnableProceduralSun", "EFFECT");
 
 	{
@@ -302,12 +290,11 @@ void Effects11::OverrideWeather(RE::Sky* a_sky)
 
 		auto dirLightColorF3 = NiToF3(dirLightColor);
 
-		// Storm imagespaces drive sunlightScale to ~0, where the round-trip below underflows the light to black.
-		float rawSunlightScale = 0.0f;
-		if (auto imageSpaceManager = globals::game::imageSpaceManager) {
-			rawSunlightScale = imageSpaceManager->GetRuntimeData().data.baseData.hdr.sunlightScale;
+		float sunlightScale = FLT_MIN;
+		auto imageSpaceManager = globals::game::imageSpaceManager;
+		if (imageSpaceManager) {
+			sunlightScale = std::max(imageSpaceManager->GetRuntimeData().data.baseData.hdr.sunlightScale, FLT_MIN);
 		}
-		const float sunlightScale = rawSunlightScale > 1e-3f ? rawSunlightScale : 1.0f;
 		dirLightColorF3 *= sunlightScale;
 
 		dirLightColorF3 = Curve(dirLightColorF3, settingManager.GetInterpolatedTimeOfDayValue("DirectLightingCurve", "ENVIRONMENT"));
@@ -358,14 +345,6 @@ void Effects11::OverrideWeather(RE::Sky* a_sky)
 
 		a_sky->fogNear /= fogAmountMultiplier;
 		a_sky->fogFar /= fogAmountMultiplier;
-	}
-
-	if (settingManager.GetValue<bool>("EnableWater", "EFFECT")) {
-		auto& waterColor = colors[(uint)RE::TESWeather::ColorTypes::kWaterMultiplier];
-
-		auto waterColorF3 = NiToF3(waterColor);
-		waterColorF3 = Intensity(waterColorF3, settingManager.GetInterpolatedTimeOfDayValue("Brightness", "WATER"));
-		waterColor = F3ToNi(waterColorF3);
 	}
 
 	if (enableEffect) {
@@ -491,10 +470,8 @@ void Effects11::CheckCommonData()
 		ENBHelper::Update();
 
 		auto& settingManager = SettingManager::GetSingleton();
-		auto ui = globals::game::ui;
 		auto state = globals::state;
-		const bool inBlockedMenu = state->isMapMenuOpen || state->isStatsMenuOpen ||
-		                           state->IsMainOrLoadingMenuOpen(ui);
+		const bool inBlockedMenu = state->isMapMenuOpen || state->isStatsMenuOpen;
 		auto& effectManager = EffectManager::GetSingleton();
 
 		enableEffect = !inBlockedMenu && globals::shaderCache->IsEnabled() && settingManager.GetValue<bool>("UseEffect", "GLOBAL") && effectManager.IsPresetLoaded();

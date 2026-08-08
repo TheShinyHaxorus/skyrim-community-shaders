@@ -10,8 +10,8 @@
 #include "../TextureManager.h"
 #include "Globals.h"
 #include "State.h"
-#include "Utils/SettingsPatches.h"
-#include "Utils/ShaderPatches.h"
+#include "Features/Effects11/SettingsPatches.h"
+#include "Features/Effects11/ShaderPatches.h"
 
 std::filesystem::path Effect::GetFilePath() const
 {
@@ -134,8 +134,6 @@ void Effect::Save()
 		std::string iniKey = GetVariableIniKey(uiVar);
 		if (iniKey.empty())
 			continue;
-		if (ShouldSkipBaseIniWrite(uiVar))
-			continue;
 
 		std::string value;
 
@@ -189,9 +187,6 @@ void Effect::Save()
 	}
 
 	WritePrivateProfileStringA(NULL, NULL, NULL, iniPath.string().c_str());
-
-	SaveWeatherOverrides();
-	uiDirty = false;
 
 	logger::info("[EFFECTS11] Saved settings to '{}' for effect '{}'", iniPath.string(), GetName());
 }
@@ -806,7 +801,7 @@ bool Effect::IsPerComponentVector(const UIVariable& uiVar)
 		uiVar.widgetType != UIWidgetType::Color;
 }
 
-std::string Effect::GetVariableIniKey(const UIVariable& uiVar) const
+std::string Effect::GetVariableIniKey(const UIVariable& uiVar)
 {
 	if (!uiVar.uniqueName.empty())
 		return uiVar.uniqueName;

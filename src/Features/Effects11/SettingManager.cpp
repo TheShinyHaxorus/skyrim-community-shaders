@@ -394,21 +394,6 @@ bool SettingManager::IsCategoryExteriorOnly(const std::string& category) const
 	return it->second.exteriorOnly;
 }
 
-void SettingManager::SetCategoryTab(const std::string& category, const std::string& tab)
-{
-	std::unique_lock lock(mutex);
-	categories[category].tab = tab;
-}
-
-std::string SettingManager::GetCategoryTab(const std::string& category) const
-{
-	std::shared_lock lock(mutex);
-	auto it = categories.find(category);
-	if (it == categories.end())
-		return "Main";
-	return it->second.tab;
-}
-
 std::map<std::string, std::vector<std::string>> SettingManager::GetCategorizedSettings() const
 {
 	std::shared_lock lock(mutex);
@@ -1055,28 +1040,6 @@ void SettingManager::Save()
 {
 	SaveToFile(PresetManager::GetSingleton().GetENBSeriesIniPath().string());
 	SaveAllWeatherSettings();
-}
-
-bool SettingManager::HasUnsavedChanges() const
-{
-	std::shared_lock lock(mutex);
-
-	for (const auto& setting : allSettings)
-		if (!(setting.currentValue == setting.lastSavedValue))
-			return true;
-
-	for (const auto& [name, cat] : categories)
-		if (cat.ignoreWeatherSystem != cat.lastSavedIgnoreWeatherSystem ||
-			cat.ignoreWeatherSystemInterior != cat.lastSavedIgnoreWeatherSystemInterior)
-			return true;
-
-	for (const auto& [weatherID, values] : weatherData) {
-		auto it = lastSavedWeatherData.find(weatherID);
-		if (it == lastSavedWeatherData.end() || it->second != values)
-			return true;
-	}
-
-	return false;
 }
 
 // Explicit template instantiations

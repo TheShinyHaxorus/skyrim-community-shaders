@@ -51,6 +51,7 @@ struct TimeOfDayValue
 	{
 		return std::equal(std::begin(values), std::end(values), std::begin(other.values));
 	}
+
 };
 
 struct ColorTimeOfDayValue
@@ -85,6 +86,7 @@ struct ColorTimeOfDayValue
 		}
 		return true;
 	}
+
 };
 
 using SettingValue = std::variant<bool, float, TimeOfDayValue, ColorTimeOfDayValue>;
@@ -143,8 +145,6 @@ public:
 	void SetCategoryExteriorOnly(const std::string& category, bool exteriorOnly);
 	bool IsCategoryExteriorOnly(const std::string& category) const;
 
-	void SetCategoryTab(const std::string& category, const std::string& tab);
-	std::string GetCategoryTab(const std::string& category) const;
 	std::map<std::string, std::vector<std::string>> GetCategorizedSettings() const;
 
 	void SetCategoryDependency(const std::string& category, const std::string& dependsOnKey, const std::string& dependsOnCategory);
@@ -166,7 +166,6 @@ public:
 	// Effect save/load coordination
 	void Load();
 	void Save();
-	bool HasUnsavedChanges() const;
 
 	// Weather ignore settings management
 	bool GetIgnoreWeatherSystem(const std::string& category) const;

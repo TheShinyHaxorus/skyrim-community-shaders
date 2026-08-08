@@ -674,7 +674,7 @@ void State::Save(ConfigMode a_configMode)
 	// Effects11's ENB-style settings live in enbseries.ini / per-weather inis, not the CS JSON.
 	if (globals::features::effects11.loaded) {
 		SettingManager::GetSingleton().Save();
-		EffectManager::GetSingleton().SaveDirty();
+		EffectManager::GetSingleton().Save();
 	}
 }
 

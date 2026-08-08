@@ -4,7 +4,7 @@
 #include "ShaderCache.h"
 #include "State.h"
 #include "Utils/Format.h"
-#include "Utils/ShaderPatches.h"
+#include "Features/Effects11/ShaderPatches.h"
 #include <DDSTextureLoader.h>
 #include <DirectXTex.h>
 #include <d3dcompiler.h>

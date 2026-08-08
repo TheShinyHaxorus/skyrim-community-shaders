@@ -176,14 +176,14 @@ VS_OUTPUT main(VS_INPUT input)
 	float3x4 previousWorldMatrix =
 		Skinned::GetBoneTransformMatrix(PreviousBones, actualIndices, PreviousBonesPivot, input.BoneWeights);
 	precise float4 previousWorldPosition =
-		float4(mul(previousInputPosition, transpose(previousWorldMatrix)), 1);
+		float4(mul(inputPosition, transpose(previousWorldMatrix)), 1);
 
 	float3x4 worldMatrix = Skinned::GetBoneTransformMatrix(Bones, actualIndices, BonesPivot, input.BoneWeights);
 	precise float4 worldPosition = float4(mul(inputPosition, transpose(worldMatrix)), 1);
 
 	float4 viewPos = mul(ViewProj, worldPosition);
 #	else   // !SKINNED
-	precise float4 previousWorldPosition = float4(mul(PreviousWorld, previousInputPosition), 1);
+	precise float4 previousWorldPosition = float4(mul(PreviousWorld, inputPosition), 1);
 	precise float4 worldPosition = float4(mul(World, inputPosition), 1);
 	precise float4x4 world4x4 = float4x4(World[0], World[1], World[2], float4(0, 0, 0, 1));
 	precise float4x4 modelView = mul(ViewProj, world4x4);
@@ -509,8 +509,6 @@ Texture2D<float4> TexShadowMaskSampler : register(t14);
 Texture2D<float4> TexSkinExtraSampler : register(t71);
 Texture2D<float4> TexSkinWetnessSampler : register(t74);
 Texture2D<float4> TexSkinWetnessNormalSampler : register(t75);
-// Skin _sk subsurface map on a dedicated slot; t12 is clobbered in the deferred path.
-Texture2D<float4> TexSkinSkSampler : register(t99);
 #	endif
 
 cbuffer PerTechnique : register(b0)
@@ -1377,7 +1375,7 @@ PS_OUTPUT main(PS_INPUT input, bool frontFace : SV_IsFrontFace)
 	bool hasSkinExtra = false;
 	bool hasSkinWetness = false;
 	if (skinEnabled) {
-		skinsk = TexSkinSkSampler.Sample(SampColorSampler, uv);
+		skinsk = TexRimSoftLightWorldMapOverlaySampler.Sample(SampRimSoftLightWorldMapOverlaySampler, uv);
 		TexSkinExtraSampler.GetDimensions(skinExtraDimensions.x, skinExtraDimensions.y);
 		TexSkinWetnessSampler.GetDimensions(wetnessDimensions.x, wetnessDimensions.y);
 		hasSkinExtra = skinExtraDimensions.x > 32 && skinExtraDimensions.y > 32;
@@ -2733,15 +2731,6 @@ PS_OUTPUT main(PS_INPUT input, bool frontFace : SV_IsFrontFace)
 	}
 #	endif
 
-#	if defined(SKYLIGHTING)
-	float skylightingDiffuse = 1;
-	float skylightingFadeOutFactor = 1.0;
-	if (!SharedData::InInterior) {
-		skylightingFadeOutFactor = Skylighting::GetFadeOutFactor(input.WorldPosition.xyz);
-		skylightingDiffuse = Skylighting::EvaluateDiffuse(skylightingSH, ambientNormal, skylightingFadeOutFactor);
-	}
-#	endif
-
 #	if defined(LANDSCAPE)
 	if (SharedData::lodBlendingSettings.DisableTerrainVertexColors)
 		input.Color.xyz = 1;
@@ -2756,9 +2745,11 @@ PS_OUTPUT main(PS_INPUT input, bool frontFace : SV_IsFrontFace)
 	if (SharedData::hairSpecularSettings.Enabled)
 		vertexColor = 1;
 #		endif
+#		if defined(SKYLIGHTING)
+	float skylightingDiffuse = Skylighting::GetSkylightingDiffuse(skylightingSH, input.WorldPosition.xyz, ambientNormal);
+#		endif
 #	elif defined(SKYLIGHTING)
 	float3 vertexColor = input.Color.xyz;
-	// FaceGen tint and eye meshes carry tint data in vertex color, not occlusion.
 #		if defined(FACEGEN) || defined(FACEGEN_RGB_TINT) || defined(EYE)
 	float vertexAO = 1;
 #		else
@@ -2768,8 +2759,7 @@ PS_OUTPUT main(PS_INPUT input, bool frontFace : SV_IsFrontFace)
 	vertexAO = lerp(1, vertexAO, SharedData::truePBRSettings.VertexAOStrength);
 	vertexColor = 1;
 #		endif
-	// Modify skylightingDiffuse such that skylightingDiffuse * vertexAO = min(skylightingDiffuse, vertexAO)
-	skylightingDiffuse = saturate(skylightingDiffuse / max(vertexAO, 1e-5));
+	float skylightingDiffuse = Skylighting::GetSkylightingDiffuse(skylightingSH, input.WorldPosition.xyz, ambientNormal, vertexAO);
 #	else
 #		if defined(TRUE_PBR)
 	float3 vertexColor = 1;
@@ -2790,11 +2780,7 @@ PS_OUTPUT main(PS_INPUT input, bool frontFace : SV_IsFrontFace)
 #	if defined(IBL)
 	if (SharedData::iblSettings.EnableIBL) {
 		if (!(SharedData::iblSettings.UseStaticIBL && !inWorld && !inReflection)) {
-#		if defined(SKYLIGHTING)
-			directionalAmbientColor = ImageBasedLighting::GetDiffuseIBLOccluded(directionalAmbientColor, -ambientNormal, skylightingDiffuse);
-#		else
 			directionalAmbientColor = ImageBasedLighting::GetDiffuseIBL(directionalAmbientColor, -ambientNormal);
-#		endif
 		}
 	}
 #	endif
@@ -2924,12 +2910,7 @@ PS_OUTPUT main(PS_INPUT input, bool frontFace : SV_IsFrontFace)
 	directionalAmbientColor *= outputAlbedo;
 
 #	if defined(SKYLIGHTING)
-#		if defined(IBL)
-	if (!SharedData::iblSettings.EnableIBL)
-#		endif
-	{
-		Skylighting::ApplySkylighting(color.xyz, directionalAmbientColor, outputAlbedo, skylightingDiffuse);
-	}
+	Skylighting::ApplySkylighting(color.xyz, directionalAmbientColor, outputAlbedo, skylightingDiffuse);
 #	endif
 
 #	if !defined(DEFERRED)

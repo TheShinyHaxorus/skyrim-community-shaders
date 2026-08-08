@@ -310,50 +310,6 @@ PS_OUTPUT main(PS_INPUT input, bool frontFace : SV_IsFrontFace)
 
 		float3 rainColor = lerp(refractColor, reflectColor, fresnel);
 
-#		if defined(LIGHT_LIMIT_FIX)
-		if (SharedData::enbSettings.RainLightingInfluence > 0.0) {
-			float3 rainLight = 0;
-			float3 viewPosition = FrameBuffer::WorldToView(posWS.xyz);
-			float2 screenUV = FrameBuffer::ViewToUV(viewPosition);
-
-			uint clusterIndex = 0;
-			if (LightLimitFix::GetClusterIndex(screenUV, viewPosition.z, clusterIndex)) {
-				uint lightCount = LightLimitFix::lightGrid[clusterIndex].lightCount;
-				uint lightOffset = LightLimitFix::lightGrid[clusterIndex].offset;
-				[loop] for (uint i = 0; i < lightCount; i++)
-				{
-					uint clusteredLightIndex = LightLimitFix::lightList[lightOffset + i];
-					LightLimitFix::Light light = LightLimitFix::lights[clusteredLightIndex];
-					// Unlike the generic particle path, vanilla lighting is fully discarded here, so shadow-flagged lights must contribute too.
-					if (LightLimitFix::IsLightIgnored(light))
-						continue;
-
-					float3 lightDirection = light.positionWS.xyz - posWS.xyz;
-					float lightDist = length(lightDirection);
-
-#			if defined(ISL)
-					float intensityMultiplier = InverseSquareLighting::GetAttenuation(lightDist, light);
-#			else
-					float intensityFactor = saturate(lightDist / light.radius);
-					float intensityMultiplier = 1 - intensityFactor * intensityFactor;
-#			endif
-					if (intensityMultiplier <= 0.0)
-						continue;
-
-					float3 L = lightDirection / max(lightDist, 1e-4);
-					float forwardScatter = pow(saturate(dot(-L, V) * 0.5 + 0.5), 4.0);
-					float scatter = lerp(0.3, 1.0, forwardScatter);
-					float glint = pow(saturate(dot(normalWS, normalize(L + V))), 48.0);
-					rainLight += light.color.xyz * (intensityMultiplier * (scatter * 0.5 + glint));
-				}
-			}
-
-			rainLight *= SharedData::enbSettings.RainLightingInfluence;
-			rainColor += rainLight;
-			alpha = saturate(alpha + saturate(dot(rainLight, float3(0.2125, 0.7154, 0.0721))) * 0.3);
-		}
-#		endif
-
 		psout.Color.xyz = Color::IrradianceToGamma(rainColor);
 		psout.Color.w = alpha;
 		psout.Normal = float4(0, 1, 0, alpha);

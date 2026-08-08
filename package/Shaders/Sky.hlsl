@@ -161,10 +161,6 @@ cbuffer AlphaTestRefCB : register(b11)
 
 #	include "Common/MotionBlur.hlsli"
 #	include "Common/SharedData.hlsli"
-#	if defined(CLOUDS)
-#		define LinearSampler SampBaseSampler
-#		include "Common/ShadowSampling.hlsli"
-#	endif
 
 #	if defined(EXP_HEIGHT_FOG)
 #		define SampColorSampler SampBaseSampler
@@ -272,17 +268,12 @@ PS_OUTPUT main(PS_INPUT input)
 	psout.Color.w = input.Color.w * baseColor.w;
 	psout.Color.xyz = Color::Sky(input.Color.xyz) * baseColor.xyz + skyScale;
 
-#			if defined(CLOUDS)
-	float3 cloudColor = psout.Color.xyz;
-	float3 viewDirection = normalize(input.WorldPosition.xyz);
-
-#				if defined(EFFECTS11)
-	if (SharedData::enbSettings.Enable)
-		cloudColor.xyz = lerp(abs(cloudColor.xyz), dot(cloudColor.xyz, 1.0 / 3.0), SharedData::enbSettings.CloudsDesaturation);
-#				endif
-
-#				if defined(EFFECTS11)
+#			if defined(CLOUDS) && defined(EFFECTS11)
 	if (SharedData::enbSettings.Enable) {
+		float3 cloudColor = psout.Color.xyz;
+		float3 viewDirection = normalize(input.WorldPosition.xyz);
+
+		cloudColor.xyz = lerp(abs(cloudColor.xyz), dot(cloudColor.xyz, 1.0 / 3.0), SharedData::enbSettings.CloudsDesaturation);
 
 		float cloudLuminance = dot(cloudColor.xyz, 1.0 / 3.0);
 
@@ -301,36 +292,10 @@ PS_OUTPUT main(PS_INPUT input)
 
 			cloudColor += cloudLuminance * cloudsScatter;
 		}
+
+		psout.Color.xyz = cloudColor;
+		psout.Color.w = saturate(psout.Color.w);
 	}
-#				endif
-
-#				if defined(CLOUD_SHADOWS)
-	float3 directionalColor;
-	float3 ambientColor;
-	ShadowSampling::ExtractLighting(cloudColor, directionalColor, ambientColor);
-
-	float directionalShadow = 1.0;
-
-	float screenNoise = Random::InterleavedGradientNoise(input.Position.xy);
-
-	const uint sampleCount = 8;
-	const float rcpSampleCount = 1.0 / float(sampleCount);
-	float3 lightDirection = normalize(SharedData::DirLightDirection.xyz);
-
-	directionalShadow = 0.0;
-	for (uint i = 0; i < sampleCount; i++) {
-		float t = (float(i) + screenNoise) * rcpSampleCount;
-		float3 sampleDirection = normalize(lerp(viewDirection, lightDirection, t * 0.1));
-		if (sampleDirection.z > 0.0)
-			directionalShadow += CloudShadows::CloudShadowsTexture.SampleLevel(SampBaseSampler, sampleDirection, 0);
-	}
-	directionalShadow = 1.0 - directionalShadow * rcpSampleCount;
-	
-	cloudColor = directionalColor * directionalShadow + ambientColor;
-#				endif
-
-	psout.Color.xyz = cloudColor;
-	psout.Color.w = saturate(psout.Color.w);
 #			endif
 #		endif
 

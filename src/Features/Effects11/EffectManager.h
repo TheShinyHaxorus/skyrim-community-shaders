@@ -2,7 +2,6 @@
 
 #include "Effects/ENBAdaptation.h"
 #include "Effects/ENBBloom.h"
-#include "Effects/ENBDepthOfField.h"
 #include "Effects/ENBEffect.h"
 #include "Effects/ENBEffectPostPass.h"
 #include "Effects/ENBLens.h"
@@ -51,8 +50,6 @@ public:
 	void Apply();
 	void Load();
 	void Save();
-	void SaveDirty();
-	bool AnyUnsaved() const;
 
 	void RegisterSettings();
 
@@ -60,7 +57,6 @@ public:
 	void UpdateCommonVariablesForEffect(Effect& effect);
 
 public:
-	ENBDepthOfField enbDepthOfField;
 	ENBBloom enbBloom;
 	ENBLens enbLens;
 	ENBAdaptation enbAdaptation;
@@ -109,7 +105,6 @@ public:
 
 	struct SettingIDs
 	{
-		uint32_t useDepthOfField = 0xFFFFFFFF;
 		uint32_t useBloom = 0xFFFFFFFF;
 		uint32_t useLens = 0xFFFFFFFF;
 		uint32_t useAdaptation = 0xFFFFFFFF;
@@ -159,8 +154,4 @@ private:
 	void LogPresetStatus() const;
 
 	bool initialized = false;
-
-	// Sky::lastWeather is cleared before currentWeatherPct reaches 1.0, so hold on to it for
-	// the rest of the transition. Mirrors WeatherManager::GetCurrentWeathers.
-	RE::TESWeather* cachedLastWeather = nullptr;
 };

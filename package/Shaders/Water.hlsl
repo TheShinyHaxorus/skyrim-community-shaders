@@ -641,9 +641,6 @@ WaterNormalData GetWaterNormal(PS_INPUT input, float distanceFactor, float norma
 	float3 normalScalesRcp = rcp(input.NormalsScale.xyz);
 
 	float4 normalsAmplitude = NormalsAmplitude;
-	if (SharedData::enbSettings.EnableWater) {
-		normalsAmplitude *= SharedData::enbSettings.WaterWavesAmplitude;
-	}
 
 #			if defined(WATER_PARALLAX)
 	float2 parallaxOffset = WaterEffects::GetParallaxOffset(input, normalsAmplitude.xyz, normalScalesRcp);
@@ -877,13 +874,6 @@ float GetFresnelValue(float3 normal, float3 viewDirection)
 #			endif
 	float viewAngle = 1 - saturate(dot(-viewDirection, actualNormal));
 
-	if (SharedData::enbSettings.EnableWater) {
-		float fresnelRI = pow(abs(FresnelRI.x), SharedData::enbSettings.WaterFresnelMultiplier);
-		float fresnel = (1 - fresnelRI) * pow(viewAngle, 5) + fresnelRI;
-		fresnel = lerp(SharedData::enbSettings.WaterFresnelMin, SharedData::enbSettings.WaterFresnelMax, fresnel);
-		return fresnel * SharedData::enbSettings.WaterReflectionAmount;
-	}
-
 	return (1 - FresnelRI.x) * pow(viewAngle, 5) + FresnelRI.x;
 }
 
@@ -920,8 +910,7 @@ DiffuseOutput GetWaterDiffuseColor(PS_INPUT input, float3 normal, float3 viewDir
 	if (refractionPlaneMul < 0.0) {
 		refractionUvRaw = FrameBuffer::DynamicResolutionParams2.xy * input.HPosition.xy * VPOSOffset.xy + VPOSOffset.zw;
 	} else {
-		float muddiness = SharedData::enbSettings.EnableWater ? SharedData::enbSettings.WaterMuddiness : 1.0;
-		distanceMul = saturate(float4(1, muddiness, 1, 1) * refractionPlaneMul * float4(length(refractionDepthAdjustedViewDirection).xx, abs(refractionViewSurfaceAngle).xx) / FogParam.z);
+		distanceMul = saturate(refractionPlaneMul * float4(length(refractionDepthAdjustedViewDirection).xx, abs(refractionViewSurfaceAngle).xx) / FogParam.z);
 
 		refractionWorldPosition = mul(FrameBuffer::CameraViewProjInverse, float4((refractionUvRaw * 2 - 1) * float2(1, -1), DepthTex.Load(float3(refractionScreenPosition, 0)).x, 1));
 		refractionWorldPosition.xyz /= refractionWorldPosition.w;
@@ -936,21 +925,7 @@ DiffuseOutput GetWaterDiffuseColor(PS_INPUT input, float3 normal, float3 viewDir
 	float2 refractionUV = FrameBuffer::GetDynamicResolutionAdjustedScreenPosition(refractionUvRaw);
 	float3 refractionColor = RefractionTex.Sample(RefractionSampler, refractionUV).xyz;
 
-	float3 refractionDiffuseColor;
-
-	if (SharedData::enbSettings.EnableWater) {
-		float3 shallowColor = ShallowColor.xyz;
-		float maxValue = max(shallowColor.x, max(shallowColor.y, shallowColor.z));
-		if (maxValue > 0.0)
-			shallowColor /= maxValue;
-		else
-			shallowColor = 1.0;
-
-		shallowColor = lerp(shallowColor.xyz * refractionColor, ShallowColor.xyz, SharedData::enbSettings.WaterMuddiness);
-		refractionDiffuseColor = lerp(Color::Water(shallowColor.xyz), Color::Water(DeepColor.xyz), distanceMul.y);
-	} else {
-		refractionDiffuseColor = lerp(Color::Water(ShallowColor.xyz), Color::Water(DeepColor.xyz), distanceMul.y);
-	}
+	float3 refractionDiffuseColor = lerp(Color::Water(ShallowColor.xyz), Color::Water(DeepColor.xyz), distanceMul.y);
 
 #				if defined(UNDERWATER)
 	float refractionMul = 0;
@@ -1226,12 +1201,6 @@ PS_OUTPUT main(PS_INPUT input)
 
 	float3 waterSSS;
 	float3 sunColor = GetSunColor(normal, viewDirection, input.WPosition.xyz, waterSSS) * surfaceShadow;
-
-	if (SharedData::enbSettings.EnableWater) {
-		float3 dirScatter = saturate(dot(normal.xyz, SharedData::DirLightDirection.xyz) * 0.5 + 0.5) * saturate(dot(viewDirection.xyz, SharedData::DirLightDirection.xyz) * 0.5 + 0.5) * SharedData::DirLightColor.xyz;
-		diffuseOutput.refractionDiffuseColor += DeepColor.xyz * dirScatter * surfaceShadow * SharedData::enbSettings.WaterSunLightingMultiplier;
-		sunColor *= SharedData::enbSettings.WaterSunSpecularMultiplier;
-	}
 
 #					if defined(VC)
 	float specularFraction = lerp(1, fresnel * diffuseOutput.refractionMul, distanceBlendFactor);

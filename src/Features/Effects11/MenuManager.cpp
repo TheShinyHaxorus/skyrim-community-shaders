@@ -4,7 +4,7 @@
 #include "SettingManager.h"
 #include "TextureManager.h"
 #include "Features/Effects11.h"
-#include "Utils/ShaderPatches.h"
+#include "Features/Effects11/ShaderPatches.h"
 #include "Globals.h"
 #include "I18n/I18n.h"
 
@@ -97,14 +97,6 @@ void MenuManager::RenderSettingsPanel()
 		ImGui::SetTooltip("Save all settings to enbseries.ini, weather files, and effect configurations");
 	}
 	ImGui::EndDisabled();
-
-	if (settingManager.HasUnsavedChanges() || effectManager.AnyUnsaved()) {
-		ImGui::SameLine();
-		ImGui::TextColored(globals::menu->GetSettings().Theme.StatusPalette.Warning, "unsaved changes");
-		if (ImGui::IsItemHovered()) {
-			ImGui::SetTooltip("Settings or effect parameters differ from what is on disk. Click Save to persist them.");
-		}
-	}
 
 	ImGui::Separator();
 

@@ -2,7 +2,7 @@
 #include "Globals.h"
 #include "ShaderFileWatcher.h"
 #include "Util.h"
-#include "Utils/ShaderPatches.h"
+#include "Features/Effects11/ShaderPatches.h"
 
 #ifdef DEVBENCH_BRIDGE_ENABLED
 #	include <DevBenchAPI.h>
