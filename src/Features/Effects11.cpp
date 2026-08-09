@@ -463,6 +463,13 @@ void Effects11::OverrideWeather(RE::Sky* a_sky)
 	}
 }
 
+/** @brief Full-screen menus whose own art must not be graded by the effect chain. */
+static bool IsBlockedMenuOpen()
+{
+	auto state = globals::state;
+	return state && (state->isMainMenuOpen || state->isMapMenuOpen || state->isStatsMenuOpen);
+}
+
 void Effects11::CheckCommonData()
 {
 	static Util::FrameChecker checker;
@@ -470,11 +477,9 @@ void Effects11::CheckCommonData()
 		ENBHelper::Update();
 
 		auto& settingManager = SettingManager::GetSingleton();
-		auto state = globals::state;
-		const bool inBlockedMenu = state->isMapMenuOpen || state->isStatsMenuOpen;
 		auto& effectManager = EffectManager::GetSingleton();
 
-		enableEffect = !inBlockedMenu && globals::shaderCache->IsEnabled() && settingManager.GetValue<bool>("UseEffect", "GLOBAL") && effectManager.IsPresetLoaded();
+		enableEffect = !IsBlockedMenuOpen() && globals::shaderCache->IsEnabled() && settingManager.GetValue<bool>("UseEffect", "GLOBAL") && effectManager.IsPresetLoaded();
 
 		auto& weatherManager = WeatherManager::GetSingleton();
 
@@ -634,7 +639,7 @@ void Effects11::DrawVolumetricRays()
 	if (globals::game::sky && globals::game::sky->flags.any(RE::Sky::Flags::kHideSky))
 		return;
 
-	if (globals::state->isMapMenuOpen || globals::state->isStatsMenuOpen)
+	if (IsBlockedMenuOpen())
 		return;
 
 	auto& settingManager = SettingManager::GetSingleton();
