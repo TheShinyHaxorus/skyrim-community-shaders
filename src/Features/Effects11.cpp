@@ -467,7 +467,7 @@ void Effects11::OverrideWeather(RE::Sky* a_sky)
 static bool IsBlockedMenuOpen()
 {
 	auto state = globals::state;
-	return state && (state->isMainMenuOpen || state->isMapMenuOpen || state->isStatsMenuOpen);
+	return state && (state->IsMainOrLoadingMenuOpen() || state->isMapMenuOpen || state->isStatsMenuOpen);
 }
 
 void Effects11::CheckCommonData()
