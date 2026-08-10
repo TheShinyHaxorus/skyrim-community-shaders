@@ -1030,6 +1030,13 @@ void LightLimitFix::AddParticleLightsToBuffer(eastl::vector<LightData>& a_lights
 	}
 }
 
+template <int N>
+void LightLimitFix::Hooks::BSBatchRenderer_RenderPassImmediately<N>::thunk(RE::BSRenderPass* a_pass, uint32_t a_technique, bool a_alphaTest, uint32_t a_renderFlags)
+{
+	if (globals::features::lightLimitFix.CheckParticleLights(a_pass, a_technique))
+		func(a_pass, a_technique, a_alphaTest, a_renderFlags);
+}
+
 void LightLimitFix::Hooks::BSGeometry_Destroy::thunk(RE::BSGeometry* This)
 {
 	{
@@ -1038,4 +1045,24 @@ void LightLimitFix::Hooks::BSGeometry_Destroy::thunk(RE::BSGeometry* This)
 	}
 	func(This);
 }
+
+void LightLimitFix::Hooks::Install()
+{
+	stl::write_vfunc<0x6, BSLightingShader_SetupGeometry>(RE::VTABLE_BSLightingShader[0]);
+	stl::write_vfunc<0x6, BSEffectShader_SetupGeometry>(RE::VTABLE_BSEffectShader[0]);
+	stl::write_vfunc<0x6, BSWaterShader_SetupGeometry>(RE::VTABLE_BSWaterShader[0]);
+
+	stl::write_thunk_call<ValidLight1>(REL::RelocationID(100994, 107781).address() + 0x92);
+	stl::write_thunk_call<ValidLight2>(REL::RelocationID(100997, 107784).address() + REL::Relocate(0x139, 0x12A));
+	stl::write_thunk_call<ValidLight3>(REL::RelocationID(101296, 108283).address() + REL::Relocate(0xB7, 0x7E));
+
+	stl::write_thunk_call<RenderPass1>(REL::RelocationID(100877, 107667).address() + REL::Relocate(0x1E5, 0xED));
+	stl::write_thunk_call<RenderPass2>(REL::RelocationID(100852, 107642).address() + REL::Relocate(0x29E, 0x28F));
+	if (REL::Module::IsSE())
+		stl::write_thunk_call<RenderPass3>(REL::RelocationID(100871, 107661).address() + 0xEE);
+	stl::detour_thunk<BSGeometry_Destroy>(REL::RelocationID(69535, 70936));
+
+	logger::info("[LLF] Installed hooks");
+}
+
 #undef I18N_KEY_PREFIX

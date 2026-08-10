@@ -271,6 +271,7 @@ void State::Setup()
 	if (moonAndStarsLoaded)
 		logger::info("Moon and Stars detected, compatibility enabled");
 
+	globals::features::truePBR.SetupResources();
 	SetupResources();
 
 	// Probe typed UAV load support before features set up their resources, so any
