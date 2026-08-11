@@ -1013,10 +1013,6 @@ void Upscaling::SetupResources()
 
 	copyDepthToSharedBufferPS.attach((ID3D11PixelShader*)Util::CompileShader(L"Data\\Shaders\\Upscaling\\CopyDepthToSharedBufferPS.hlsl", { { "PSHADER", "" } }, "ps_5_0"));
 
-	// Setup HDR resources only when the HDR Display feature is loaded
-	if (globals::features::hdrDisplay.loaded) {
-		globals::features::hdrDisplay.SetupResources();
-	}
 }
 
 void Upscaling::ClearShaderCache()
@@ -1235,9 +1231,8 @@ bool Upscaling::IsFrameGenerationActive() const
 
 bool Upscaling::ShouldUseFrameGenerationThisFrame() const
 {
-	auto* ui = globals::game::ui;
 	auto* state = globals::state;
-	const bool menuOpen = (ui && ui->GameIsPaused()) || (state && state->IsMainOrLoadingMenuOpen(ui));
+	const bool menuOpen = state && state->IsPausedOrMenuOpen(globals::game::ui);
 	return IsFrameGenerationDx12PathActive() && settings.frameGenerationMode && (settings.frameGenerationAllowInMenus || !menuOpen);
 }
 
