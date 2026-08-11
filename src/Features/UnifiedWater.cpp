@@ -474,7 +474,7 @@ bool UnifiedWater::LoadOrderChanged()
 	return changed;
 }
 
-void UnifiedWater::SetFlowmapTex()
+void UnifiedWater::SetFlowmapTex() const
 {
 	RE::NiPointer<RE::NiSourceTexture> tex;
 	if (!flowmap->TryGetFlowmap(tex))
