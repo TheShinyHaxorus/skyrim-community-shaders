@@ -40,22 +40,16 @@ float UpsampleScattering(float2 fullResPixel, float fullResDepth)
 
 	float weightedSum = 0.0;
 	float weightSum = 0.0;
-	float bilinearSum = 0.0;
 	[unroll]
 	for (uint i = 0; i < 4; i++) {
 		int2 tap = clamp(basePixel + offsets[i], int2(0, 0), ScreenSizeMin1);
 		float tapDepth = SharedData::GetScreenDepth(RaymarchDepthTexture[tap]);
 		float relativeDelta = abs(referenceDepth - tapDepth) / max(referenceDepth, 1e-4);
-		// Plateau at 1 for same-surface taps: an unbounded ratio latches onto the unblurred,
-		// still-noisy depth-edge texels the game's VL blur skips, which flickers under TAA jitter.
-		float depthWeight = 1.0 - smoothstep(0.02, 0.10, relativeDelta);
-		float sample = BlurredShadowTexture[tap];
-		float weight = bilinearWeights[i] * depthWeight;
-		weightedSum += weight * sample;
+		float weight = bilinearWeights[i] * rcp(0.01 + relativeDelta);
+		weightedSum += weight * BlurredShadowTexture[tap];
 		weightSum += weight;
-		bilinearSum += bilinearWeights[i] * sample;
 	}
-	return weightSum > 1e-4 ? weightedSum / weightSum : bilinearSum;
+	return weightedSum / weightSum;
 }
 
 float4 main(VS_OUTPUT_POST input) : SV_Target0

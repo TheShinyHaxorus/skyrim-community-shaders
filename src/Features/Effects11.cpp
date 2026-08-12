@@ -290,12 +290,11 @@ void Effects11::OverrideWeather(RE::Sky* a_sky)
 
 		auto dirLightColorF3 = NiToF3(dirLightColor);
 
-		// Storm imagespaces drive sunlightScale to ~0, where the round-trip below underflows the light to black.
-		float rawSunlightScale = 0.0f;
-		if (auto imageSpaceManager = globals::game::imageSpaceManager) {
-			rawSunlightScale = imageSpaceManager->GetRuntimeData().data.baseData.hdr.sunlightScale;
+		float sunlightScale = FLT_MIN;
+		auto imageSpaceManager = globals::game::imageSpaceManager;
+		if (imageSpaceManager) {
+			sunlightScale = std::max(imageSpaceManager->GetRuntimeData().data.baseData.hdr.sunlightScale, FLT_MIN);
 		}
-		const float sunlightScale = rawSunlightScale > 1e-3f ? rawSunlightScale : 1.0f;
 		dirLightColorF3 *= sunlightScale;
 
 		dirLightColorF3 = Curve(dirLightColorF3, settingManager.GetInterpolatedTimeOfDayValue("DirectLightingCurve", "ENVIRONMENT"));
