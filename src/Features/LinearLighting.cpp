@@ -196,7 +196,6 @@ LinearLighting::PerFrameData LinearLighting::GetCommonBufferData()
 			data.effectGamma = 1.0f;
 			data.effectAlphaGamma = 1.0f;
 			data.skyGamma = 1.0f;
-			data.waterGamma = 1.0f;
 			data.vlGamma = 1.0f;
 		}
 	}
