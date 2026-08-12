@@ -86,6 +86,8 @@ public:
 
 	bool activeReflections = false;
 	bool fakeReflections = false;
+	bool sawActiveReflections = false;
+	void LatchReflectionMode();
 
 	bool resetCapture[2] = { true, true };
 	bool recompileFlag = false;

@@ -573,6 +573,7 @@ void DynamicCubemaps::UpdateCubemap()
 
 	switch (nextTask) {
 	case NextTask::kCaptureInferAndIrradianceA:
+		LatchReflectionMode();
 		UpdateCubemapCapture(false);
 		Inferrence(false);
 		Irradiance(false, 1, kIrradianceSplit, /*doSetup=*/true);
@@ -826,16 +827,27 @@ void DynamicCubemaps::SetupResources()
 
 void DynamicCubemaps::Reset()
 {
-	activeReflections = globals::state->activeReflections;
+	if (globals::state->activeReflections)
+		sawActiveReflections = true;
+}
+
+void DynamicCubemaps::LatchReflectionMode()
+{
+	bool newActive = sawActiveReflections;
+	bool newFake = false;
 
 	if (globals::game::sky)
-		fakeReflections = activeReflections && globals::game::sky->flags.any(RE::Sky::Flags::kHideSky);
-	else
-		fakeReflections = false;
+		newFake = newActive && globals::game::sky->flags.any(RE::Sky::Flags::kHideSky);
 
-	if (!activeReflections && !Util::IsInterior()) {
-		activeReflections = true;
-		fakeReflections = true;
+	if (!newActive && !Util::IsInterior()) {
+		newActive = true;
+		newFake = true;
 	}
+	if (newFake != fakeReflections)
+		resetCapture[1] = true;
+
+	activeReflections = newActive;
+	fakeReflections = newFake;
+	sawActiveReflections = false;
 }
 #undef I18N_KEY_PREFIX
