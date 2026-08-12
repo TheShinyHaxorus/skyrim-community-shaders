@@ -643,8 +643,13 @@ void EffectManager::UpdateCommonData()
 
 		if (sky) {
 			auto& weatherManager = WeatherManager::GetSingleton();
+
+			if (sky->lastWeather)
+				cachedLastWeather = sky->lastWeather;
+			auto* lastWeather = sky->lastWeather ? sky->lastWeather : cachedLastWeather;
+
 			uint32_t currentID = sky->currentWeather ? stripPluginIndex(sky->currentWeather->formID) : 0;
-			uint32_t lastID = sky->lastWeather ? stripPluginIndex(sky->lastWeather->formID) : 0;
+			uint32_t lastID = lastWeather ? stripPluginIndex(lastWeather->formID) : 0;
 
 			commonData.weather[0] = static_cast<float>(weatherManager.GetEffectiveWeatherID(currentID));
 			commonData.weather[1] = static_cast<float>(weatherManager.GetEffectiveWeatherID(lastID));
