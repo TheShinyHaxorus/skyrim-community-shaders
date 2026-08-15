@@ -39,7 +39,10 @@ void GrassCollision::QueueCollisions()
 	if (!settings.EnableGrassCollision)
 		return;
 
-	eastl::vector<GrassCollisionActorCandidate> actorCandidates{};
+	// Scratch buffers persist across frames so the per-frame gather never allocates.
+	static eastl::vector<GrassCollisionActorCandidate> actorCandidates{};
+	actorCandidates.clear();
+
 	RE::NiPoint3 cameraPosition = Util::GetEyePosition();
 
 	auto addActorCandidate = [&](RE::ActorHandle a_handle) {
@@ -67,11 +70,16 @@ void GrassCollision::QueueCollisions()
 		return a.sqDistance < b.sqDistance;
 	});
 
-	eastl::vector<BoundingBoxPacked> boundingBoxData{};
+	static eastl::vector<BoundingBoxPacked> boundingBoxData{};
+	boundingBoxData.clear();
 	boundingBoxData.reserve(MAX_BOUNDING_BOXES);
 
-	eastl::vector<float4> collisionsData{};
+	static eastl::vector<float4> collisionsData{};
+	collisionsData.clear();
 	collisionsData.reserve(MAX_COLLISIONS);
+
+	static eastl::vector<float4> collisionShapes{};
+	collisionShapes.reserve(MAX_COLLISIONS_PER_BOUNDING_BOX);
 
 	uint collisionIndexExtent = 0;
 
@@ -84,7 +92,7 @@ void GrassCollision::QueueCollisions()
 
 			float distance = std::sqrt(actorCandidate.sqDistance);
 
-			eastl::vector<float4> collisionShapes{};
+			collisionShapes.clear();
 
 			RE::BSVisit::TraverseScenegraphCollision(root, [&](RE::bhkNiCollisionObject* a_object) -> RE::BSVisit::BSVisitControl {
 				RE::NiPoint3 centerPos;
@@ -105,6 +113,9 @@ void GrassCollision::QueueCollisions()
 				}
 				return RE::BSVisit::BSVisitControl::kContinue;
 			});
+
+			if (collisionShapes.empty())
+				continue;
 
 			std::sort(collisionShapes.begin(), collisionShapes.end(), [](const float4& a, const float4& b) {
 				return a.w > b.w;
@@ -146,8 +157,9 @@ void GrassCollision::QueueCollisions()
 		}
 	}
 
-	queuedBoundingBoxes = std::move(boundingBoxData);
-	queuedCollisions = std::move(collisionsData);
+	// Swap rather than move so the scratch buffers reclaim the consumed allocation.
+	queuedBoundingBoxes.swap(boundingBoxData);
+	queuedCollisions.swap(collisionsData);
 }
 
 void GrassCollision::Update()
@@ -220,8 +232,7 @@ void GrassCollision::Update()
 		prevCellID = cellID;
 		prevEyePosNI = eyePosNI;
 
-		ID3D11Buffer* buffers[1];
-		buffers[0] = perFrame->CB();
+		ID3D11Buffer* buffers[] = { perFrame->CB() };
 		context->VSSetConstantBuffers(5, ARRAYSIZE(buffers), buffers);
 
 		ID3D11ShaderResourceView* srvs[] = { collisionTexture->srv.get() };
