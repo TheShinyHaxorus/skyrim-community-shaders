@@ -245,17 +245,6 @@ public:
 		UIIcon freeCamera;            // Free camera preview icon (CS editor)
 		UIIcon playMode;              // Play mode preview icon (CS editor)
 
-		// Category icons
-		UIIcon characters;
-		UIIcon display;
-		UIIcon grass;
-		UIIcon lighting;
-		UIIcon sky;
-		UIIcon landscape;
-		UIIcon water;
-		UIIcon debug;
-		UIIcon materials;
-		UIIcon postProcessing;
 	} uiIcons;
 
 	struct ThemeSettings
@@ -323,28 +312,28 @@ public:
 		} ScrollbarOpacity;
 		struct PaletteColors
 		{
-			ImVec4 Background{ 0.10f, 0.10f, 0.10f, 0.80f };
-			ImVec4 Text{ 1.0f, 1.0f, 1.0f, 1.0f };
+			ImVec4 Background{ 0.059f, 0.071f, 0.086f, 0.94f };
+			ImVec4 Text{ 0.902f, 0.929f, 0.953f, 1.0f };
 			// Separated border controls for better theming granularity
-			ImVec4 WindowBorder{ 0.5f, 0.5f, 0.5f, 0.8f };  // Outer window borders
-			ImVec4 FrameBorder{ 0.4f, 0.4f, 0.4f, 0.7f };   // Button, slider, input field borders
-			ImVec4 Separator{ 0.5f, 0.5f, 0.5f, 0.6f };     // Internal separators and dividers
-			ImVec4 ResizeGrip{ 0.6f, 0.6f, 0.6f, 0.8f };    // Window resize grips
+			ImVec4 WindowBorder{ 0.165f, 0.188f, 0.227f, 0.90f };  // Outer window borders
+			ImVec4 FrameBorder{ 0.149f, 0.173f, 0.208f, 0.80f };   // Button, slider, input field borders
+			ImVec4 Separator{ 0.149f, 0.173f, 0.208f, 1.0f };      // Internal separators and dividers
+			ImVec4 ResizeGrip{ 0.220f, 0.255f, 0.310f, 0.60f };    // Window resize grips
 		} Palette;
 		struct StatusPaletteColors
 		{
-			ImVec4 Disable{ 0.5f, 0.5f, 0.5f, 1.0f };
-			ImVec4 Error{ 1.0f, 0.4f, 0.4f, 1.0f };
-			ImVec4 Warning{ 1.0f, 0.6f, 0.2f, 1.0f };
-			ImVec4 RestartNeeded{ 0.4f, 1.0f, 0.4f, 1.0f };
-			ImVec4 CurrentHotkey{ 1.0f, 1.0f, 0.0f, 1.0f };
-			ImVec4 SuccessColor{ 0.0f, 1.0f, 0.0f, 1.0f };
-			ImVec4 InfoColor{ 0.2f, 0.6f, 1.0f, 1.0f };
+			ImVec4 Disable{ 0.451f, 0.482f, 0.529f, 1.0f };
+			ImVec4 Error{ 0.937f, 0.400f, 0.400f, 1.0f };
+			ImVec4 Warning{ 0.965f, 0.694f, 0.286f, 1.0f };
+			ImVec4 RestartNeeded{ 0.400f, 0.827f, 0.573f, 1.0f };
+			ImVec4 CurrentHotkey{ 0.298f, 0.647f, 1.0f, 1.0f };
+			ImVec4 SuccessColor{ 0.400f, 0.827f, 0.573f, 1.0f };
+			ImVec4 InfoColor{ 0.298f, 0.647f, 1.0f, 1.0f };
 		} StatusPalette;
 		struct FeatureHeadingColors
 		{
-			ImVec4 ColorDefault{ 0.8f, 0.8f, 0.8f, 1.0f };
-			ImVec4 ColorHovered{ 0.6f, 0.6f, 0.6f, 1.0f };
+			ImVec4 ColorDefault{ 0.902f, 0.929f, 0.953f, 1.0f };
+			ImVec4 ColorHovered{ 0.298f, 0.647f, 1.0f, 1.0f };
 			float MinimizedFactor = 0.7f;    // 70% of original alpha for when the header is minimized
 			float FeatureTitleScale = 1.5f;  // Scale multiplier for feature title text in settings tab
 		} FeatureHeading;

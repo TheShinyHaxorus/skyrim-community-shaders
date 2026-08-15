@@ -13,6 +13,7 @@
 #include "Globals.h"
 #include "I18n/I18n.h"
 #include "Menu.h"
+#include "ProfilingRenderer.h"
 #include "ShaderCache.h"
 #include "State.h"
 #include "Util.h"
@@ -37,6 +38,15 @@ void AdvancedSettingsRenderer::RenderAdvancedSettings(
 		if (MenuFonts::BeginTabItemWithFont(T("menu.advanced.tab_disable_at_boot", "Disable at Boot"), Menu::FontRole::Subheading)) {
 			if (ImGui::BeginChild("##DisableAtBootContent", ImVec2(0, 0), false)) {
 				RenderDisableAtBootSection(drawDisableAtBootSettings);
+			}
+			ImGui::EndChild();
+			ImGui::EndTabItem();
+		}
+
+		// Profiling Tab
+		if (MenuFonts::BeginTabItemWithFont(T("menu.advanced.tab_profiling", "Profiling"), Menu::FontRole::Subheading)) {
+			if (ImGui::BeginChild("##ProfilingContent", ImVec2(0, 0), false)) {
+				ProfilingRenderer::RenderStatistics();
 			}
 			ImGui::EndChild();
 			ImGui::EndTabItem();

@@ -106,18 +106,7 @@ namespace Util::IconLoader
 			{ std::string(iconFolder) + "\\pause.png", &menu->uiIcons.pauseTime.texture, &menu->uiIcons.pauseTime.size },
 			{ std::string(iconFolder) + "\\undo.png", &menu->uiIcons.undo.texture, &menu->uiIcons.undo.size },
 			{ std::string(iconFolder) + "\\free-camera.png", &menu->uiIcons.freeCamera.texture, &menu->uiIcons.freeCamera.size },
-			{ std::string(iconFolder) + "\\play-mode.png", &menu->uiIcons.playMode.texture, &menu->uiIcons.playMode.size },
-
-			{ "Categories\\characters.png", &menu->uiIcons.characters.texture, &menu->uiIcons.characters.size },
-			{ "Categories\\display.png", &menu->uiIcons.display.texture, &menu->uiIcons.display.size },
-			{ "Categories\\grass.png", &menu->uiIcons.grass.texture, &menu->uiIcons.grass.size },
-			{ "Categories\\lighting.png", &menu->uiIcons.lighting.texture, &menu->uiIcons.lighting.size },
-			{ "Categories\\sky.png", &menu->uiIcons.sky.texture, &menu->uiIcons.sky.size },
-			{ "Categories\\landscape.png", &menu->uiIcons.landscape.texture, &menu->uiIcons.landscape.size },
-			{ "Categories\\water.png", &menu->uiIcons.water.texture, &menu->uiIcons.water.size },
-			{ "Categories\\debug.png", &menu->uiIcons.debug.texture, &menu->uiIcons.debug.size },
-			{ "Categories\\materials.png", &menu->uiIcons.materials.texture, &menu->uiIcons.materials.size },
-			{ "Categories\\post-processing.png", &menu->uiIcons.postProcessing.texture, &menu->uiIcons.postProcessing.size }
+			{ std::string(iconFolder) + "\\play-mode.png", &menu->uiIcons.playMode.texture, &menu->uiIcons.playMode.size }
 		};
 	}
 

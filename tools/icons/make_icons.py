@@ -140,31 +140,34 @@ def post_processing():
 
 @action
 def save_settings():
+    # Floppy: body outline, knocked-out shutter at top, label plate at bottom.
     base, acc = Mask(), Mask()
-    base.rrect(20, 20, 108, 108, 12, W)
-    base.rrect(40, 68, 88, 108, 4, W)   # label plate
-    acc.rrect(48, 20, 84, 50, 3, fill=True)  # shutter
+    base.rrect(20, 20, 108, 108, 10, W)
+    base.rrect(42, 74, 86, 108, 4, W)         # label plate, shares the body's bottom edge
+    acc.rrect(50, 34, 78, 60, 3, fill=True)   # shutter, inset so its halo misses the body
     return base, acc
 
 
 @action
 def load_settings():
+    # Open folder: back panel with tab, accent front flap.
     base, acc = Mask(), Mask()
-    base.polyline([(22, 70), (22, 104), (106, 104), (106, 70)], W)  # tray
-    acc.bar(64, 88, 64, 26, W)                                      # arrow out
-    acc.arrow_head((64, 24), -90, 24, W)
+    base.polyline([(18, 100), (18, 36), (48, 36), (58, 50), (102, 50), (102, 68)], W)
+    acc.polyline([(22, 102), (38, 64), (112, 64), (96, 102)], W, closed=True)
     return base, acc
 
 
 @action
 def clear_cache():
+    # Cache as a data cylinder with a clear-badge; the badge sits clear of the
+    # body so it stays separable at 20px instead of filling it.
     base, acc = Mask(), Mask()
-    base.bar(94, 20, 60, 60, W)                              # handle
-    base.polyline([(34, 90), (58, 52), (86, 70), (62, 108)], W, closed=True)
-    base.bar(46, 71, 74, 89, 7)                              # bristle line
-    for cx, cy, r in ((26, 34, 7), (44, 18, 5), (16, 60, 5)):  # sparkles
-        acc.polyline(arc_pts(cx, cy, r, 0, 0) + arc_pts(cx, cy, r, 180, 180), 7)
-        acc.polyline(arc_pts(cx, cy, r, 90, 90) + arc_pts(cx, cy, r, 270, 270), 7)
+    base.ellipse_ring(54, 30, 30, 11, W)                       # top disc
+    base.bar(24, 30, 24, 72, W)                                # left wall
+    base.bar(84, 30, 84, 62, W)                                # right wall
+    base.polyline(ellipse_pts(54, 72, 30, 11, 0, 180), W)      # bottom rim
+    acc.bar(80, 112, 112, 80, W)                               # clear badge
+    acc.bar(80, 80, 112, 112, W)
     return base, acc
 
 

@@ -29,8 +29,8 @@ namespace
 {
 	// Core built-in menu names that always appear first in the menu list
 	// These are canonical identifiers used for logic — NOT translated
-	constexpr std::array<const char*, 5> CORE_MENU_NAMES = {
-		"Home", "General", "Advanced", "Profiling", "Display"
+	constexpr std::array<const char*, 2> CORE_MENU_NAMES = {
+		"General", "Advanced"
 	};
 
 	const char* GetCoreMenuDisplayName(const char* canonicalName)
@@ -294,8 +294,8 @@ void FeatureListRenderer::RenderFeatureList(
 	int numColumns = leftPanelVisible ? 2 : 1;
 	if (ImGui::BeginTable("Menus Table", numColumns, ImGuiTableFlags_SizingStretchProp | ImGuiTableFlags_Resizable)) {
 		if (leftPanelVisible) {
-			ImGui::TableSetupColumn("##ListOfMenus", 0, 2);
-			ImGui::TableSetupColumn("##MenuConfig", 0, 8);
+			ImGui::TableSetupColumn("##ListOfMenus", 0, 1.35f);
+			ImGui::TableSetupColumn("##MenuConfig", 0, 8.65f);
 			RenderLeftColumn(menuList, selectedMenu, featureSearch, categoryExpansionStates);
 			RenderRightColumn(menuList, selectedMenu, pendingFeatureSelection);
 		} else {
@@ -331,10 +331,8 @@ std::vector<FeatureListRenderer::MenuFuncInfo> FeatureListRenderer::BuildMenuLis
 	}
 
 	auto menuList = std::vector<MenuFuncInfo>{
-		BuiltInMenu{ T("menu.features.home", "Home"), []() { HomePageRenderer::RenderHomePage(); } },
 		BuiltInMenu{ T("menu.features.general", "General"), drawGeneralSettings },
-		BuiltInMenu{ T("menu.features.advanced", "Advanced"), drawAdvancedSettings },
-		BuiltInMenu{ T("menu.features.profiling", "Profiling"), []() { ProfilingRenderer::RenderStatistics(); } }
+		BuiltInMenu{ T("menu.features.advanced", "Advanced"), drawAdvancedSettings }
 	};  // NOTE: The menu list is rebuilt every frame, so category expansion states
 	// persist correctly. This is acceptable since the list is small and built
 	// infrequently, but could be optimized if performance becomes an issue.

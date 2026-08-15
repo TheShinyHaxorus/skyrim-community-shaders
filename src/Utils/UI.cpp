@@ -831,53 +831,14 @@ namespace Util
 
 	bool DrawCategoryHeader(const char* categoryKey, const char* displayName, bool& isExpanded, int categoryCount)
 	{
-		// Get the appropriate icon for this category
-		ID3D11ShaderResourceView* categoryIcon = nullptr;
-		auto& menu = Menu::GetSingleton()->uiIcons;
+		std::string headerText = std::format("{}  {}", displayName, categoryCount);
 
-		const std::pair<std::string_view, ID3D11ShaderResourceView*> categoryIcons[]{
-			{ FeatureCategories::kCharacters, menu.characters.texture },
-			{ FeatureCategories::kDisplay, menu.display.texture },
-			{ FeatureCategories::kGrass, menu.grass.texture },
-			{ FeatureCategories::kLighting, menu.lighting.texture },
-			{ FeatureCategories::kSky, menu.sky.texture },
-			{ FeatureCategories::kLandscapeAndTextures, menu.landscape.texture },
-			{ FeatureCategories::kWater, menu.water.texture },
-			{ FeatureCategories::kUtility, menu.debug.texture },
-			{ FeatureCategories::kMaterials, menu.materials.texture },
-			{ FeatureCategories::kPostProcessing, menu.postProcessing.texture },
-		};
-		for (const auto& [key, icon] : categoryIcons) {
-			if (key == categoryKey) {
-				categoryIcon = icon;
-				break;
-			}
-		}
-
-		// Keep icon lookup on the stable category key and render the translated label separately.
-		std::string headerText = std::format("{} ({})", displayName, categoryCount);
-
-		// Draw category header with custom styling
 		ImDrawList* drawList = ImGui::GetWindowDrawList();
 		ImVec2 pos = ImGui::GetCursorScreenPos();
 		float availableWidth = ImGui::GetContentRegionAvail().x;
 
-		// Calculate icon size based on current font size to match text scaling
-		// This ensures icons scale consistently with text when the font scale changes
-		const float currentFontSize = ImGui::GetFontSize();
-		const float iconSize = currentFontSize * 1.2f;     // 20% larger than font height
-		const float iconSpacing = currentFontSize * 0.3f;  // 30% of font height for spacing
 		ImVec2 textSize = ImGui::CalcTextSize(headerText.c_str());
-
-		// Calculate total content width (icon + spacing + text)
-		float contentWidth = textSize.x;
-		if (categoryIcon) {
-			contentWidth += iconSize + iconSpacing;
-		}
-
-		// Calculate line positions
 		float lineY = pos.y + textSize.y * 0.5f;
-		float lineLength = (availableWidth - contentWidth - 20.0f) * 0.5f;  // 20px for padding
 
 		// Create selectable area for the entire header
 		ImGui::PushID(categoryKey);
@@ -906,35 +867,18 @@ namespace Util
 		if (hovered) {
 			color.w *= 0.8f;  // 80% alpha when hovered
 		}
-		ImU32 headerColor = ImGui::GetColorU32(color);  // Left line
-		if (lineLength > 0) {
-			drawList->AddLine(ImVec2(pos.x, lineY), ImVec2(pos.x + lineLength, lineY), headerColor, 1.0f);
+		ImU32 headerColor = ImGui::GetColorU32(color);
+
+		// Left-aligned label with a single trailing rule; reads cleanly in a narrow sidebar.
+		drawList->AddText(ImVec2(pos.x, pos.y + 2.0f), headerColor, headerText.c_str());
+
+		float ruleStart = pos.x + textSize.x + 8.0f;
+		float ruleEnd = pos.x + availableWidth;
+		if (ruleStart < ruleEnd) {
+			ImVec4 ruleColor = color;
+			ruleColor.w *= 0.35f;
+			drawList->AddLine(ImVec2(ruleStart, lineY), ImVec2(ruleEnd, lineY), ImGui::GetColorU32(ruleColor), 1.0f);
 		}
-
-		// Right line
-		float rightLineStart = pos.x + lineLength + 10.0f + contentWidth + 10.0f;
-		if (rightLineStart < pos.x + availableWidth) {
-			drawList->AddLine(ImVec2(rightLineStart, lineY), ImVec2(pos.x + availableWidth, lineY), headerColor, 1.0f);
-		}
-
-		// Draw icon and text
-		float currentX = pos.x + lineLength + 10.0f;
-
-		// Draw icon if available
-		if (categoryIcon) {
-			ImVec2 iconPos = ImVec2(currentX, pos.y + (textSize.y - iconSize) * 0.5f + 2.0f);
-			ImVec2 iconMax = ImVec2(iconPos.x + iconSize, iconPos.y + iconSize);
-
-			// Apply the same color tint as the text
-			ImU32 iconTint = headerColor;
-			drawList->AddImage(categoryIcon, iconPos, iconMax, ImVec2(0, 0), ImVec2(1, 1), iconTint);
-
-			currentX += iconSize + iconSpacing;
-		}
-
-		// Center text
-		ImVec2 textPos = ImVec2(currentX, pos.y + 2.0f);
-		drawList->AddText(textPos, headerColor, headerText.c_str());
 
 		// Handle click to toggle expansion
 		if (clicked) {

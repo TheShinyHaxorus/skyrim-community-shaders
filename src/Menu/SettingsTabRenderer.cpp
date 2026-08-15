@@ -10,6 +10,7 @@
 #include "FontSelector.h"
 #include "Fonts.h"
 #include "Globals.h"
+#include "HomePageRenderer.h"
 #include "I18n/I18n.h"
 #include "CursorLoader.h"
 #include "IconLoader.h"
@@ -207,6 +208,8 @@ namespace
 
 void SettingsTabRenderer::RenderGeneralSettings(SettingsState& state)
 {
+	HomePageRenderer::RenderActiveConstraintsSection();
+
 	MenuFonts::TabBarPaddingGuard tabPaddingGuard(Menu::FontRole::Heading);
 	if (ImGui::BeginTabBar("##GeneralTabBar", ImGuiTabBarFlags_None)) {
 		RenderShadersTab();

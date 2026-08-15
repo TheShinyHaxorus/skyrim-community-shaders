@@ -371,16 +371,6 @@ Menu::~Menu()
 	uiIcons.applyToGame.Release();
 	uiIcons.pauseTime.Release();
 	uiIcons.undo.Release();
-	uiIcons.characters.Release();
-	uiIcons.display.Release();
-	uiIcons.grass.Release();
-	uiIcons.lighting.Release();
-	uiIcons.sky.Release();
-	uiIcons.landscape.Release();
-	uiIcons.water.Release();
-	uiIcons.debug.Release();
-	uiIcons.materials.Release();
-	uiIcons.postProcessing.Release();
 	uiIcons.freeCamera.Release();
 	uiIcons.playMode.Release();
 	uiIcons.search.Release();
