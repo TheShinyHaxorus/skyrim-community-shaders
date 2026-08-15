@@ -41,6 +41,16 @@ Effects11::PerFrame Effects11::GetCommonBufferData()
 	auto colorFilter = settingManager.GetInterpolatedColorTimeOfDayValue("ColorFilter", "GAMEVOLUMETRICRAYS");
 	data.VolumetricRaysColorFilter = { colorFilter.x, colorFilter.y, colorFilter.z };
 
+	data.EnableWater = enableEffect && settingManager.GetValue<bool>("EnableWater", "EFFECT");
+	data.WaterWavesAmplitude = settingManager.GetInterpolatedTimeOfDayValue("WavesAmplitude", "WATER");
+	data.WaterMuddiness = settingManager.GetValue<float>("Muddiness", "WATER");
+	data.WaterSunLightingMultiplier = settingManager.GetValue<float>("SunLightingMultiplier", "WATER");
+	data.WaterSunSpecularMultiplier = settingManager.GetValue<float>("SunSpecularMultiplier", "WATER");
+	data.WaterFresnelMin = settingManager.GetValue<float>("FresnelMin", "WATER");
+	data.WaterFresnelMax = settingManager.GetValue<float>("FresnelMax", "WATER");
+	data.WaterFresnelMultiplier = settingManager.GetValue<float>("FresnelMultiplier", "WATER");
+	data.WaterReflectionAmount = settingManager.GetValue<float>("ReflectionAmount", "WATER");
+
 	data.UseProceduralGradientWeights = enableEffect && settingManager.GetValue<bool>("UseProceduralGradientWeights", "SKY");
 	data.ProceduralGradientWeightCurve = settingManager.GetInterpolatedTimeOfDayValue("ProceduralGradientWeightCurve", "SKY");
 
@@ -345,6 +355,14 @@ void Effects11::OverrideWeather(RE::Sky* a_sky)
 
 		a_sky->fogNear /= fogAmountMultiplier;
 		a_sky->fogFar /= fogAmountMultiplier;
+	}
+
+	if (settingManager.GetValue<bool>("EnableWater", "EFFECT")) {
+		auto& waterColor = colors[(uint)RE::TESWeather::ColorTypes::kWaterMultiplier];
+
+		auto waterColorF3 = NiToF3(waterColor);
+		waterColorF3 = Intensity(waterColorF3, settingManager.GetInterpolatedTimeOfDayValue("Brightness", "WATER"));
+		waterColor = F3ToNi(waterColorF3);
 	}
 
 	if (enableEffect) {

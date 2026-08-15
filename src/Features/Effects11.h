@@ -66,6 +66,21 @@ public:
 
 		float VolumetricRaysDesaturation;
 		float3 VolumetricRaysColorFilter;
+
+		uint EnableWater;
+		float WaterWavesAmplitude;
+		float WaterMuddiness;
+		float WaterSunLightingMultiplier;
+
+		float WaterSunSpecularMultiplier;
+		float WaterFresnelMin;
+		float WaterFresnelMax;
+		float WaterFresnelMultiplier;
+
+		float WaterReflectionAmount;
+		float WaterPad0;
+		float WaterPad1;
+		float WaterPad2;
 	};
 
 	bool enableEffect = false;
