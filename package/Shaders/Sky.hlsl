@@ -171,14 +171,10 @@ cbuffer AlphaTestRefCB : register(b11)
 #		include "HDRDisplay/HDRSun.hlsli"
 #	endif
 
-#	if defined(CLOUD_RELIGHT) && defined(CLOUD_SHADOWS) && defined(TEX) && defined(CLOUDS)
-#		define CR_CLOUDS
-#		include "CloudRelight/CloudRelight.hlsli"
-#	endif
-
 Texture2D<float> TexDepthSampler : register(t17);
 
 #	if defined(EFFECTS11)
+// Hestroffer limb darkening, per-RGB wavelength (680/550/440nm); unity at disk centre.
 // url: http://www.physics.hmc.edu/faculty/esin/a101/limbdarkening.pdf
 float3 LimbDarkenHestroffer(float normDist)
 {
@@ -207,6 +203,8 @@ float3 ComputeProceduralSun(float2 uv)
 	float c = saturate(dist * SharedData::enbSettings.ProceduralSunCoronaScale);
 	float corona = (1.0 - c) * rcp(SharedData::enbSettings.ProceduralSunCoronaFalloff * c + 1.0) * SharedData::enbSettings.ProceduralSunGlowIntensity;
 
+	// Same disk size and EdgeSoftness band as before, but never narrower than a pixel (it is
+	// sub-pixel at default settings, which is what made the edge alias).
 	float radius = length(p);
 	float diskRadius = sqrt(max(SharedData::enbSettings.ProceduralSunDiskRadiusSq, 1e-12));
 	float softSq = saturate(rcp(max(SharedData::enbSettings.ProceduralSunDiskEdgeScale * SharedData::enbSettings.ProceduralSunDiskRadiusSq, 1e-12)));
@@ -237,14 +235,6 @@ PS_OUTPUT main(PS_INPUT input)
 	blendColor.xyz = Color::Sky(blendColor.xyz);
 	baseColor.xyz = Color::Sky(baseColor.xyz);
 	baseColor = PParams.xxxx * (-baseColor + blendColor) + baseColor;
-#		endif
-
-#		if defined(CR_CLOUDS)
-	if (SharedData::cloudRelightSettings.enabled) {
-		float3 crViewDir = normalize(input.WorldPosition.xyz);
-		if (CloudShadows::IntersectCloudDist(float3(0, 0, 0), crViewDir) >= 0)
-			baseColor.rgb = CloudRelight::RelightCloud(baseColor, crViewDir, SampBaseSampler);
-	}
 #		endif
 
 #		if defined(HDR_OUTPUT)

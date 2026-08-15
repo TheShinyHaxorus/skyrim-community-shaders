@@ -444,17 +444,6 @@ namespace SharedData
 		uint2 pad;
 	};
 
-	struct CloudRelightSettings
-	{
-		uint enabled;
-		float cloudRelightMix;
-		float cloudOriginalMix;
-		float silverLiningMix;
-
-		float silverLiningSpread;
-		float3 pad;
-	};
-
 	cbuffer FeatureData : register(b6)
 	{
 		GrassLightingSettings grassLightingSettings;
@@ -479,7 +468,6 @@ namespace SharedData
 		VanillaFresnelSettings vanillaFresnelSettings;
 		SnowCoverSettings snowCoverSettings;
 		UnifiedWaterSettings unifiedWaterSettings;
-		CloudRelightSettings cloudRelightSettings;
 	};
 
 	Texture2D<float4> DepthTexture : register(t17);
