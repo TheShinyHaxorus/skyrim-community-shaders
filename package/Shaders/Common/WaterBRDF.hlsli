@@ -15,10 +15,13 @@ namespace WaterBRDF
 	// Artistic boost: real water reads brighter than a single-layer BRDF predicts.
 	static const float WATER_SPECULAR_ENERGY_BOOST = 2.5f;
 
+	// Keeps the grazing-angle glint out of fp16 overflow (Inf * 0 downstream is the NaN).
+	static const float WATER_SPECULAR_MAX = 128.0f;
+
 	// Blinn-Phong specular power -> GGX roughness (alpha).
 	float SpecularPowerToRoughness(float specPower)
 	{
-		float perceptualRoughness = saturate(sqrt(2.0f / (specPower + 2.0f)));
+		float perceptualRoughness = saturate(sqrt(2.0f / (max(specPower, 0.0f) + 2.0f)));
 		perceptualRoughness = max(perceptualRoughness, 0.001f);
 		return perceptualRoughness * perceptualRoughness;
 	}
@@ -49,13 +52,23 @@ namespace WaterBRDF
 	// D * Vis * F. viewDirection is camera->surface; lightDirection points toward the sun.
 	float3 SpecularBRDF(float3 normal, float3 viewDirection, float3 lightDirection, float specPower)
 	{
+		float nLenSq = dot(normal, normal);
+		if (nLenSq < 1e-8f)
+			return 0.0.xxx;
+		float3 N = normal * rsqrt(nLenSq);
+
 		float3 V = -viewDirection;
 		float3 L = lightDirection;
-		float3 H = normalize(L + V);
 
-		float NdotH = saturate(dot(normal, H));
-		float NdotV = max(dot(normal, V), 1e-4f);
-		float NdotL = saturate(dot(normal, L));
+		float3 halfRaw = L + V;
+		float hLenSq = dot(halfRaw, halfRaw);
+		if (hLenSq < 1e-8f)
+			return 0.0.xxx;
+		float3 H = halfRaw * rsqrt(hLenSq);
+
+		float NdotH = saturate(dot(N, H));
+		float NdotV = max(dot(N, V), 1e-4f);
+		float NdotL = saturate(dot(N, L));
 		float VdotH = saturate(dot(V, H));
 
 		if (NdotL < 1e-4f)
@@ -65,7 +78,7 @@ namespace WaterBRDF
 		float D = D_GGX(NdotH, roughness);
 		float Vis = V_SmithGGXCorrelated(NdotV, NdotL, roughness);
 		float3 F = F_Schlick(VdotH, WATER_F0);
-		return D * Vis * F;
+		return min(D * Vis * F, WATER_SPECULAR_MAX);
 	}
 
 	// Barré-Brisebois backlit translucency. Thickness proxy is normal tilt (wavelet
