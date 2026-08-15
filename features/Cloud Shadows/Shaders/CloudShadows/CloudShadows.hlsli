@@ -1,3 +1,6 @@
+#ifndef CLOUD_SHADOWS_HLSLI
+#define CLOUD_SHADOWS_HLSLI
+
 #include "Common/Game.hlsli"
 
 namespace CloudShadows
@@ -7,6 +10,19 @@ namespace CloudShadows
 	const static float CloudHeight = (2e3f / GAME_UNIT_TO_M);
 	const static float PlanetRadius = (6371e3f / GAME_UNIT_TO_M);
 	const static float RcpHPlusR = (1.0 / (CloudHeight + PlanetRadius));
+
+	// Distance to the cloud layer along dir; -1 when rel_pos is above the layer.
+	float IntersectCloudDist(float3 rel_pos, float3 dir)
+	{
+		float r = PlanetRadius;
+		float3 p = (rel_pos + float3(0, 0, r)) * RcpHPlusR;
+		float dotprod = dot(p, dir);
+		float lengthsqr = dot(p, p);
+		if (lengthsqr > 1)
+			return -1;
+		float t = -dotprod + sqrt(dotprod * dotprod - lengthsqr + 1);
+		return t * (r + CloudHeight);
+	}
 
 	float3 GetCloudShadowSampleDir(float3 rel_pos, float3 eye_to_sun)
 	{
@@ -26,3 +42,4 @@ namespace CloudShadows
 		return saturate(1.0 - cloudCubeSample * SharedData::cloudShadowsSettings.Opacity);
 	}
 }
+#endif

@@ -2,6 +2,7 @@
 
 #include <array>
 
+#include "Features/CloudRelight.h"
 #include "Features/CloudShadows.h"
 #include "Features/DynamicCubemaps.h"
 #include "Features/Effects11.h"
@@ -68,5 +69,6 @@ std::pair<unsigned char*, size_t> GetFeatureBufferData(bool a_inWorld)
 		globals::features::skin.GetCommonBufferData(),
 		globals::features::vanillaFresnel.settings,
 		globals::features::snowCover.GetCommonBufferData(),
-		globals::features::unifiedWater.GetCommonBufferData());
+		globals::features::unifiedWater.GetCommonBufferData(),
+		globals::features::cloudRelight.settings);
 }
