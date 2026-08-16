@@ -584,7 +584,10 @@ PS_OUTPUT main(PS_INPUT input, bool frontFace : SV_IsFrontFace)
 	psout.MotionVectors = MotionBlur::GetSSMotionVector(input.WorldPosition, input.PreviousWorldPosition);
 
 	float3 viewDirection = -normalize(input.WorldPosition.xyz);
-	float3 normal = normalize(input.VertexNormal.xyz);
+	float3 vertexNormal = input.VertexNormal.xyz;
+	float vertexNormalLengthSq = dot(vertexNormal, vertexNormal);
+	vertexNormal = vertexNormalLengthSq > 0.0 ? vertexNormal * rsqrt(vertexNormalLengthSq) : float3(0.0, 0.0, 1.0);
+	float3 normal = vertexNormal;
 
 	float3 viewPosition = mul(FrameBuffer::CameraView, float4(input.WorldPosition.xyz, 1)).xyz;
 	float2 screenUV = FrameBuffer::ViewToUV(viewPosition);
@@ -617,15 +620,13 @@ PS_OUTPUT main(PS_INPUT input, bool frontFace : SV_IsFrontFace)
 		if (!frontFace)
 			normal = -normal;
 
-	float3x3 tbn = 0;
-
 	if (complexDetail)
 	{
 		float3 normalColor = GrassLighting::TransformNormal(specColor.xyz);
 		// world-space -> tangent-space -> world-space.
 		// This is because we don't have pre-computed tangents.
-		tbn = GrassLighting::CalculateTBN(normal, -input.WorldPosition.xyz, input.TexCoord.xy);
-		normal = normalize(mul(normalColor, tbn));
+		float3x3 tbn = GrassLighting::CalculateTBN(normal, -input.WorldPosition.xyz, input.TexCoord.xy);
+		normal = GrassLighting::ApplyComplexNormal(normal, normalColor, tbn);
 	}
 
 	if (!complex || SharedData::grassLightingSettings.OverrideComplexGrassSettings)
@@ -683,8 +684,9 @@ PS_OUTPUT main(PS_INPUT input, bool frontFace : SV_IsFrontFace)
 	float softLightRolloff = saturate(input.VertexNormal.w * 10.0) * SharedData::grassLightingSettings.SubsurfaceScatteringAmount * 2.0;
 
 	float3 vertexColor = Color::ColorToLinear(input.Color.xyz);
-	float vertexAO = max(max(vertexColor.r, vertexColor.g), vertexColor.b);
-	vertexColor /= max(vertexAO, EPSILON_DIVISION);
+	float vertexColorMax = max(max(vertexColor.r, vertexColor.g), vertexColor.b);
+	vertexColor = vertexColorMax > EPSILON_DIVISION ? vertexColor / vertexColorMax : 1.0;
+	float vertexAO = lerp(1.0, saturate(vertexColorMax), SharedData::grassLightingSettings.VertexAOStrength);
 
 #				if defined(SKYLIGHTING)
 	float3 positionMSSkylight = input.WorldPosition.xyz;
@@ -706,7 +708,7 @@ PS_OUTPUT main(PS_INPUT input, bool frontFace : SV_IsFrontFace)
 	float wetnessOcclusion = 1.0;
 #				endif
 	// Grass is foliage, so puddles and wall run-off never apply.
-	WetnessEffects::SurfaceWetnessState wetnessState = WetnessEffects::GetSurfaceWetnessState(input.WorldPosition.xyz, wetnessWorldPosition, wetnessWorldPosition, normal, normalize(input.VertexNormal.xyz), wetnessWaterHeight, wetnessOcclusion, wetnessNearFactor, -1.0, 0.0, false, false);
+	WetnessEffects::SurfaceWetnessState wetnessState = WetnessEffects::GetSurfaceWetnessState(input.WorldPosition.xyz, wetnessWorldPosition, wetnessWorldPosition, normal, vertexNormal, wetnessWaterHeight, wetnessOcclusion, wetnessNearFactor, -1.0, 0.0, false, false);
 	WetnessEffects::ApplySurfaceWetnessAlbedo(baseColor.xyz, wetnessState, 1.0);
 	float3 wetnessDirectSpecularColor = 0;
 #			endif
@@ -801,6 +803,8 @@ PS_OUTPUT main(PS_INPUT input, bool frontFace : SV_IsFrontFace)
 		directionalAmbientColor = ImageBasedLighting::GetDiffuseIBL(directionalAmbientColor, -normal);
 #				endif
 
+	directionalAmbientColor *= vertexAO;
+
 	diffuseColor += directionalAmbientColor;
 	diffuseColor += subsurfaceColor * albedo;
 	diffuseColor *= albedo;
@@ -830,14 +834,11 @@ PS_OUTPUT main(PS_INPUT input, bool frontFace : SV_IsFrontFace)
 		psout.Diffuse = float4(diffuseColor, 1);
 	}
 #			else
-	psout.Diffuse.xyz = diffuseColor;
+	psout.Diffuse = float4(diffuseColor, 1);
 #			endif
 
 	float3 outputNormal = normal;
-	// Kept separate from `roughness` above, which is the Glossiness-derived value the
-	// specular BRDF uses; this one round-trips specColor.w so the no-wetness result is
-	// bit-identical to writing specColor.w directly.
-	float outputRoughness = saturate(1.0 - specColor.w);
+	float outputRoughness = complexDetail ? saturate(1.0 - specColor.w) : saturate(1.0 - SharedData::grassLightingSettings.Glossiness * 0.01);
 #			if defined(WETNESS_EFFECTS)
 	WetnessEffects::ApplySurfaceWetnessOutput(wetnessState, outputNormal, outputRoughness);
 #			endif
@@ -848,8 +849,8 @@ PS_OUTPUT main(PS_INPUT input, bool frontFace : SV_IsFrontFace)
 	psout.NormalGlossiness = float4(GBuffer::EncodeNormal(normalVS), 1.0 - outputRoughness, 1);
 
 	psout.Specular = float4(specularColor, 1);
-	psout.Masks = float4(0, 0, Color::RGBToYCoCg(directionalAmbientColor).x, 0);
-	psout.Masks2 = float4(1.0 - vertexAO, 0, 0, 0);
+	psout.Masks = float4(0, 0, Color::RGBToYCoCg(directionalAmbientColor).x, 1);
+	psout.Masks2 = float4(1.0 - vertexAO, 0, 0, 1);
 #		endif
 
 	return psout;
@@ -962,13 +963,16 @@ PS_OUTPUT main(PS_INPUT input)
 	}
 #			endif  // LIGHT_LIMIT_FIX
 
-	float3 ddx = ddx_coarse(input.WorldPosition);
-	float3 ddy = ddy_coarse(input.WorldPosition);
-	float3 normal = -normalize(cross(ddx, ddy));
+	float3 ddx = ddx_coarse(input.WorldPosition.xyz);
+	float3 ddy = ddy_coarse(input.WorldPosition.xyz);
+	float3 faceNormal = cross(ddx, ddy);
+	float faceNormalLengthSq = dot(faceNormal, faceNormal);
+	float3 normal = faceNormalLengthSq > 0.0 ? -faceNormal * rsqrt(faceNormalLengthSq) : normalize(-input.WorldPosition.xyz);
 
 	float3 vertexColor = Color::ColorToLinear(input.Color.xyz);
-	float vertexAO = max(max(vertexColor.r, vertexColor.g), vertexColor.b);
-	vertexColor /= max(vertexAO, EPSILON_DIVISION);
+	float vertexColorMax = max(max(vertexColor.r, vertexColor.g), vertexColor.b);
+	vertexColor = vertexColorMax > EPSILON_DIVISION ? vertexColor / vertexColorMax : 1.0;
+	float vertexAO = lerp(1.0, saturate(vertexColorMax), SharedData::grassLightingSettings.VertexAOStrength);
 
 #			if defined(SKYLIGHTING)
 	float3 positionMSSkylight = input.WorldPosition.xyz;
@@ -986,6 +990,8 @@ PS_OUTPUT main(PS_INPUT input)
 	if (SharedData::iblSettings.EnableIBL)
 		directionalAmbientColor = ImageBasedLighting::GetDiffuseIBL(directionalAmbientColor, -normal);
 #			endif
+
+	directionalAmbientColor *= vertexAO;
 
 	float3 albedo = baseColor.xyz * vertexColor;
 
@@ -1007,8 +1013,8 @@ PS_OUTPUT main(PS_INPUT input)
 	psout.Normal.zw = 0;
 
 	psout.Albedo = float4(albedo, 1);
-	psout.Masks = float4(0, 0, Color::RGBToYCoCg(directionalAmbientColor).x, 0);
-	psout.Masks2 = float4(1.0 - vertexAO, 0, 0, 0);
+	psout.Masks = float4(0, 0, Color::RGBToYCoCg(directionalAmbientColor).x, 1);
+	psout.Masks2 = float4(1.0 - vertexAO, 0, 0, 1);
 #		endif
 
 	return psout;

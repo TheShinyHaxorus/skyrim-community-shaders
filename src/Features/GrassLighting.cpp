@@ -14,7 +14,8 @@ NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(
 	BasicGrassBrightness,
 	ComplexGrassThreshold,
 	MidLODBrightness,
-	FarLODBrightness)
+	FarLODBrightness,
+	VertexAOStrength)
 
 void GrassLighting::DrawSettings()
 {
@@ -68,6 +69,16 @@ void GrassLighting::DrawSettings()
 								  "This option will treat their grass settings like non-complex grass. "
 								  "This was the default in Bottled Shaders < 0.7.0"));
 		}
+		ImGui::Spacing();
+		ImGui::SliderFloat(T(TKEY("vertex_ao_strength"), "Vertex Occlusion"), &settings.VertexAOStrength, 0.0f, 1.0f);
+		if (auto _tt = Util::HoverTooltipWrapper()) {
+			ImGui::Text("%s", T(TKEY("vertex_ao_strength_tooltip"),
+								  "How much of the mesh author's vertex colour darkening is applied as ambient occlusion. "
+								  "Grass meshes usually darken the base of each clump this way. "
+								  "The tint is always kept; this only controls the brightness component. "
+								  "Set to 0 for uniformly lit grass."));
+		}
+
 		ImGui::Spacing();
 		ImGui::Spacing();
 		ImGui::TextWrapped("%s", T(TKEY("basic_grass"), "Basic Grass"));

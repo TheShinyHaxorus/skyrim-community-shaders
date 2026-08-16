@@ -47,7 +47,17 @@ namespace GrassLighting
 		float3 B = dp2perp * duv1.y + dp1perp * duv2.y;
 
 		// construct a scale-invariant frame
-		float invmax = rsqrt(max(dot(T, T), dot(B, B)));
+		float maxLengthSq = max(dot(T, T), dot(B, B));
+		float invmax = maxLengthSq > 0.0 ? rsqrt(maxLengthSq) : 0.0;
 		return float3x3(T * invmax, B * invmax, N);
+	}
+
+	float3 ApplyComplexNormal(float3 geometricNormal, float3 packedNormal, float3x3 tbn)
+	{
+		float lengthSq = dot(packedNormal, packedNormal);
+		float validity = saturate((0.5 - abs(sqrt(lengthSq) - 1.0)) * 4.0);
+		float3 mappedNormal = mul(packedNormal * rsqrt(max(lengthSq, EPSILON_DIVISION)), tbn);
+		mappedNormal = normalize(lerp(geometricNormal, mappedNormal, validity));
+		return dot(mappedNormal, mappedNormal) > 0.5 ? mappedNormal : geometricNormal;
 	}
 }
