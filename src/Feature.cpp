@@ -31,6 +31,7 @@
 #include "Features/SkySync.h"
 #include "Features/Skylighting.h"
 #include "Features/SnowCover.h"
+#include "Features/SpecularAntialiasing.h"
 #include "Features/SubsurfaceScattering.h"
 #include "Features/TerrainBlending.h"
 #include "Features/TerrainHelper.h"
@@ -243,6 +244,7 @@ const std::vector<Feature*>& Feature::GetFeatureList()
 		&globals::features::terrainBlending,
 		&globals::features::terrainHelper,
 		&globals::features::vanillaFresnel,
+		&globals::features::specularAntialiasing,
 		&globals::features::volumetricLighting,
 		&globals::features::lodBlending,
 		&globals::features::inverseSquareLighting,

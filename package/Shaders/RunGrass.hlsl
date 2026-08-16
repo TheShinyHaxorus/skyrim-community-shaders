@@ -6,6 +6,7 @@
 #include "Common/Permutation.hlsli"
 #include "Common/Random.hlsli"
 #include "Common/SharedData.hlsli"
+#include "Common/SpecularAA.hlsli"
 
 #define DEFERRED
 
@@ -641,7 +642,7 @@ PS_OUTPUT main(PS_INPUT input, bool frontFace : SV_IsFrontFace)
 #			else
 	float3 F0 = 0.0;
 #			endif
-	float roughness = saturate(1.0 - SharedData::grassLightingSettings.Glossiness * 0.01);
+	float roughness = SpecularAA::FilterRoughness(saturate(1.0 - SharedData::grassLightingSettings.Glossiness * 0.01), normal);
 
 	float llDirLightMult = (SharedData::linearLightingSettings.enableLinearLighting && !SharedData::linearLightingSettings.isDirLightLinear) ? SharedData::linearLightingSettings.dirLightMult : 1.0f;
 	float3 dirLightColor = Color::DirectionalLight(SharedData::DirLightColor.xyz / max(llDirLightMult, 1e-5), SharedData::linearLightingSettings.isDirLightLinear) * llDirLightMult;
@@ -840,6 +841,7 @@ PS_OUTPUT main(PS_INPUT input, bool frontFace : SV_IsFrontFace)
 #			if defined(WETNESS_EFFECTS)
 	WetnessEffects::ApplySurfaceWetnessOutput(wetnessState, outputNormal, outputRoughness);
 #			endif
+	outputRoughness = SpecularAA::FilterRoughness(outputRoughness, outputNormal);
 
 	float3 normalVS = normalize(FrameBuffer::WorldToView(outputNormal, false));
 	psout.Albedo = float4(albedo, 1);

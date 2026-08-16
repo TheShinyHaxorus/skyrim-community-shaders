@@ -11,6 +11,7 @@
 #include "Common/Shading.hlsli"
 #include "Common/SharedData.hlsli"
 #include "Common/Skinned.hlsli"
+#include "Common/SpecularAA.hlsli"
 #include "Common/Triplanar.hlsli"
 
 #if defined(FACEGEN) || defined(FACEGEN_RGB_TINT)
@@ -2217,6 +2218,12 @@ PS_OUTPUT main(PS_INPUT input, bool frontFace : SV_IsFrontFace)
 
 	float3 wetnessNormal = wetnessState.normal;
 	waterRoughnessSpecular = wetnessState.roughness;
+#	endif
+
+	float specularAAVariance = SpecularAA::NormalVariance(worldNormal.xyz);
+	material.Roughness = SpecularAA::FilterRoughness(material.Roughness, specularAAVariance);
+#	if defined(SKIN) && defined(CS_SKIN)
+	material.RoughnessSecondary = SpecularAA::FilterRoughness(material.RoughnessSecondary, specularAAVariance);
 #	endif
 
 	float llDirLightMult = SharedData::linearLightingSettings.enableLinearLighting && !SharedData::linearLightingSettings.isDirLightLinear && (inWorld || inReflection) && !SharedData::InInterior ? SharedData::linearLightingSettings.dirLightMult : 1.0f;

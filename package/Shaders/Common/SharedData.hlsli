@@ -468,6 +468,14 @@ namespace SharedData
 		uint2 pad;
 	};
 
+	struct SpecularAASettings
+	{
+		uint Enable;
+		float Variance;
+		float Threshold;
+		uint pad;
+	};
+
 	cbuffer FeatureData : register(b6)
 	{
 		GrassLightingSettings grassLightingSettings;
@@ -492,6 +500,7 @@ namespace SharedData
 		VanillaFresnelSettings vanillaFresnelSettings;
 		SnowCoverSettings snowCoverSettings;
 		UnifiedWaterSettings unifiedWaterSettings;
+		SpecularAASettings specularAASettings;
 	};
 
 	Texture2D<float4> DepthTexture : register(t17);

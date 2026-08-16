@@ -23,6 +23,7 @@ struct Skylighting;
 struct TerrainVariation;
 struct SkySync;
 struct SnowCover;
+struct SpecularAntialiasing;
 struct SubsurfaceScattering;
 struct TerrainBlending;
 struct TerrainHelper;
@@ -115,6 +116,7 @@ namespace globals
 		extern TerrainVariation terrainVariation;
 		extern SkySync skySync;
 		extern SnowCover snowCover;
+		extern SpecularAntialiasing specularAntialiasing;
 		extern SubsurfaceScattering subsurfaceScattering;
 		extern TerrainBlending terrainBlending;
 		extern TerrainHelper terrainHelper;

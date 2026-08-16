@@ -30,6 +30,7 @@
 #include "Features/SkySync.h"
 #include "Features/Skylighting.h"
 #include "Features/SnowCover.h"
+#include "Features/SpecularAntialiasing.h"
 #include "Features/SubsurfaceScattering.h"
 #include "Features/TerrainBlending.h"
 #include "Features/TerrainHelper.h"
@@ -82,6 +83,7 @@ namespace globals
 		TerrainVariation terrainVariation{};
 		SkySync skySync{};
 		SnowCover snowCover{};
+		SpecularAntialiasing specularAntialiasing{};
 		SubsurfaceScattering subsurfaceScattering{};
 		TerrainBlending terrainBlending{};
 		TerrainHelper terrainHelper{};
