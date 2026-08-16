@@ -22,7 +22,7 @@ struct FogScattering : Feature
 	virtual inline std::string GetName() override { return "Fog Scattering"; }
 	virtual std::string GetDisplayName() override { return T("feature.fog_scattering.name", "Fog Scattering"); }
 	virtual inline std::string GetShortName() override { return "FogScattering"; }
-	virtual std::string_view GetCategory() const override { return FeatureCategories::kPostProcessing; }
+	virtual std::string_view GetCategory() const override { return FeatureCategories::kLighting; }
 	virtual bool HasShaderDefine(RE::BSShader::Type) override { return false; }
 
 	virtual inline std::pair<std::string, std::vector<std::string>> GetFeatureSummary() override
@@ -48,6 +48,25 @@ struct FogScattering : Feature
 	};
 
 	Settings settings;
+
+	/** @brief Outcome of the most recent frame, surfaced in the UI so a silent skip is diagnosable. */
+	enum class PassStatus
+	{
+		NotRun,
+		Applied,
+		Disabled,
+		MenuOpen,
+		NoFog,
+		NoRenderer,
+		NoSceneTarget,
+		NoDepth,
+		NoResources,
+		NoShaders,
+		BadProjection,
+	};
+
+	/** @brief Renders the mask that drives the blend instead of the scattered scene. Not persisted. */
+	bool debugShowMask = false;
 
 	virtual void RestoreDefaultSettings() override;
 	virtual void LoadSettings(json& o_json) override;
@@ -77,9 +96,20 @@ private:
 
 	void EnsureResources(uint32_t a_width, uint32_t a_height, ID3D11Texture2D* a_sceneTexture);
 	void ReleaseResources();
+
+	/**
+	 * @brief Recompiles the depth-sampling shaders when the bound depth SRV changes type class.
+	 *
+	 * Terrain Blending swaps the scene depth SRV between R32_FLOAT and the game's
+	 * R24_UNORM_X8_TYPELESS. A `Texture2D<float>` read of a UNORM view is an invalid
+	 * resource return type, so the variant has to follow the view actually bound.
+	 */
+	void EnsureShaderVariant(ID3D11ShaderResourceView* a_depthSRV);
 	ID3D11ComputeShader* GetPrepareCS();
 	ID3D11ComputeShader* GetDownsampleCS();
 	ID3D11ComputeShader* GetCompositeCS();
+
+	void SetStatus(PassStatus a_status);
 
 	/**
 	 * @brief Resolves the fog curve to feed the density estimate.
@@ -104,4 +134,14 @@ private:
 	uint32_t mipCount = 0;
 	uint32_t lastAppliedFrame = UINT32_MAX;
 	float4 resolvedFogParams{};
+
+	uint32_t sceneWidth = 0;
+	uint32_t sceneHeight = 0;
+	DXGI_FORMAT sceneFormat = DXGI_FORMAT_UNKNOWN;
+
+	bool depthIsUnorm = false;
+	bool shaderVariantResolved = false;
+
+	PassStatus lastStatus = PassStatus::NotRun;
+	RE::RENDER_TARGET lastInputTarget = RE::RENDER_TARGET::kNONE;
 };

@@ -1,5 +1,11 @@
 Texture2D<float4> SceneColor : register(t0);
+// DEPTH_UNORM tracks the depth SRV the C++ side binds: R24_UNORM_X8_TYPELESS game depth
+// (unorm) without Terrain Blending, R32_FLOAT blended depth with it.
+#if defined(DEPTH_UNORM)
+Texture2D<unorm float> SceneDepth : register(t1);
+#else
 Texture2D<float> SceneDepth : register(t1);
+#endif
 RWTexture2D<float4> ScatterTarget : register(u0);
 
 #include "FogScattering/FogScatteringCommon.hlsli"

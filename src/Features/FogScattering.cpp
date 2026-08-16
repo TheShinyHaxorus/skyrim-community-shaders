@@ -24,6 +24,47 @@ namespace
 {
 	constexpr uint32_t kMaxMipCount = 7;
 	constexpr uint32_t kMinMipExtent = 8;
+
+	const char* StatusText(FogScattering::PassStatus a_status)
+	{
+		using enum FogScattering::PassStatus;
+		switch (a_status) {
+		case Applied:
+			return T("feature.fog_scattering.status_applied", "Applied last frame");
+		case Disabled:
+			return T("feature.fog_scattering.status_disabled", "Skipped: disabled or intensity at zero");
+		case MenuOpen:
+			return T("feature.fog_scattering.status_menu", "Skipped: main or loading menu open");
+		case NoFog:
+			return T("feature.fog_scattering.status_no_fog", "Skipped: no fog curve resolved");
+		case NoRenderer:
+			return T("feature.fog_scattering.status_no_renderer", "Skipped: renderer state unavailable");
+		case NoSceneTarget:
+			return T("feature.fog_scattering.status_no_scene", "Skipped: tonemap input has no readable texture");
+		case NoDepth:
+			return T("feature.fog_scattering.status_no_depth", "Skipped: scene depth unavailable");
+		case NoResources:
+			return T("feature.fog_scattering.status_no_resources", "Skipped: scattering targets could not be allocated");
+		case NoShaders:
+			return T("feature.fog_scattering.status_no_shaders", "Skipped: compute shaders failed to compile");
+		case BadProjection:
+			return T("feature.fog_scattering.status_bad_projection", "Skipped: degenerate camera projection");
+		case NotRun:
+		default:
+			return T("feature.fog_scattering.status_not_run", "Not run yet - open a save and close the menu");
+		}
+	}
+
+	bool IsUnormDepthFormat(DXGI_FORMAT a_format)
+	{
+		switch (a_format) {
+		case DXGI_FORMAT_R24_UNORM_X8_TYPELESS:
+		case DXGI_FORMAT_R16_UNORM:
+			return true;
+		default:
+			return false;
+		}
+	}
 }
 
 void FogScattering::RestoreDefaultSettings()
@@ -97,6 +138,20 @@ void FogScattering::DrawSettings()
 		ImGui::SliderFloat(T(TKEY("manual_fog_clamp"), "Fog Maximum"), &settings.ManualFogClamp, 0.0f, 1.0f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
 	}
 
+	ImGui::Separator();
+
+	ImGui::Checkbox(T(TKEY("debug_show_mask"), "Show Scattering Mask"), &debugShowMask);
+	if (auto _tt = Util::HoverTooltipWrapper()) {
+		ImGui::Text("%s", T(TKEY("debug_show_mask_tooltip"),
+							  "Replaces the scene with the mask that drives the blend: black where nothing is "
+							  "scattered, white at full strength. Use it to confirm the pass is running and to see "
+							  "how far out the fog has to be before it takes effect. Not saved to settings."));
+	}
+
+	ImGui::Text("%s: %s", T(TKEY("status"), "Status"), StatusText(lastStatus));
+	if (lastStatus == PassStatus::Applied)
+		ImGui::Text("  %s: %s", T(TKEY("input_target"), "Tonemap input"), magic_enum::enum_name(lastInputTarget).data());
+
 	ImGui::Text("%s", T(TKEY("resolved_curve"), "Resolved fog curve"));
 	ImGui::Text("  near %.0f   range %.0f   power %.2f   max %.2f",
 		resolvedFogParams.x,
@@ -107,6 +162,34 @@ void FogScattering::DrawSettings()
 		ImGui::Text("%s", T(TKEY("resolved_curve_tooltip"),
 							  "The curve actually driving the density estimate this frame. A maximum of zero means no "
 							  "fog is active and the pass is skipped entirely."));
+	}
+
+	// A weak fog curve is the most common reason the effect reads as absent, so show what the
+	// curve actually produces rather than only its coefficients.
+	const auto fogAlphaAt = [&](float a_distance) {
+		if (resolvedFogParams.y <= 0.0f)
+			return 0.0f;
+		float normalized = std::clamp((a_distance - resolvedFogParams.x) * resolvedFogParams.y, 0.0f, 1.0f);
+		return std::min(resolvedFogParams.w, std::pow(std::max(normalized, 1e-6f), resolvedFogParams.z));
+	};
+	const float threshold = std::clamp(settings.DensityThreshold, 0.0f, 0.95f);
+	const auto blendAt = [&](float a_distance) {
+		float weight = std::clamp((fogAlphaAt(a_distance) - threshold) / std::max(1.0f - threshold, 1e-4f), 0.0f, 1.0f);
+		return weight * settings.Intensity;
+	};
+
+	ImGui::Text("%s", T(TKEY("blend_preview"), "Blend strength by distance"));
+	ImGui::Text("  5k %2.0f%%   15k %2.0f%%   40k %2.0f%%   80k %2.0f%%",
+		blendAt(5000.0f) * 100.0f,
+		blendAt(15000.0f) * 100.0f,
+		blendAt(40000.0f) * 100.0f,
+		blendAt(80000.0f) * 100.0f);
+	if (auto _tt = Util::HoverTooltipWrapper()) {
+		ImGui::Text("%s", T(TKEY("blend_preview_tooltip"),
+							  "How strongly the scene is pulled toward the scattered result at each distance in game "
+							  "units, for the fog currently active. All zeroes means the weather simply has too "
+							  "little fog for this pass to do anything - lower the density threshold, or check it "
+							  "again in mist or rain."));
 	}
 
 	ImGui::EndDisabled();
@@ -144,10 +227,35 @@ void FogScattering::ClearShaderCache()
 	release(compositeCS);
 }
 
+void FogScattering::EnsureShaderVariant(ID3D11ShaderResourceView* a_depthSRV)
+{
+	D3D11_SHADER_RESOURCE_VIEW_DESC desc{};
+	a_depthSRV->GetDesc(&desc);
+	const bool isUnorm = IsUnormDepthFormat(desc.Format);
+
+	if (shaderVariantResolved && isUnorm == depthIsUnorm)
+		return;
+
+	depthIsUnorm = isUnorm;
+	shaderVariantResolved = true;
+	if (prepareCS) {
+		prepareCS->Release();
+		prepareCS = nullptr;
+	}
+	if (compositeCS) {
+		compositeCS->Release();
+		compositeCS = nullptr;
+	}
+}
+
 ID3D11ComputeShader* FogScattering::GetPrepareCS()
 {
-	if (!prepareCS)
-		prepareCS = static_cast<ID3D11ComputeShader*>(Util::CompileShader(L"Data\\Shaders\\FogScattering\\FogScatteringPrepareCS.hlsl", {}, "cs_5_0"));
+	if (!prepareCS) {
+		std::vector<std::pair<const char*, const char*>> defines;
+		if (depthIsUnorm)
+			defines.push_back({ "DEPTH_UNORM", "" });
+		prepareCS = static_cast<ID3D11ComputeShader*>(Util::CompileShader(L"Data\\Shaders\\FogScattering\\FogScatteringPrepareCS.hlsl", defines, "cs_5_0"));
+	}
 	return prepareCS;
 }
 
@@ -160,9 +268,24 @@ ID3D11ComputeShader* FogScattering::GetDownsampleCS()
 
 ID3D11ComputeShader* FogScattering::GetCompositeCS()
 {
-	if (!compositeCS)
-		compositeCS = static_cast<ID3D11ComputeShader*>(Util::CompileShader(L"Data\\Shaders\\FogScattering\\FogScatteringCompositeCS.hlsl", {}, "cs_5_0"));
+	if (!compositeCS) {
+		std::vector<std::pair<const char*, const char*>> defines;
+		if (depthIsUnorm)
+			defines.push_back({ "DEPTH_UNORM", "" });
+		compositeCS = static_cast<ID3D11ComputeShader*>(Util::CompileShader(L"Data\\Shaders\\FogScattering\\FogScatteringCompositeCS.hlsl", defines, "cs_5_0"));
+	}
 	return compositeCS;
+}
+
+void FogScattering::SetStatus(PassStatus a_status)
+{
+	if (lastStatus == a_status)
+		return;
+	lastStatus = a_status;
+	if (a_status == PassStatus::Applied)
+		logger::info("[Fog Scattering] Applied to {}", magic_enum::enum_name(lastInputTarget));
+	else
+		logger::info("[Fog Scattering] {}", magic_enum::enum_name(a_status));
 }
 
 void FogScattering::ReleaseResources()
@@ -174,11 +297,20 @@ void FogScattering::ReleaseResources()
 	scatterWidth = 0;
 	scatterHeight = 0;
 	mipCount = 0;
+	sceneWidth = 0;
+	sceneHeight = 0;
+	sceneFormat = DXGI_FORMAT_UNKNOWN;
 }
 
 void FogScattering::EnsureResources(uint32_t a_width, uint32_t a_height, ID3D11Texture2D* a_sceneTexture)
 {
-	if (scatterPyramid && compositeTarget && scatterWidth == a_width && scatterHeight == a_height)
+	D3D11_TEXTURE2D_DESC sceneDesc{};
+	a_sceneTexture->GetDesc(&sceneDesc);
+
+	// The copy back into the scene target needs an identically described source, and the engine
+	// does not always hand the tonemap the same render target.
+	if (scatterPyramid && compositeTarget && scatterWidth == a_width && scatterHeight == a_height &&
+		sceneWidth == sceneDesc.Width && sceneHeight == sceneDesc.Height && sceneFormat == sceneDesc.Format)
 		return;
 
 	ReleaseResources();
@@ -226,9 +358,6 @@ void FogScattering::EnsureResources(uint32_t a_width, uint32_t a_height, ID3D11T
 		Util::SetResourceName(mipUAVs[mip].get(), std::format("FogScattering::ScatterPyramid Mip{} UAV", mip).c_str());
 	}
 
-	D3D11_TEXTURE2D_DESC sceneDesc{};
-	a_sceneTexture->GetDesc(&sceneDesc);
-
 	D3D11_TEXTURE2D_DESC compositeDesc{};
 	compositeDesc.Width = sceneDesc.Width;
 	compositeDesc.Height = sceneDesc.Height;
@@ -250,10 +379,15 @@ void FogScattering::EnsureResources(uint32_t a_width, uint32_t a_height, ID3D11T
 	scatterWidth = a_width;
 	scatterHeight = a_height;
 	mipCount = levels;
+	sceneWidth = sceneDesc.Width;
+	sceneHeight = sceneDesc.Height;
+	sceneFormat = sceneDesc.Format;
 }
 
 bool FogScattering::ResolveFogParams(float4& o_fogParams) const
 {
+	o_fogParams = {};
+
 	float fogNear = settings.ManualFogNear;
 	float fogFar = settings.ManualFogFar;
 	float fogPower = settings.ManualFogPower;
@@ -289,34 +423,49 @@ bool FogScattering::ResolveFogParams(float4& o_fogParams) const
 
 void FogScattering::ApplyScattering(RE::RENDER_TARGET a_input)
 {
-	if (!settings.Enable || settings.Intensity <= 0.0f)
+	if (!settings.Enable || settings.Intensity <= 0.0f) {
+		SetStatus(PassStatus::Disabled);
 		return;
+	}
 
 	auto state = globals::state;
-	if (!state || state->isMainMenuOpen || state->isLoadingMenuOpen)
+	if (!state || state->isMainMenuOpen || state->isLoadingMenuOpen) {
+		SetStatus(PassStatus::MenuOpen);
 		return;
+	}
 
 	// The tonemap thunk is installed at two call sites; only scatter once per frame.
 	if (lastAppliedFrame == state->frameCount)
 		return;
 	lastAppliedFrame = state->frameCount;
 
-	if (!ResolveFogParams(resolvedFogParams))
+	if (!ResolveFogParams(resolvedFogParams)) {
+		SetStatus(PassStatus::NoFog);
 		return;
+	}
 
 	auto renderer = globals::game::renderer;
 	auto shadowState = globals::game::shadowState;
 	auto graphicsState = globals::game::graphicsState;
-	if (!renderer || !shadowState || !graphicsState)
+	if (!renderer || !shadowState || !graphicsState) {
+		SetStatus(PassStatus::NoRenderer);
 		return;
+	}
 
+	// Only the SRV and the texture are needed; the scene target is written through a copy, so a
+	// render target without unordered access support is still usable here.
 	auto& sceneRT = renderer->GetRuntimeData().renderTargets[a_input];
-	if (!sceneRT.SRV || !sceneRT.UAV)
+	if (!sceneRT.SRV || !sceneRT.texture) {
+		SetStatus(PassStatus::NoSceneTarget);
 		return;
+	}
 
 	auto* depthSRV = Util::GetCurrentSceneDepthSRV();
-	if (!depthSRV)
+	if (!depthSRV) {
+		SetStatus(PassStatus::NoDepth);
 		return;
+	}
+	EnsureShaderVariant(depthSRV);
 
 	float2 screenSize{ (float)graphicsState->screenWidth, (float)graphicsState->screenHeight };
 	auto renderSize = Util::ConvertToDynamic(screenSize);
@@ -326,20 +475,29 @@ void FogScattering::ApplyScattering(RE::RENDER_TARGET a_input)
 	uint32_t halfHeight = std::max(1u, fullHeight / 2);
 
 	EnsureResources(halfWidth, halfHeight, sceneRT.texture);
-	if (!scatterPyramid || !compositeTarget || mipCount == 0)
+	if (!scatterPyramid || !compositeTarget || mipCount == 0) {
+		SetStatus(PassStatus::NoResources);
 		return;
+	}
 
 	auto* prepare = GetPrepareCS();
 	auto* downsample = GetDownsampleCS();
 	auto* composite = GetCompositeCS();
-	if (!prepare || !downsample || !composite)
+	if (!prepare || !downsample || !composite) {
+		SetStatus(PassStatus::NoShaders);
 		return;
+	}
 
 	auto eye = shadowState->GetRuntimeData().cameraData.getEye();
 	float projX = eye.projMat(0, 0);
 	float projY = eye.projMat(1, 1);
-	if (projX == 0.0f || projY == 0.0f)
+	if (projX == 0.0f || projY == 0.0f) {
+		SetStatus(PassStatus::BadProjection);
 		return;
+	}
+
+	lastInputTarget = a_input;
+	SetStatus(PassStatus::Applied);
 
 	FogScatteringCB data{};
 	data.BufferDim = { (float)fullWidth, (float)fullHeight, 1.0f / (float)fullWidth, 1.0f / (float)fullHeight };
@@ -348,7 +506,7 @@ void FogScattering::ApplyScattering(RE::RENDER_TARGET a_input)
 	data.FogParams = resolvedFogParams;
 	data.ViewRayParams = { 1.0f / projX, 1.0f / projY, 0.0f, 0.0f };
 	data.ScatterParams = { settings.Intensity, settings.Radius * (float)(mipCount - 1), std::clamp(settings.DensityThreshold, 0.0f, 0.95f), 0.0f };
-	data.ScatterParams2 = { std::max(settings.MaxLuminance, 1.0f), 0.0f, 0.0f, 0.0f };
+	data.ScatterParams2 = { std::max(settings.MaxLuminance, 1.0f), debugShowMask ? 1.0f : 0.0f, 0.0f, 0.0f };
 	fogScatteringCB->Update(&data, sizeof(data));
 
 	auto context = globals::d3d::context;
