@@ -309,6 +309,16 @@ cbuffer AlphaTestRefCB : register(b11)
 	float AlphaTestRefRS : packoffset(c0);
 }
 
+static const float ShadowNormalOffsetScale = 1.0;
+
+float3 ApplyShadowNormalOffset(float3 positionMS, float3 geoNormal, float4x3 lightProjectionMatrix, float offsetUV, float slope)
+{
+	float3 duDirection = float3(lightProjectionMatrix[0].x, lightProjectionMatrix[1].x, lightProjectionMatrix[2].x);
+	float3 dvDirection = float3(lightProjectionMatrix[0].y, lightProjectionMatrix[1].y, lightProjectionMatrix[2].y);
+	float texelWorldSize = offsetUV * rsqrt(max(min(dot(duDirection, duDirection), dot(dvDirection, dvDirection)), 1e-16));
+	return positionMS + geoNormal * (texelWorldSize * slope);
+}
+
 float SampleShadowPCF(Texture2DArray<float4> tex, SamplerComparisonState samp, float2 baseUV, float layerIndex, float compareValue, float2x2 rotationMatrix, float radius)
 {
 	float visibility = 0.0;
@@ -452,6 +462,26 @@ PS_OUTPUT main(PS_INPUT input)
 	if (SharedData::InInterior)
 		shadowColor = float4(0, 0, 0, 0);
 
+#			if defined(RENDER_DEPTH)
+	float3 shadowGeoNormalRaw = cross(ddy(positionMS.xyz), ddx(positionMS.xyz));
+	float shadowGeoNormalLengthSq = dot(shadowGeoNormalRaw, shadowGeoNormalRaw);
+	float3 shadowGeoNormal = shadowGeoNormalLengthSq > 1e-12 ? shadowGeoNormalRaw * rsqrt(shadowGeoNormalLengthSq) : 0.0;
+	shadowGeoNormal *= sign(dot(shadowGeoNormal, -positionMS.xyz));
+	float shadowNdotL = dot(shadowGeoNormal, SharedData::DirLightDirection.xyz);
+	float shadowNormalOffsetSlope = ShadowNormalOffsetScale * sqrt(saturate(1.0 - shadowNdotL * shadowNdotL));
+
+	uint3 shadowMapDimensions;
+#				if SHADOWFILTER == 0
+	TexShadowMapSampler.GetDimensions(shadowMapDimensions.x, shadowMapDimensions.y, shadowMapDimensions.z);
+#				else
+	TexShadowMapSamplerComp.GetDimensions(shadowMapDimensions.x, shadowMapDimensions.y, shadowMapDimensions.z);
+#				endif
+	float shadowNormalOffsetUV = shadowMapDimensions.x > 0 ? rcp(float(shadowMapDimensions.x)) : 0.0;
+#				if SHADOWFILTER == 3
+	shadowNormalOffsetUV += ShadowSampleParam.z;
+#				endif
+#			endif
+
 	if (EndSplitDistances.z >= shadowMapDepth) {
 		float4x3 lightProjectionMatrix = ShadowMapProj[0];
 		float shadowMapThreshold = AlphaTestRef.y;
@@ -468,7 +498,13 @@ PS_OUTPUT main(PS_INPUT input)
 
 		float shadowVisibility = 0;
 
-		float3 positionLS = mul(transpose(lightProjectionMatrix), float4(positionMS.xyz, 1)).xyz;
+#			if defined(RENDER_DEPTH)
+		float3 shadowPositionMS = ApplyShadowNormalOffset(positionMS.xyz, shadowGeoNormal, lightProjectionMatrix, shadowNormalOffsetUV, shadowNormalOffsetSlope);
+#			else
+		float3 shadowPositionMS = positionMS.xyz;
+#			endif
+
+		float3 positionLS = mul(transpose(lightProjectionMatrix), float4(shadowPositionMS, 1)).xyz;
 
 #			if SHADOWFILTER == 0
 		float shadowMapValue = TexShadowMapSampler.Sample(SampShadowMapSampler, float3(positionLS.xy, cascadeIndex)).x;
@@ -484,7 +520,13 @@ PS_OUTPUT main(PS_INPUT input)
 		if (cascadeIndex < 1 && StartSplitDistances.y < shadowMapDepth) {
 			float cascade1ShadowVisibility = 0;
 
-			float3 cascade1PositionLS = mul(transpose(ShadowMapProj[1]), float4(positionMS.xyz, 1)).xyz;
+#			if defined(RENDER_DEPTH)
+			float3 cascade1PositionMS = ApplyShadowNormalOffset(positionMS.xyz, shadowGeoNormal, ShadowMapProj[1], shadowNormalOffsetUV, shadowNormalOffsetSlope);
+#			else
+			float3 cascade1PositionMS = positionMS.xyz;
+#			endif
+
+			float3 cascade1PositionLS = mul(transpose(ShadowMapProj[1]), float4(cascade1PositionMS, 1)).xyz;
 
 #			if SHADOWFILTER == 0
 			float cascade1ShadowMapValue = TexShadowMapSampler.Sample(SampShadowMapSampler, float3(cascade1PositionLS.xy, 1)).x;
