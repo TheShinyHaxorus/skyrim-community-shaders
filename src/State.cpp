@@ -525,6 +525,7 @@ void State::SaveToJson(nlohmann::json& settings)
 	general["Skip Unchanged Shaders"] = shaderCache->IsSkipUnchangedShaders();
 	general["Enable Async"] = shaderCache->IsAsync();
 	general["Language"] = I18n::GetSingleton()->GetCurrentLocale();
+	general["Shadow Normal Offset"] = shadowNormalOffset;
 
 	settings["General"] = general;
 
@@ -608,6 +609,8 @@ void State::LoadFromJson(nlohmann::json& settings)
 			shaderCache->SetSkipUnchangedShaders(general["Skip Unchanged Shaders"]);
 		if (general.contains("Enable Async") && general["Enable Async"].is_boolean())
 			shaderCache->SetAsync(general["Enable Async"]);
+		if (general.contains("Shadow Normal Offset") && general["Shadow Normal Offset"].is_number())
+			shadowNormalOffset = std::clamp(general["Shadow Normal Offset"].get<float>(), 0.0f, 4.0f);
 
 		// Load i18n locale preference
 		if (general.contains("Language") && general["Language"].is_string()) {
@@ -1048,6 +1051,8 @@ void State::UpdateSharedData([[maybe_unused]] bool a_inWorld, [[maybe_unused]] b
 		}
 
 		data.WaterSystemHeight = -RE::NI_INFINITY;
+
+		data.ShadowNormalOffset = shadowNormalOffset;
 
 		data.InInterior = Util::IsInterior();
 		data.HasDirectionalShadows = HasDirectionalShadows();

@@ -309,8 +309,6 @@ cbuffer AlphaTestRefCB : register(b11)
 	float AlphaTestRefRS : packoffset(c0);
 }
 
-static const float ShadowNormalOffsetScale = 1.0;
-
 float3 ApplyShadowNormalOffset(float3 positionMS, float3 geoNormal, float4x3 lightProjectionMatrix, float offsetUV, float slope)
 {
 	float3 duDirection = float3(lightProjectionMatrix[0].x, lightProjectionMatrix[1].x, lightProjectionMatrix[2].x);
@@ -468,7 +466,7 @@ PS_OUTPUT main(PS_INPUT input)
 	float3 shadowGeoNormal = shadowGeoNormalLengthSq > 1e-12 ? shadowGeoNormalRaw * rsqrt(shadowGeoNormalLengthSq) : 0.0;
 	shadowGeoNormal *= sign(dot(shadowGeoNormal, -positionMS.xyz));
 	float shadowNdotL = dot(shadowGeoNormal, SharedData::DirLightDirection.xyz);
-	float shadowNormalOffsetSlope = ShadowNormalOffsetScale * sqrt(saturate(1.0 - shadowNdotL * shadowNdotL));
+	float shadowNormalOffsetSlope = SharedData::ShadowNormalOffset * sqrt(saturate(1.0 - shadowNdotL * shadowNdotL));
 
 	uint3 shadowMapDimensions;
 #				if SHADOWFILTER == 0

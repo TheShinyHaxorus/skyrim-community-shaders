@@ -49,6 +49,16 @@ void ScreenSpaceShadows::DrawSettings()
 		ImGui::Spacing();
 		ImGui::TreePop();
 	}
+
+	if (ImGui::TreeNodeEx(T(TKEY("cascade_shadows"), "Cascade Shadows"), ImGuiTreeNodeFlags_DefaultOpen)) {
+		ImGui::SliderFloat(T(TKEY("shadow_normal_offset"), "Normal Offset Bias"), &globals::state->shadowNormalOffset, 0.0f, 4.0f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
+		if (auto _tt = Util::HoverTooltipWrapper())
+			ImGui::Text("%s", T(TKEY("shadow_normal_offset_tooltip"), "Offsets the vanilla cascade shadow lookup along the surface normal by the shadow-map filter footprint, scaled by the light incidence angle. Reduces shadow acne without the peter-panning a constant depth bias causes. 0 disables. Applies to the game's directional shadow mask, not to screen-space shadows."));
+
+		ImGui::Spacing();
+		ImGui::Spacing();
+		ImGui::TreePop();
+	}
 }
 
 void ScreenSpaceShadows::InvalidateRaymarchShaders()
@@ -257,6 +267,7 @@ void ScreenSpaceShadows::SaveSettings(json& o_json)
 void ScreenSpaceShadows::RestoreDefaultSettings()
 {
 	bendSettings = {};
+	globals::state->shadowNormalOffset = 1.0f;
 }
 
 bool ScreenSpaceShadows::HasShaderDefine(RE::BSShader::Type)

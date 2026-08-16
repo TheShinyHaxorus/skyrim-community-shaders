@@ -829,9 +829,9 @@ namespace Util
 		return m_shouldDraw;
 	}
 
-	bool DrawCategoryHeader(const char* categoryKey, const char* displayName, bool& isExpanded, int categoryCount)
+	bool DrawCategoryHeader(const char* categoryKey, const char* displayName, bool& isExpanded)
 	{
-		std::string headerText = std::format("{}  {}", displayName, categoryCount);
+		std::string headerText = displayName;
 
 		ImDrawList* drawList = ImGui::GetWindowDrawList();
 		ImVec2 pos = ImGui::GetCursorScreenPos();

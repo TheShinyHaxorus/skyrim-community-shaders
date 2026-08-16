@@ -536,9 +536,8 @@ void FeatureListRenderer::ListMenuVisitor::operator()(const CategoryHeader& head
 	// Use Heading font for category headers
 	{
 		MenuFonts::FontRoleGuard fontGuard(Menu::FontRole::Heading);
-		int count = Menu::categoryCounts[std::string(header.name)];
 		const auto categoryLabel = Feature::TranslateCategory(header.name);
-		Util::DrawCategoryHeader(header.name.c_str(), categoryLabel.c_str(), isExpanded, count);
+		Util::DrawCategoryHeader(header.name.c_str(), categoryLabel.c_str(), isExpanded);
 	}
 
 	// Update expansion state
