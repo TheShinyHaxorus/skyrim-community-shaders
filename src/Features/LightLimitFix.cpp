@@ -59,11 +59,11 @@ void LightLimitFix::DrawSettings()
 	if (settings.EnableContactShadows && ImGui::TreeNode(T(TKEY("contact_shadow_tuning"), "Contact Shadow Tuning"))) {
 		// SliderScalar with ImGuiDataType_U32 rather than a (int*) cast: the cast
 		// violates strict aliasing and could misinterpret a transient negative value.
-		constexpr uint32_t kMinSteps = 1, kMaxSteps = 16;
+		constexpr uint32_t kMinSteps = 1, kMaxSteps = 32;
 		ImGui::SliderScalar(T(TKEY("contact_shadow_max_steps"), "Max Steps"), ImGuiDataType_U32, &settings.ContactShadowMaxSteps,
 			&kMinSteps, &kMaxSteps, "%u", ImGuiSliderFlags_AlwaysClamp);
 		if (auto _tt = Util::HoverTooltipWrapper()) {
-			ImGui::Text("%s", T(TKEY("contact_shadow_max_steps_tooltip"), "Raymarch steps at zero depth. Higher = longer / more accurate contact shadows, linearly more cost."));
+			ImGui::Text("%s", T(TKEY("contact_shadow_max_steps_tooltip"), "Raymarch steps at zero depth. Higher = longer / more accurate contact shadows. Above 4 steps a rejection prepass skips the full march wherever no occluder is possible, so extra steps are mostly paid only near shadow edges."));
 		}
 
 		ImGui::SliderFloat(T(TKEY("contact_shadow_max_distance"), "Max Distance"), &settings.ContactShadowMaxDistance, 64.0f, 4096.0f, "%.0f", ImGuiSliderFlags_AlwaysClamp);
@@ -172,7 +172,7 @@ LightLimitFix::PerFrame LightLimitFix::GetCommonBufferData()
 	std::copy(clusterSize, clusterSize + 3, perFrame.ClusterSize);
 
 	perFrame.EnableContactShadows = settings.EnableContactShadows;
-	perFrame.ContactShadowMaxSteps = std::clamp<uint32_t>(settings.ContactShadowMaxSteps, 1u, 16u);
+	perFrame.ContactShadowMaxSteps = std::clamp<uint32_t>(settings.ContactShadowMaxSteps, 1u, 32u);
 	perFrame.ContactShadowMaxDistance = SanitizeFloat(settings.ContactShadowMaxDistance, 64.0f, 4096.0f);
 	perFrame.ContactShadowStride = SanitizeFloat(settings.ContactShadowStride, 0.5f, 8.0f);
 	perFrame.ContactShadowThickness = SanitizeFloat(settings.ContactShadowThickness, 0.0f, 1.0f);

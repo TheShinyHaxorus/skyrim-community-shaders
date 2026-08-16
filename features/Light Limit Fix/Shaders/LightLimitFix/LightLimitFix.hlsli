@@ -34,6 +34,40 @@ namespace LightLimitFix
 	// scale with depth so each step covers ~constant screen-space distance.
 	static const float CONTACT_SHADOW_REFERENCE_DEPTH = 100.0;
 
+	static const uint CONTACT_SHADOW_COARSE_STEPS = 4;
+
+	static const float CONTACT_SHADOW_UNBOUNDED_BAND = 1e6;
+
+	bool MayBeOccluded(float3 viewPosition, float3 coarseStep, float occlusionBand)
+	{
+		float slack = abs(coarseStep.z);
+		float previousDelta = 0.0;
+		bool havePrevious = false;
+
+		for (uint i = 0; i < CONTACT_SHADOW_COARSE_STEPS; i++) {
+			viewPosition += coarseStep;
+
+			float2 rayUV = FrameBuffer::ViewToUV(viewPosition, true);
+			if (!IsSaturated(rayUV))
+				return true;
+
+			float rayDepth = SharedData::GetScreenDepth(rayUV);
+			if (rayDepth <= CONTACT_SHADOW_FIRST_PERSON_MAX_DEPTH)
+				return true;
+
+			float depthDelta = viewPosition.z - rayDepth;
+			float spanMax = havePrevious ? max(depthDelta, previousDelta) : depthDelta;
+			float spanMin = havePrevious ? min(depthDelta, previousDelta) : depthDelta;
+			if (spanMax > -slack && spanMin < occlusionBand + slack)
+				return true;
+
+			previousDelta = depthDelta;
+			havePrevious = true;
+		}
+
+		return false;
+	}
+
 	// Short screen-space raymarch toward a point light, returning a [0,1] visibility term.
 	float ContactShadows(float3 viewPosition, float noise2D, float3 lightDirectionVS, uint contactShadowSteps)
 	{
@@ -47,6 +81,14 @@ namespace LightLimitFix
 
 		// Offset the ray start with interleaved gradient noise to hide banding.
 		viewPosition += lightDirectionVS * noise2D;
+
+		[branch] if (contactShadowSteps > CONTACT_SHADOW_COARSE_STEPS)
+		{
+			float occlusionBand = depthDeltaFade > 1e-6 ? rcp(depthDeltaFade) : CONTACT_SHADOW_UNBOUNDED_BAND;
+			float3 coarseStep = lightDirectionVS * (float(contactShadowSteps) / float(CONTACT_SHADOW_COARSE_STEPS));
+			if (!MayBeOccluded(viewPosition, coarseStep, occlusionBand))
+				return 1.0;
+		}
 
 		float contactShadow = 0.0;
 		for (uint i = 0; i < contactShadowSteps; i++) {
