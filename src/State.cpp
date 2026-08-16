@@ -13,7 +13,6 @@
 #include "Features/Effects11/EffectManager.h"
 #include "Features/Effects11/SettingManager.h"
 #include "Features/ExponentialHeightFog.h"
-#include "Features/FogScattering.h"
 #include "Features/HDRDisplay.h"
 #include "Features/InteriorSun.h"
 #include "Features/PerformanceOverlay.h"
@@ -190,10 +189,6 @@ void State::Debug()
 
 bool State::HandlePostProcessing(RE::RENDER_TARGET a_input, RE::RENDER_TARGET a_output)
 {
-	auto& fogScattering = globals::features::fogScattering;
-	if (fogScattering.loaded)
-		fogScattering.ApplyScattering(a_input);
-
 	auto& effects11 = globals::features::effects11;
 	if (!effects11.loaded || !effects11.HandleTonemapRender(a_input, a_output))
 		return false;
