@@ -14,6 +14,8 @@
 #include "Features/LODBlending.h"
 #include "Features/LightLimitFix.h"
 #include "Features/LinearLighting.h"
+#include "Features/ScreenSpaceGI.h"
+#include "Features/ScreenSpaceReflections.h"
 #include "Features/Skin.h"
 #include "Features/Skylighting.h"
 #include "Features/SnowCover.h"
@@ -70,5 +72,7 @@ std::pair<unsigned char*, size_t> GetFeatureBufferData(bool a_inWorld)
 		globals::features::vanillaFresnel.settings,
 		globals::features::snowCover.GetCommonBufferData(),
 		globals::features::unifiedWater.GetCommonBufferData(),
-		globals::features::specularAntialiasing.GetCommonBufferData());
+		globals::features::specularAntialiasing.GetCommonBufferData(),
+		globals::features::screenSpaceGI.GetCommonBufferData(),
+		globals::features::screenSpaceReflections.GetCommonBufferData());
 }

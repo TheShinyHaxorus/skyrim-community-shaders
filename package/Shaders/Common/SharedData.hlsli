@@ -337,6 +337,22 @@ namespace SharedData
 		uint3 _padding;
 	};
 
+	struct SSGISettings
+	{
+		uint EnableIL;
+		uint DebugMode;
+		uint pad0;
+		uint pad1;
+	};
+
+	struct SSRSettings
+	{
+		uint Enabled;
+		float SpecularMult;
+		uint pad0;
+		uint pad1;
+	};
+
 	struct ExponentialHeightFogSettings
 	{
 		uint enabled;
@@ -507,6 +523,8 @@ namespace SharedData
 		SnowCoverSettings snowCoverSettings;
 		UnifiedWaterSettings unifiedWaterSettings;
 		SpecularAASettings specularAASettings;
+		SSGISettings ssgiSettings;
+		SSRSettings ssrSettings;
 	};
 
 	Texture2D<float4> DepthTexture : register(t17);
