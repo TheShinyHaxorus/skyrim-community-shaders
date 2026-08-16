@@ -210,6 +210,10 @@ public:
 	/** @brief Normal-offset shadow bias scale, in shadow-map filter footprints. 0 disables the offset. */
 	float shadowNormalOffset = 1.0f;
 
+	float shadowPenumbraAngle = 0.0f;
+
+	float shadowPenumbraMax = 8.0f;
+
 	// Pass D3DCOMPILE_PARTIAL_PRECISION to fxc. With explicit min16float types this is
 	// mostly belt-and-braces in SM5, but it lets the compiler downgrade unmarked float
 	// ops to FP16 where it can prove safety. On by default; toggle off when reversing
@@ -365,7 +369,8 @@ public:
 		float MipBias;
 		float WaterSystemHeight;  // TES::GetWaterHeight in camera-relative Z; -NI_INFINITY when no water body found
 		float ShadowNormalOffset;
-		float2 pad0;
+		float ShadowPenumbraScale;
+		float ShadowPenumbraMax;
 		float4 AmbientSHR;
 		float4 AmbientSHG;
 		float4 AmbientSHB;

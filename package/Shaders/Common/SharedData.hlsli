@@ -35,7 +35,8 @@ namespace SharedData
 		float MipBias;            // Offset to mip level for TAA sharpness
 		float WaterSystemHeight;  // TES::GetWaterHeight in camera-relative Z; -FLT_MAX when no water body found
 		float ShadowNormalOffset;
-		float2 pad0;
+		float ShadowPenumbraScale;
+		float ShadowPenumbraMax;
 		float4 AmbientSHR;
 		float4 AmbientSHG;
 		float4 AmbientSHB;

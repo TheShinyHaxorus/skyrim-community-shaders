@@ -328,6 +328,42 @@ float SampleShadowPCF(Texture2DArray<float4> tex, SamplerComparisonState samp, f
 	return visibility / 8.0;
 }
 
+float GetShadowUVPerDepth(float4x3 lightProjectionMatrix)
+{
+	float3 duDirection = float3(lightProjectionMatrix[0].x, lightProjectionMatrix[1].x, lightProjectionMatrix[2].x);
+	float3 dvDirection = float3(lightProjectionMatrix[0].y, lightProjectionMatrix[1].y, lightProjectionMatrix[2].y);
+	float3 dwDirection = float3(lightProjectionMatrix[0].z, lightProjectionMatrix[1].z, lightProjectionMatrix[2].z);
+	float uvPerUnit = sqrt(min(dot(duDirection, duDirection), dot(dvDirection, dvDirection)));
+	return uvPerUnit * rsqrt(max(dot(dwDirection, dwDirection), 1e-16));
+}
+
+bool SearchShadowBlockers(Texture2DArray<float4> tex, SamplerState pointSamp, float2 baseUV, float layerIndex, float compareValue, float2x2 rotationMatrix, float minRadius, float uvPerDepth, out float o_radius, out float o_visibility)
+{
+	float maxRadius = minRadius * SharedData::ShadowPenumbraMax;
+
+	float4 depths = tex.GatherRed(pointSamp, float3(baseUV, layerIndex));
+	float4 isBlocker = depths < compareValue ? float4(1, 1, 1, 1) : float4(0, 0, 0, 0);
+	float blockerDepthSum = dot(depths * isBlocker, 1.0);
+	float blockerCount = dot(isBlocker, 1.0);
+
+	[unroll] for (int i = 0; i < 3; i++)
+	{
+		float2 offset = mul(Random::SpiralSampleOffsets8[i * 2], rotationMatrix) * maxRadius;
+		depths = tex.GatherRed(pointSamp, float3(baseUV + offset, layerIndex));
+		isBlocker = depths < compareValue ? float4(1, 1, 1, 1) : float4(0, 0, 0, 0);
+		blockerDepthSum += dot(depths * isBlocker, 1.0);
+		blockerCount += dot(isBlocker, 1.0);
+	}
+
+	const float searchTexelCount = 16.0;
+
+	float avgBlockerDepth = blockerDepthSum / max(blockerCount, 1.0);
+	o_radius = clamp((compareValue - avgBlockerDepth) * uvPerDepth, minRadius, maxRadius);
+	o_visibility = blockerCount < 0.5 ? 1.0 : 0.0;
+
+	return blockerCount < 0.5 || blockerCount > searchTexelCount - 0.5;
+}
+
 float SampleDualParaboloidShadowPCF(Texture2DArray<float4> tex, SamplerComparisonState samp, float2 baseUV, float layerIndex, float compareValue, float2x2 rotationMatrix, float radius, bool lowerHalf)
 {
 	float visibility = 0.0;
@@ -512,7 +548,12 @@ PS_OUTPUT main(PS_INPUT input)
 #			elif SHADOWFILTER == 1
 		shadowVisibility = TexShadowMapSamplerComp.SampleCmpLevelZero(SampShadowMapSamplerComp, float3(positionLS.xy, cascadeIndex), positionLS.z).x;
 #			elif SHADOWFILTER == 3
-		shadowVisibility = SampleShadowPCF(TexShadowMapSamplerComp, SampShadowMapSamplerComp, positionLS.xy, cascadeIndex, positionLS.z, rotationMatrix, ShadowSampleParam.z);
+		float shadowFilterRadius = ShadowSampleParam.z;
+		bool shadowResolved = false;
+		if (SharedData::ShadowPenumbraScale > 0.0)
+			shadowResolved = SearchShadowBlockers(TexShadowMapSamplerComp, SampShadowMapSampler, positionLS.xy, cascadeIndex, positionLS.z, rotationMatrix, ShadowSampleParam.z, GetShadowUVPerDepth(lightProjectionMatrix) * SharedData::ShadowPenumbraScale, shadowFilterRadius, shadowVisibility);
+		if (!shadowResolved)
+			shadowVisibility = SampleShadowPCF(TexShadowMapSamplerComp, SampShadowMapSamplerComp, positionLS.xy, cascadeIndex, positionLS.z, rotationMatrix, shadowFilterRadius);
 #			endif
 
 		if (cascadeIndex < 1 && StartSplitDistances.y < shadowMapDepth) {
@@ -534,7 +575,12 @@ PS_OUTPUT main(PS_INPUT input)
 #			elif SHADOWFILTER == 1
 			cascade1ShadowVisibility = TexShadowMapSamplerComp.SampleCmpLevelZero(SampShadowMapSamplerComp, float3(cascade1PositionLS.xy, 1), cascade1PositionLS.z).x;
 #			elif SHADOWFILTER == 3
-			cascade1ShadowVisibility = SampleShadowPCF(TexShadowMapSamplerComp, SampShadowMapSamplerComp, cascade1PositionLS.xy, 1, cascade1PositionLS.z, rotationMatrix, ShadowSampleParam.z);
+			float cascade1FilterRadius = ShadowSampleParam.z;
+			bool cascade1Resolved = false;
+			if (SharedData::ShadowPenumbraScale > 0.0)
+				cascade1Resolved = SearchShadowBlockers(TexShadowMapSamplerComp, SampShadowMapSampler, cascade1PositionLS.xy, 1, cascade1PositionLS.z, rotationMatrix, ShadowSampleParam.z, GetShadowUVPerDepth(ShadowMapProj[1]) * SharedData::ShadowPenumbraScale, cascade1FilterRadius, cascade1ShadowVisibility);
+			if (!cascade1Resolved)
+				cascade1ShadowVisibility = SampleShadowPCF(TexShadowMapSamplerComp, SampShadowMapSamplerComp, cascade1PositionLS.xy, 1, cascade1PositionLS.z, rotationMatrix, cascade1FilterRadius);
 #			endif
 
 			float cascade1BlendFactor = smoothstep(0, 1, (shadowMapDepth - StartSplitDistances.y) / (EndSplitDistances.x - StartSplitDistances.y));

@@ -55,6 +55,16 @@ void ScreenSpaceShadows::DrawSettings()
 		if (auto _tt = Util::HoverTooltipWrapper())
 			ImGui::Text("%s", T(TKEY("shadow_normal_offset_tooltip"), "Offsets the vanilla cascade shadow lookup along the surface normal by the shadow-map filter footprint, scaled by the light incidence angle. Reduces shadow acne without the peter-panning a constant depth bias causes. 0 disables. Applies to the game's directional shadow mask, not to screen-space shadows."));
 
+		ImGui::SliderFloat(T(TKEY("shadow_penumbra_angle"), "Sun Angular Size"), &globals::state->shadowPenumbraAngle, 0.0f, 10.0f, "%.2f°", ImGuiSliderFlags_AlwaysClamp);
+		if (auto _tt = Util::HoverTooltipWrapper())
+			ImGui::Text("%s", T(TKEY("shadow_penumbra_angle_tooltip"), "Treats the sun as a disc of this angular radius instead of a point, so shadows stay sharp where an object meets the ground and soften with distance from it. The real sun is about 0.25°; larger values exaggerate the effect. 0 disables contact hardening and restores the game's fixed-width shadow filter. Requires the game's Shadow Filter set to its highest quality."));
+
+		ImGui::BeginDisabled(globals::state->shadowPenumbraAngle <= 0.0f);
+		ImGui::SliderFloat(T(TKEY("shadow_penumbra_max"), "Max Penumbra Width"), &globals::state->shadowPenumbraMax, 1.0f, 32.0f, "%.0f×", ImGuiSliderFlags_AlwaysClamp);
+		if (auto _tt = Util::HoverTooltipWrapper())
+			ImGui::Text("%s", T(TKEY("shadow_penumbra_max_tooltip"), "Caps how wide a soft shadow may spread, as a multiple of the game's base filter width. This is also the radius searched for occluders, so it sets the cost: raise it for broader penumbrae, lower it if distant shadows look mushy or the pass gets expensive."));
+		ImGui::EndDisabled();
+
 		ImGui::Spacing();
 		ImGui::Spacing();
 		ImGui::TreePop();
@@ -268,6 +278,8 @@ void ScreenSpaceShadows::RestoreDefaultSettings()
 {
 	bendSettings = {};
 	globals::state->shadowNormalOffset = 1.0f;
+	globals::state->shadowPenumbraAngle = 0.0f;
+	globals::state->shadowPenumbraMax = 8.0f;
 }
 
 bool ScreenSpaceShadows::HasShaderDefine(RE::BSShader::Type)

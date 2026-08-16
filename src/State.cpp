@@ -1,6 +1,7 @@
 #include "State.h"
 
 #include <codecvt>
+#include <numbers>
 
 #include <pystring/pystring.h>
 
@@ -526,6 +527,8 @@ void State::SaveToJson(nlohmann::json& settings)
 	general["Enable Async"] = shaderCache->IsAsync();
 	general["Language"] = I18n::GetSingleton()->GetCurrentLocale();
 	general["Shadow Normal Offset"] = shadowNormalOffset;
+	general["Shadow Penumbra Angle"] = shadowPenumbraAngle;
+	general["Shadow Penumbra Max"] = shadowPenumbraMax;
 
 	settings["General"] = general;
 
@@ -611,6 +614,10 @@ void State::LoadFromJson(nlohmann::json& settings)
 			shaderCache->SetAsync(general["Enable Async"]);
 		if (general.contains("Shadow Normal Offset") && general["Shadow Normal Offset"].is_number())
 			shadowNormalOffset = std::clamp(general["Shadow Normal Offset"].get<float>(), 0.0f, 4.0f);
+		if (general.contains("Shadow Penumbra Angle") && general["Shadow Penumbra Angle"].is_number())
+			shadowPenumbraAngle = std::clamp(general["Shadow Penumbra Angle"].get<float>(), 0.0f, 10.0f);
+		if (general.contains("Shadow Penumbra Max") && general["Shadow Penumbra Max"].is_number())
+			shadowPenumbraMax = std::clamp(general["Shadow Penumbra Max"].get<float>(), 1.0f, 32.0f);
 
 		// Load i18n locale preference
 		if (general.contains("Language") && general["Language"].is_string()) {
@@ -1053,6 +1060,8 @@ void State::UpdateSharedData([[maybe_unused]] bool a_inWorld, [[maybe_unused]] b
 		data.WaterSystemHeight = -RE::NI_INFINITY;
 
 		data.ShadowNormalOffset = shadowNormalOffset;
+		data.ShadowPenumbraScale = std::tan(shadowPenumbraAngle * (std::numbers::pi_v<float> / 180.0f));
+		data.ShadowPenumbraMax = shadowPenumbraMax;
 
 		data.InInterior = Util::IsInterior();
 		data.HasDirectionalShadows = HasDirectionalShadows();
