@@ -45,7 +45,8 @@ NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(
 
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(
 	TruePBR::Settings,
-	VertexAOStrength);
+	VertexAOStrength,
+	MicroShadowStrength);
 
 #define CHECK_PBR_TEXTURE(textureName)                                                                         \
 	if (!(pbrMaterial->textureName)) {                                                                         \
@@ -128,6 +129,10 @@ void TruePBR::DrawSettings()
 {
 	if (ImGui::TreeNodeEx(T(TKEY("global_settings"), "Global Settings"), ImGuiTreeNodeFlags_DefaultOpen)) {
 		ImGui::SliderFloat(T(TKEY("vertex_ao_strength"), "Vertex AO Strength"), &settings.VertexAOStrength, 0.f, 1.f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
+		ImGui::SliderFloat(T(TKEY("micro_shadow_strength"), "Micro Shadow Strength"), &settings.MicroShadowStrength, 0.f, 2.f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
+		Util::HelpMarker(T(TKEY("micro_shadow_strength_tooltip"),
+			"Applies the material ambient occlusion map to direct light as a contact/cavity shadow, "
+			"not just to ambient. Adds depth to crevices on directly lit surfaces. 0 disables."));
 		ImGui::TreePop();
 	}
 

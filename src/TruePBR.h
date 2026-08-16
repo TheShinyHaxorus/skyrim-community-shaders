@@ -79,7 +79,8 @@ public:
 	struct alignas(16) Settings
 	{
 		float VertexAOStrength = 1.0f;
-		uint pad[3];
+		float MicroShadowStrength = 1.0f;
+		uint pad[2];
 	};
 	STATIC_ASSERT_ALIGNAS_16(Settings);
 

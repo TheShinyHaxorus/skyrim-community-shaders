@@ -119,7 +119,7 @@ namespace PBR
 	void GetDirectLightInput(out DirectLightingOutput lightingOutput, DirectContext context, MaterialProperties material, float3x3 tbnTr, float2 uv)
 	{
 		lightingOutput = (DirectLightingOutput)0;
-		const float3 detailedLightColor = context.lightColor * context.detailedShadow;
+		float3 detailedLightColor = context.lightColor * context.detailedShadow;
 		const float3 softLightColor = context.lightColor * context.softShadow;
 
 		const float3 N = context.worldNormal;
@@ -143,6 +143,8 @@ namespace PBR
 		float satVdotL = saturate(VdotL);
 		float satNdotH = saturate(NdotH);
 		float satVdotH = saturate(VdotH);
+
+		detailedLightColor *= MicroShadow(material.AO, satNdotL, SharedData::truePBRSettings.MicroShadowStrength);
 
 #if !defined(LANDSCAPE) && !defined(LODLANDSCAPE)
 		[branch] if ((PBRFlags & Flags::HairMarschner) != 0)

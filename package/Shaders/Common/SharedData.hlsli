@@ -374,7 +374,8 @@ namespace SharedData
 	struct TruePBRSettings
 	{
 		float VertexAOStrength;
-		uint3 pad;
+		float MicroShadowStrength;
+		uint2 pad;
 	};
 
 	struct SkinData

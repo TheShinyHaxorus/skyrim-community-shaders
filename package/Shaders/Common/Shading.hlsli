@@ -31,6 +31,13 @@ float ApproximateDirectOcculusion(float aoVisibility, float NdotL)
 	return saturate(NdotL * aperture);
 }
 
+// [Chan 2018, "Material Advances in Call of Duty: WWII"] microshadowing, driven by material cavity
+float MicroShadow(float ao, float NdotL, float strength)
+{
+	float cavity = saturate((1.0 - ao) * strength);
+	return saturate(NdotL * cavity + (1.0 - cavity));
+}
+
 // https://blog.selfshadow.com/publications/blending-in-detail/
 // geometric normal s, a base normal t and a secondary (or detail) normal u
 float3 ReorientNormal(float3 u, float3 t, float3 s)
