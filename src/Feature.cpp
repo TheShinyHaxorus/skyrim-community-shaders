@@ -7,6 +7,7 @@
 #include "Features/DynamicCubemaps.h"
 #include "Features/Effects11.h"
 #include "Features/ExponentialHeightFog.h"
+#include "Features/FogScattering.h"
 #include "Features/ExtendedMaterials.h"
 #include "Features/ExtendedTranslucency.h"
 #include "Features/GrassCollision.h"
@@ -263,6 +264,7 @@ const std::vector<Feature*>& Feature::GetFeatureList()
 		&globals::features::unifiedWater,
 		&globals::features::horizonFix,
 		&globals::features::exponentialHeightFog,
+		&globals::features::fogScattering,
 		&globals::features::hdrDisplay,
 		&globals::features::skin,
 		&globals::features::snowCover

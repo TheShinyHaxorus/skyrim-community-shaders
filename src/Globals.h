@@ -39,6 +39,7 @@ struct Upscaling;
 class Profiler;
 struct CSEditor;
 struct ExponentialHeightFog;
+struct FogScattering;
 struct HDRDisplay;
 struct ScreenshotFeature;
 struct Skin;
@@ -135,6 +136,7 @@ namespace globals
 		extern ScreenshotFeature screenshotFeature;
 		extern CSEditor csEditor;
 		extern ExponentialHeightFog exponentialHeightFog;
+		extern FogScattering fogScattering;
 		extern TruePBR truePBR;
 		extern Skin skin;
 		extern Effects11 effects11;

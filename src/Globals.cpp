@@ -5,6 +5,7 @@
 #include "Features/CloudShadows.h"
 #include "Features/DynamicCubemaps.h"
 #include "Features/ExponentialHeightFog.h"
+#include "Features/FogScattering.h"
 #include "Features/ExtendedMaterials.h"
 #include "Features/ExtendedTranslucency.h"
 #include "Features/GrassCollision.h"
@@ -102,6 +103,7 @@ namespace globals
 		ScreenshotFeature screenshotFeature{};
 		CSEditor csEditor{};
 		ExponentialHeightFog exponentialHeightFog{};
+		FogScattering fogScattering{};
 		TruePBR truePBR{};
 		Skin skin{};
 		Effects11 effects11{};
