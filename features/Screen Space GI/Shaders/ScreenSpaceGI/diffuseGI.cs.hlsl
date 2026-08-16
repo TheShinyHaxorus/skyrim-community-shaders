@@ -60,13 +60,16 @@
 #include "Common/Math.hlsli"
 #include "NRD/NRDReblurSH.hlsli"
 #include "ScreenSpaceGI/common.hlsli"
+#if defined(IBL)
+#	include "IBL/IBL.hlsli"
+#endif
 
 Texture2D<float> srcWorkingDepth : register(t0);
 Texture2D<float3> srcRadiance : register(t2);
 Texture2D<unorm float2> srcNoise : register(t3);
 #if defined(DYNAMIC_CUBEMAPS)
 TextureCube<float3> EnvTexture : register(t4);
-TextureCube<float3> EnvReflectionsTexture : register(t5);
+TextureCube<float3> ReflectionCubemap : register(t5);
 #	if defined(SKYLIGHTING)
 #		define SKYLIGHTING_PROBE_REGISTER t6
 #		include "Skylighting/Skylighting.hlsli"
@@ -187,60 +190,54 @@ float3 SampleDiffuseFallbackCubemap(float3 worldPos, float3 worldNormal, float3 
 	float3 envSampleRaw = EnvTexture.SampleLevel(samplerLinearClamp, worldDir, SSGI_FALLBACK_MIP);
 	float3 envColor = envSampleRaw;
 
-#	if defined(IBL)
-	if (SharedData::iblSettings.EnableIBL) {
-		uint dalcMode = SharedData::iblSettings.DALCMode;
-
-		if (dalcMode >= 2) {
-			// Mode 2/3: DALC-normalized env scaled by DALCAmount
-			float envLum = Color::RGBToLuminance(EnvTexture.SampleLevel(samplerLinearClamp, worldDir, 15));
-			float3 dalc = Color::Ambient(max(0, SharedData::GetAmbient(worldDir)));
-			envColor = (envSampleRaw / max(envLum, 0.001)) * dalc * SharedData::iblSettings.DALCAmount;
-		} else {
-			// Mode 0/1: ratio-based
-			float3 dalc0 = Color::Ambient(max(0, SharedData::GetAmbient(float3(0, 0, 0))));
-			float3 envAvg = EnvTexture.SampleLevel(samplerLinearClamp, float3(0, 0, 0), 15);
-
-			if (dalcMode == 1) {
-				// Color Ratio: per-channel
-				float3 ratio = dalc0 / max(envAvg, 0.001);
-				envColor = envSampleRaw * lerp(1.0, ratio, SharedData::iblSettings.DALCAmount) * SharedData::iblSettings.EnvIBLScale;
-			} else {
-				// Luminance Ratio: scalar
-				float dalcLum = Color::RGBToLuminance(dalc0);
-				float envLum = Color::RGBToLuminance(envAvg);
-				float ratio = (envLum > 0.001) ? (dalcLum / envLum) : 1.0;
-				envColor = envSampleRaw * lerp(1.0, ratio, SharedData::iblSettings.DALCAmount) * SharedData::iblSettings.EnvIBLScale;
-			}
-		}
-	}
-#	endif
-
 #	if defined(SKYLIGHTING)
+	float skylightingDiffuse = 1.0;
 	if (!SharedData::InInterior) {
 		float fadeOutFactor = Skylighting::GetFadeOutFactor(worldPos);
 		float3 skylightingNormal = normalize(float3(worldNormal.xy, max(0, worldNormal.z)));
 		float skylightingBoost = 1.0 + saturate(worldNormal.z) * (1.0 - SharedData::skylightingSettings.MinDiffuseVisibility);
 		sh2 skylightingSH = Skylighting::Sample(worldPos, worldDir);
-		float skylightingDiffuse = Skylighting::EvaluateDiffuse(skylightingSH, skylightingNormal, fadeOutFactor) * skylightingBoost;
-		float3 envSkyColor = EnvReflectionsTexture.SampleLevel(samplerLinearClamp, worldDir, SSGI_FALLBACK_MIP);
-		float3 skyColor = max(envSkyColor - envSampleRaw, 0);
-
-#		if defined(IBL)
-		if (SharedData::iblSettings.EnableIBL) {
-			skyColor *= SharedData::iblSettings.SkyIBLScale;
-			envColor += skyColor;
-			envColor *= skylightingDiffuse;
-		} else
-#		endif
-		{
-			envColor += skyColor;
-			envColor *= skylightingDiffuse;
-		}
+		skylightingDiffuse = Skylighting::EvaluateDiffuse(skylightingSH, skylightingNormal, fadeOutFactor) * skylightingBoost;
 	}
 #	endif
 
-	return Color::IrradianceToLinear(envColor);
+#	if defined(IBL)
+	if (SharedData::iblSettings.EnableIBL) {
+		uint dalcMode = SharedData::iblSettings.DALCMode;
+
+		if (dalcMode >= 2) {
+			// Mode 2: DALC-normalized env scaled by DALCAmount
+			float envLum = Color::RGBToLuminance(EnvTexture.SampleLevel(samplerLinearClamp, worldDir, 15));
+			float3 dalc = Color::Ambient(max(0, SharedData::GetAmbient(worldDir)));
+			envColor = (envSampleRaw / max(envLum, 0.001)) * dalc * SharedData::iblSettings.DALCAmount;
+		} else {
+			// Mode 0/1: ratio-based
+			float3 saturatedEnv = Color::Saturation(envSampleRaw, SharedData::iblSettings.EnvIBLSaturation);
+			float3 ratio = ImageBasedLighting::GetIBLRatio();
+			envColor = saturatedEnv * ratio * SharedData::iblSettings.EnvIBLScale;
+		}
+
+		if (!SharedData::InInterior) {
+			float3 skySample = ReflectionCubemap.SampleLevel(samplerLinearClamp, worldDir, SSGI_FALLBACK_MIP);
+			float3 skyColor = Color::Saturation(skySample, SharedData::iblSettings.SkyIBLSaturation) * SharedData::iblSettings.SkyIBLScale;
+#		if defined(SKYLIGHTING)
+			skyColor *= skylightingDiffuse;
+#		endif
+			envColor += skyColor;
+		}
+		envColor = Color::IrradianceToLinear(envColor);
+	} else
+#	endif
+	{
+		float3 directionalAmbient = Color::Ambient(max(0, SharedData::GetAmbient(worldDir)));
+		envColor = Color::IrradianceToLinear(directionalAmbient);
+#	if defined(SKYLIGHTING)
+		if (!SharedData::InInterior)
+			envColor *= skylightingDiffuse;
+#	endif
+	}
+
+	return envColor;
 }
 #endif
 
@@ -420,7 +417,7 @@ void CalculateGI(
 	normHitDist = saturate(normHitDist);
 	// REBLUR defines normalized hit distance as diffuse AO/visibility: nearby occlusion tends to 0,
 	// while open or distant geometry tends to 1. Exact 0 is reserved for an invalid/skipped lobe.
-	normHitDist = AOPower > 0 ? max(pow(saturate(1 - normHitDist), AOPower), NRD_EPS) : 1;
+	normHitDist = max(saturate(1 - normHitDist), NRD_EPS);
 #ifdef SSGI_SH
 	float fallbackLuminance = _NRD_LinearToYCoCg(fallbackRadiance).x;
 #endif
@@ -428,7 +425,8 @@ void CalculateGI(
 	// The open-bit integration supplies directional visibility, while the final
 	// GTAO visibility also represents unresolved local occlusion. Apply both to
 	// ambient cubemap fallback; screen-space hit radiance remains unchanged.
-	fallbackRadiance *= normHitDist;
+	// AOPower shapes only this fallback occlusion: traced GI already carries its own visibility.
+	fallbackRadiance *= pow(normHitDist, AOPower);
 
 	o_ao = normHitDist;
 	o_radiance = totalRadiance + fallbackRadiance;
@@ -448,7 +446,15 @@ void CalculateGI(
 [numthreads(8, 8, 1)] void main(const uint2 dtid : SV_DispatchThreadID) {
 	const float2 frameScale = FrameDim * RcpTexDim;
 
-#if defined(SSGI_HALF)
+#if defined(SSGI_QUARTER)
+	// Trace one pixel per 2x2 block. Cycle through all four phases so REBLUR's
+	// hit-distance reconstruction and temporal accumulation receive fresh data.
+	uint2 phaseOffset = uint2(FrameIndex & 1u, (FrameIndex >> 1u) & 1u);
+	uint2 pxCoord = dtid * 2u + phaseOffset;
+	if (any(pxCoord >= uint2(FrameDim)))
+		return;
+	uint2 outCoord = pxCoord;
+#elif defined(SSGI_HALF)
 	uint colOffset = (dtid.y + FrameIndex) & 1;
 	uint2 pxCoord = uint2(dtid.x * 2 + colOffset, dtid.y);
 	uint2 outCoord = dtid.xy;
@@ -488,6 +494,12 @@ void CalculateGI(
 	);
 
 	radiance = filterNaN(radiance);
+
+#ifdef SSGI_QUARTER
+	// One out of four pixels carries a sample. Compensate its energy so the
+	// spatially and temporally filtered signal remains unbiased.
+	radiance *= 4.0;
+#endif
 
 #ifdef SSGI_SH
 	float4 sh1;

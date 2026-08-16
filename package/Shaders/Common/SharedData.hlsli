@@ -339,18 +339,18 @@ namespace SharedData
 
 	struct SSGISettings
 	{
+		uint Enabled;
 		uint EnableIL;
 		uint DebugMode;
-		uint pad0;
-		uint pad1;
+		float AOPower;
 	};
 
 	struct SSRSettings
 	{
 		uint Enabled;
 		float SpecularMult;
+		float SpecCubemapMult;
 		uint pad0;
-		uint pad1;
 	};
 
 	struct ExponentialHeightFogSettings

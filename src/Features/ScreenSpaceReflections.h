@@ -66,8 +66,8 @@ struct ScreenSpaceReflections : Feature
 		float SpecularMult = 1.0f;
 		uint SpecMaxSteps = 128;
 		float SpecThickness = 5.0f;
-		float NormalBias = 0.1f;
-		float BRDFBias = 0.25f;
+		float NormalBias = 0.2f;
+		float BRDFBias = 0.1f;
 		float OcclusionStrength = 1.0f;
 
 		bool UseDynamicCubemapsAsFallback = true;
@@ -78,7 +78,12 @@ struct ScreenSpaceReflections : Feature
 		float HitDistC = 20.0f;
 
 		bool EnableREBLUR = true;
-		NRD::REBLURSettings Reblur;
+		NRD::REBLURSettings Reblur = {
+			.MaxAccumulatedFrameNum = 20,
+			.MaxFastAccumulatedFrameNum = 1,
+			.MaxStabilizedFrameNum = 0,
+			.FastHistoryClampingSigmaScale = 1.5f,
+		};
 		float SpecularPrepassBlurRadius = 50.0f;
 		bool UsePrepassOnlyForSpecularMotionEstimation = true;
 	} settings;
@@ -112,8 +117,8 @@ struct ScreenSpaceReflections : Feature
 	{
 		uint Enabled;
 		float SpecularMult;
+		float SpecCubemapMult;
 		uint pad0;
-		uint pad1;
 	};
 
 	SharedData GetCommonBufferData();
@@ -140,4 +145,6 @@ struct ScreenSpaceReflections : Feature
 	NRDReblurIntegration nrdReblurSpecular;
 	nrd::ReblurSettings reblurSpecularSettings{};
 	bool resetReblurHistory = true;
+	// True only after the current DrawSSR invocation has produced a trace output.
+	bool outputReady = false;
 };

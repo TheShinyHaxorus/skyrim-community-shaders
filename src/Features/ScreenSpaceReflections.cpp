@@ -39,6 +39,7 @@ void ScreenSpaceReflections::RestoreDefaultSettings()
 	settings = {};
 	recompileFlag = true;
 	resetReblurHistory = true;
+	outputReady = false;
 }
 
 void ScreenSpaceReflections::DrawSettings()
@@ -61,9 +62,12 @@ void ScreenSpaceReflections::DrawSettings()
 	{
 		auto enabledGuard = Util::DisableGuard(!settings.Enabled);
 
-		if (ImGui::Checkbox(T(TKEY("half_resolution_checkerboard"), "Half Resolution (Checkerboard)"), &settings.HalfRes)) {
-			recompileFlag = true;
-			resetReblurHistory = true;
+		{
+			auto halfResGuard = Util::DisableGuard(!settings.EnableREBLUR);
+			if (ImGui::Checkbox(T(TKEY("half_resolution_checkerboard"), "Half Resolution (Checkerboard)"), &settings.HalfRes)) {
+				recompileFlag = true;
+				resetReblurHistory = true;
+			}
 		}
 		if (auto _tt = Util::HoverTooltipWrapper()) {
 			ImGui::Text("%s", T(TKEY("half_resolution_checkerboard_tooltip"), "Trace half the columns in a checkerboard pattern. NRD reconstructs the missing pixels."));
@@ -112,8 +116,13 @@ void ScreenSpaceReflections::DrawSettings()
 	{
 		auto denoiseGuard = Util::DisableGuard(!settings.Enabled);
 
-		if (ImGui::Checkbox(T(TKEY("enable_reblur"), "Enable REBLUR"), &settings.EnableREBLUR))
+		if (ImGui::Checkbox(T(TKEY("enable_reblur"), "Enable REBLUR"), &settings.EnableREBLUR)) {
+			if (!settings.EnableREBLUR && settings.HalfRes) {
+				settings.HalfRes = false;
+				recompileFlag = true;
+			}
 			resetReblurHistory = true;
+		}
 
 		if (settings.EnableREBLUR) {
 			resetReblurHistory |= globals::features::nrd.DrawReblurSettings(settings.Reblur, showAdvanced, "ssr_reblur");
@@ -136,6 +145,12 @@ void ScreenSpaceReflections::DrawSettings()
 			BUFFER_VIEWER_NODE(texNRDSpecInput, debugRescale)
 		if (texNRDSpecOutput)
 			BUFFER_VIEWER_NODE(texNRDSpecOutput, debugRescale)
+		if (auto validation = settings.Reblur.EnableValidation ? nrdReblurSpecular.GetValidationSRV() : nullptr) {
+			if (ImGui::TreeNode("NRD Validation")) {
+				ImGui::Image(validation, { nrdReblurSpecular.GetWidth() * debugRescale, nrdReblurSpecular.GetHeight() * debugRescale });
+				ImGui::TreePop();
+			}
+		}
 
 		ImGui::TreePop();
 	}
@@ -146,8 +161,11 @@ void ScreenSpaceReflections::DrawSettings()
 void ScreenSpaceReflections::LoadSettings(json& o_json)
 {
 	settings = o_json;
+	if (!settings.EnableREBLUR)
+		settings.HalfRes = false;
 	recompileFlag = true;
 	resetReblurHistory = true;
+	outputReady = false;
 }
 
 void ScreenSpaceReflections::SaveSettings(json& o_json)
@@ -160,6 +178,7 @@ void ScreenSpaceReflections::SetupResources()
 	auto renderer = globals::game::renderer;
 	auto device = globals::d3d::device;
 	resetReblurHistory = true;
+	outputReady = false;
 
 	logger::debug("ScreenSpaceReflections: creating buffers");
 	{
@@ -279,6 +298,7 @@ void ScreenSpaceReflections::SetupResources()
 
 void ScreenSpaceReflections::ClearShaderCache()
 {
+	outputReady = false;
 	prefilterHiZDepthCompute = nullptr;
 	prefilterHiZMipsCompute = nullptr;
 	depthDownsampleCompute = nullptr;
@@ -353,6 +373,11 @@ void ScreenSpaceReflections::UpdateSB()
 
 void ScreenSpaceReflections::DrawSSR()
 {
+	outputReady = false;
+
+	if (recompileFlag)
+		ClearShaderCache();
+
 	if (!(settings.Enabled && ShadersOK() && texHiZDepth && texNRDSpecInput))
 		return;
 
@@ -361,9 +386,6 @@ void ScreenSpaceReflections::DrawSSR()
 
 	if (globals::state->frameAnnotations)
 		globals::state->BeginPerfEvent("SSR");
-
-	if (recompileFlag)
-		ClearShaderCache();
 
 	UpdateSB();
 
@@ -463,6 +485,7 @@ void ScreenSpaceReflections::DrawSSR()
 		auto main = rts[globals::deferred->forwardRenderTargets[0]];
 
 		auto& dynamicCubemaps = globals::features::dynamicCubemaps;
+		auto& ibl = globals::features::ibl;
 		auto& skylighting = globals::features::skylighting;
 
 		resetViews();
@@ -474,10 +497,12 @@ void ScreenSpaceReflections::DrawSSR()
 		specSRVs[4] = dynamicCubemaps.loaded ? dynamicCubemaps.envTexture->srv.get() : nullptr;
 		specSRVs[5] = dynamicCubemaps.loaded ? dynamicCubemaps.envReflectionsTexture->srv.get() : nullptr;
 		specSRVs[6] = dynamicCubemaps.loaded && skylighting.loaded ? skylighting.texProbeArray->srv.get() : nullptr;
+		ID3D11ShaderResourceView* envIBLSrv = ibl.loaded && ibl.envIBLTexture ? ibl.envIBLTexture->srv.get() : nullptr;
 
 		ID3D11UnorderedAccessView* specUAV = texNRDSpecInput->uav.get();
 
 		context->CSSetShaderResources(0, (uint)specSRVs.size(), specSRVs.data());
+		context->CSSetShaderResources(76, 1, &envIBLSrv);
 		context->CSSetUnorderedAccessViews(0, 1, &specUAV, nullptr);
 		context->CSSetShader(specularGICompute.get(), nullptr, 0);
 
@@ -487,6 +512,8 @@ void ScreenSpaceReflections::DrawSSR()
 		context->Dispatch((specDispatchX + 7u) >> 3, (specDispatchY + 7u) >> 3, 1);
 		globals::profiler->EndPass();
 
+		envIBLSrv = nullptr;
+		context->CSSetShaderResources(76, 1, &envIBLSrv);
 		resetViews();
 
 		if (globals::state->frameAnnotations)
@@ -502,6 +529,7 @@ void ScreenSpaceReflections::DrawSSR()
 
 		auto commonSettings = nrdSvc.GetCommonSettings();
 		commonSettings.splitScreen = settings.Reblur.SplitScreen;
+		commonSettings.enableValidation = settings.Reblur.EnableValidation;
 		if (resetReblurHistory)
 			commonSettings.accumulationMode = nrd::AccumulationMode::CLEAR_AND_RESTART;
 		nrdReblurSpecular.SetCommonSettings(commonSettings);
@@ -540,6 +568,7 @@ void ScreenSpaceReflections::DrawSSR()
 	context->CSSetConstantBuffers(1, 1, &cb);
 	context->CSSetSamplers(0, (uint)samplers.size(), samplers.data());
 	context->CSSetShader(nullptr, nullptr, 0);
+	outputReady = true;
 
 	if (globals::state->frameAnnotations)
 		globals::state->EndPerfEvent();
@@ -547,7 +576,7 @@ void ScreenSpaceReflections::DrawSSR()
 
 ID3D11ShaderResourceView* ScreenSpaceReflections::GetOutputTexture()
 {
-	if (!loaded || !settings.Enabled)
+	if (!outputReady || !loaded || !settings.Enabled)
 		return nullptr;
 	if (settings.EnableREBLUR && nrdReblurSpecular.IsValid() && globals::features::nrd.loaded && globals::features::nrd.AreGuidesReady())
 		return texNRDSpecOutput->srv.get();
@@ -557,9 +586,9 @@ ID3D11ShaderResourceView* ScreenSpaceReflections::GetOutputTexture()
 ScreenSpaceReflections::SharedData ScreenSpaceReflections::GetCommonBufferData()
 {
 	SharedData data;
-	data.Enabled = (loaded && settings.Enabled) ? 1u : 0u;
+	data.Enabled = (loaded && settings.Enabled && !recompileFlag && ShadersOK() && texHiZDepth && texNRDSpecInput) ? 1u : 0u;
 	data.SpecularMult = settings.SpecularMult;
+	data.SpecCubemapMult = settings.UseDynamicCubemapsAsFallback && globals::features::dynamicCubemaps.loaded ? settings.SpecCubemapMult : 0.0f;
 	data.pad0 = 0;
-	data.pad1 = 0;
 	return data;
 }
