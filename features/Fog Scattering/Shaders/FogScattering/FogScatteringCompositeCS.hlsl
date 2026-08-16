@@ -1,11 +1,5 @@
 Texture2D<float4> ScatterPyramid : register(t0);
-// DEPTH_UNORM tracks the depth SRV the C++ side binds: R24_UNORM_X8_TYPELESS game depth
-// (unorm) without Terrain Blending, R32_FLOAT blended depth with it.
-#if defined(DEPTH_UNORM)
-Texture2D<unorm float> SceneDepth : register(t1);
-#else
 Texture2D<float> SceneDepth : register(t1);
-#endif
 Texture2D<float4> SceneColor : register(t2);
 RWTexture2D<float4> CompositeTarget : register(u0);
 
@@ -22,13 +16,6 @@ RWTexture2D<float4> CompositeTarget : register(u0);
 	float weight = FogScattering::GetScatterWeight(uv, SceneDepth.Load(coord));
 
 	float blend = saturate(weight * ScatterParams.x);
-
-	[branch] if (ScatterParams2.y > 0.5f)
-	{
-		CompositeTarget[dispatchID.xy] = float4(blend.xxx, original.a);
-		return;
-	}
-
 	[branch] if (blend <= 0.0f)
 	{
 		CompositeTarget[dispatchID.xy] = original;
