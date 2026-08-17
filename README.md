@@ -1,15 +1,15 @@
-[![Latest Release](https://img.shields.io/github/v/release/InTheBottle/skyrim-community-shaders)](https://github.com/InTheBottle/skyrim-community-shaders/releases)
-[![License](https://img.shields.io/github/license/InTheBottle/skyrim-community-shaders)](./COPYING)
-[![Last Commit](https://img.shields.io/github/last-commit/InTheBottle/skyrim-community-shaders)](https://github.com/InTheBottle/skyrim-community-shaders/commits/dev)
-[![Build Status](https://img.shields.io/github/actions/workflow/status/InTheBottle/skyrim-community-shaders/release-build.yaml?branch=dev)](https://github.com/InTheBottle/skyrim-community-shaders/actions)
-[![Open Issues](https://img.shields.io/github/issues/InTheBottle/skyrim-community-shaders)](https://github.com/InTheBottle/skyrim-community-shaders/issues)
-[![Contributors](https://img.shields.io/github/contributors/InTheBottle/skyrim-community-shaders)](https://github.com/InTheBottle/skyrim-community-shaders/graphs/contributors)
-[![Stars](https://img.shields.io/github/stars/InTheBottle/skyrim-community-shaders?style=social)](https://github.com/InTheBottle/skyrim-community-shaders/stargazers)
+[![Latest Release](https://img.shields.io/github/v/release/InTheBottle/bottled-shaders)](https://github.com/InTheBottle/bottled-shaders/releases)
+[![License](https://img.shields.io/github/license/InTheBottle/bottled-shaders)](./COPYING)
+[![Last Commit](https://img.shields.io/github/last-commit/InTheBottle/bottled-shaders)](https://github.com/InTheBottle/bottled-shaders/commits/dev)
+[![Build Status](https://img.shields.io/github/actions/workflow/status/InTheBottle/bottled-shaders/release-build.yaml?branch=dev)](https://github.com/InTheBottle/bottled-shaders/actions)
+[![Open Issues](https://img.shields.io/github/issues/InTheBottle/bottled-shaders)](https://github.com/InTheBottle/bottled-shaders/issues)
+[![Contributors](https://img.shields.io/github/contributors/InTheBottle/bottled-shaders)](https://github.com/InTheBottle/bottled-shaders/graphs/contributors)
+[![Stars](https://img.shields.io/github/stars/InTheBottle/bottled-shaders?style=social)](https://github.com/InTheBottle/bottled-shaders/stargazers)
 
-[![Pre-commit CI](https://results.pre-commit.ci/badge/github/InTheBottle/skyrim-community-shaders/dev.svg)](https://results.pre-commit.ci/latest/github/InTheBottle/skyrim-community-shaders/dev)
-![CodeRabbit Pull Request Reviews](https://img.shields.io/coderabbit/prs/github/InTheBottle/skyrim-community-shaders?utm_source=oss&utm_medium=github&utm_campaign=InTheBottle%2Fskyrim-community-shaders&labelColor=171717&color=FF570A&link=https%3A%2F%2Fcoderabbit.ai&label=CodeRabbit+Reviews)
+[![Pre-commit CI](https://results.pre-commit.ci/badge/github/InTheBottle/bottled-shaders/dev.svg)](https://results.pre-commit.ci/latest/github/InTheBottle/bottled-shaders/dev)
+![CodeRabbit Pull Request Reviews](https://img.shields.io/coderabbit/prs/github/InTheBottle/bottled-shaders?utm_source=oss&utm_medium=github&utm_campaign=InTheBottle%2Fbottled-shaders&labelColor=171717&color=FF570A&link=https%3A%2F%2Fcoderabbit.ai&label=CodeRabbit+Reviews)
 
-[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/InTheBottle/skyrim-community-shaders)
+[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/InTheBottle/bottled-shaders)
 
 # Bottled Shaders
 
@@ -19,7 +19,7 @@ Bottled Shaders preserves the upstream runtime layout — the same plugin DLL na
 and `Data/Shaders` structure — so existing user settings, themes, and third-party feature addons
 keep working. Install it *instead of* Community Shaders, not alongside it.
 
-[Source](https://github.com/InTheBottle/skyrim-community-shaders) · [Upstream Community Shaders on Nexus](https://www.nexusmods.com/skyrimspecialedition/mods/86492) · [Upstream source](https://github.com/community-shaders/skyrim-community-shaders) · [Upstream developer wiki](https://github.com/community-shaders/skyrim-community-shaders/wiki) · [User Wiki](https://modding.wiki/en/skyrim/developers/community-shaders)
+[Source](https://github.com/InTheBottle/bottled-shaders) · [Upstream Community Shaders on Nexus](https://www.nexusmods.com/skyrimspecialedition/mods/86492) · [Upstream source](https://github.com/community-shaders/skyrim-community-shaders) · [Upstream developer wiki](https://github.com/community-shaders/skyrim-community-shaders/wiki) · [User Wiki](https://modding.wiki/en/skyrim/developers/community-shaders)
 
 ## Requirements
 
@@ -60,13 +60,13 @@ Install them manually only if you want them in everywhere.
 To clone the repository with all submodules, run the following command in your terminal:
 
 ```bash
-git clone https://github.com/InTheBottle/skyrim-community-shaders.git --recursive
-cd skyrim-community-shaders
+git clone https://github.com/InTheBottle/bottled-shaders.git --recursive
+cd bottled-shaders
 ```
 
 ### Visual Studio build
 
-To build the project, just open `./skyrim-community-shaders` with Visual Studio's "Open Folder" feature. (Ensure you have `CMake Tools for Windows` selected when installing VS)
+To build the project, just open `./bottled-shaders` with Visual Studio's "Open Folder" feature. (Ensure you have `CMake Tools for Windows` selected when installing VS)
 
 Follow the prompts to `Configure` and `Build` the project.
 It should generate the AIO package in the `./build/ALL/aio` folder by default.
@@ -149,13 +149,13 @@ For those who prefer to not install Visual Studio or other build dependencies on
 
 ```pwsh
 & 'C:\Program Files\Docker\Docker\DockerCli.exe' -SwitchWindowsEngine; `
-docker build -t skyrim-community-shaders .
+docker build -t bottled-shaders .
 ```
 
 3. Then run the build:
 
 ```pwsh
-docker run -it --rm -v .:C:/skyrim-community-shaders skyrim-community-shaders:latest
+docker run -it --rm -v .:C:/bottled-shaders bottled-shaders:latest
 ```
 
 4. Retrieve the generated build files from the `build/aio` folder.
@@ -166,7 +166,7 @@ docker run -it --rm -v .:C:/skyrim-community-shaders skyrim-community-shaders:la
 If you run into `Access violation` build errors during step 3, you can try adding [`--isolation=process`](https://learn.microsoft.com/en-us/virtualization/windowscontainers/manage-containers/hyperv-container):
 
 ```pwsh
-docker run -it --rm --isolation=process -v .:C:/skyrim-community-shaders skyrim-community-shaders:latest
+docker run -it --rm --isolation=process -v .:C:/bottled-shaders bottled-shaders:latest
 ```
 
 ## Debugging

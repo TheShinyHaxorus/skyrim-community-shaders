@@ -24,8 +24,8 @@ RUN git clone https://github.com/microsoft/vcpkg.git C:/vcpkg && \
     cd C:/vcpkg && \
     bootstrap-vcpkg.bat
 
-RUN setx /M VCPKG_ROOT "C:/vcpkg" && mkdir C:\skyrim-community-shaders
+RUN setx /M VCPKG_ROOT "C:/vcpkg" && mkdir C:\bottled-shaders
 
-WORKDIR C:/skyrim-community-shaders
+WORKDIR C:/bottled-shaders
 
-ENTRYPOINT ["powershell", "-File", "C:/skyrim-community-shaders/containerbuild.ps1"]
+ENTRYPOINT ["powershell", "-File", "C:/bottled-shaders/containerbuild.ps1"]
