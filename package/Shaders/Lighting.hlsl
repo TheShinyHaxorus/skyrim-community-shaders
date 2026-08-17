@@ -3096,7 +3096,7 @@ PS_OUTPUT main(PS_INPUT input, bool frontFace : SV_IsFrontFace)
 	if (waterRoughnessSpecular < 1) {
 		// Reflection is from the water film surface; wetnessReflectance scales intensity by wetness amount.
 		screenSpaceNormal = normalize(FrameBuffer::WorldToView(wetnessNormal, false));
-		material.Roughness = waterRoughnessSpecular;
+		material.Roughness = SpecularAA::FilterRoughness(waterRoughnessSpecular, SpecularAA::NormalVariance(wetnessNormal));
 	}
 #		endif
 
