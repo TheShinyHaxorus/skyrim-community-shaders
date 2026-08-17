@@ -1,22 +1,25 @@
-[![Latest Release](https://img.shields.io/github/v/release/doodlum/skyrim-community-shaders)](https://github.com/doodlum/skyrim-community-shaders/releases)
-[![License](https://img.shields.io/github/license/doodlum/skyrim-community-shaders)](./LICENSE)
-[![Last Commit](https://img.shields.io/github/last-commit/doodlum/skyrim-community-shaders)](https://github.com/doodlum/skyrim-community-shaders/commits)
-[![Build Status](https://img.shields.io/github/actions/workflow/status/doodlum/skyrim-community-shaders/release-build.yaml?branch=dev)](https://github.com/doodlum/skyrim-community-shaders/actions)
-[![Open Issues](https://img.shields.io/github/issues/doodlum/skyrim-community-shaders)](https://github.com/doodlum/skyrim-community-shaders/issues)
-[![Contributors](https://img.shields.io/github/contributors/doodlum/skyrim-community-shaders)](https://github.com/doodlum/skyrim-community-shaders/graphs/contributors)
-[![Stars](https://img.shields.io/github/stars/doodlum/skyrim-community-shaders?style=social)](https://github.com/doodlum/skyrim-community-shaders/stargazers)
+[![Latest Release](https://img.shields.io/github/v/release/InTheBottle/skyrim-community-shaders)](https://github.com/InTheBottle/skyrim-community-shaders/releases)
+[![License](https://img.shields.io/github/license/InTheBottle/skyrim-community-shaders)](./COPYING)
+[![Last Commit](https://img.shields.io/github/last-commit/InTheBottle/skyrim-community-shaders)](https://github.com/InTheBottle/skyrim-community-shaders/commits/dev)
+[![Build Status](https://img.shields.io/github/actions/workflow/status/InTheBottle/skyrim-community-shaders/release-build.yaml?branch=dev)](https://github.com/InTheBottle/skyrim-community-shaders/actions)
+[![Open Issues](https://img.shields.io/github/issues/InTheBottle/skyrim-community-shaders)](https://github.com/InTheBottle/skyrim-community-shaders/issues)
+[![Contributors](https://img.shields.io/github/contributors/InTheBottle/skyrim-community-shaders)](https://github.com/InTheBottle/skyrim-community-shaders/graphs/contributors)
+[![Stars](https://img.shields.io/github/stars/InTheBottle/skyrim-community-shaders?style=social)](https://github.com/InTheBottle/skyrim-community-shaders/stargazers)
 
-[![Pre-commit CI](https://results.pre-commit.ci/badge/github/doodlum/skyrim-community-shaders/dev.svg)](https://results.pre-commit.ci/latest/github/doodlum/skyrim-community-shaders/dev)
-![CodeRabbit Pull Request Reviews](https://img.shields.io/coderabbit/prs/github/doodlum/skyrim-community-shaders?utm_source=oss&utm_medium=github&utm_campaign=doodlum%2Fskyrim-community-shaders&labelColor=171717&color=FF570A&link=https%3A%2F%2Fcoderabbit.ai&label=CodeRabbit+Reviews)
+[![Pre-commit CI](https://results.pre-commit.ci/badge/github/InTheBottle/skyrim-community-shaders/dev.svg)](https://results.pre-commit.ci/latest/github/InTheBottle/skyrim-community-shaders/dev)
+![CodeRabbit Pull Request Reviews](https://img.shields.io/coderabbit/prs/github/InTheBottle/skyrim-community-shaders?utm_source=oss&utm_medium=github&utm_campaign=InTheBottle%2Fskyrim-community-shaders&labelColor=171717&color=FF570A&link=https%3A%2F%2Fcoderabbit.ai&label=CodeRabbit+Reviews)
 
-[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/doodlum/skyrim-community-shaders)
+[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/InTheBottle/skyrim-community-shaders)
 
 # Bottled Shaders
 
-SKSE core plugin for advanced graphics modifications.
+SKSE core plugin for advanced graphics modifications for Skyrim, and a fork of Community Shaders.
 
-[Nexus](https://www.nexusmods.com/skyrimspecialedition/mods/86492)
-[User Wiki](https://modding.wiki/en/skyrim/developers/community-shaders)
+Bottled Shaders preserves the upstream runtime layout — the same plugin DLL name, settings folder,
+and `Data/Shaders` structure — so existing user settings, themes, and third-party feature addons
+keep working. Install it *instead of* Community Shaders, not alongside it.
+
+[Source](https://github.com/InTheBottle/skyrim-community-shaders) · [Upstream Community Shaders on Nexus](https://www.nexusmods.com/skyrimspecialedition/mods/86492) · [Upstream source](https://github.com/community-shaders/skyrim-community-shaders) · [Upstream developer wiki](https://github.com/community-shaders/skyrim-community-shaders/wiki) · [User Wiki](https://modding.wiki/en/skyrim/developers/community-shaders)
 
 ## Requirements
 
@@ -57,7 +60,7 @@ Install them manually only if you want them in everywhere.
 To clone the repository with all submodules, run the following command in your terminal:
 
 ```bash
-git clone https://github.com/doodlum/skyrim-community-shaders.git --recursive
+git clone https://github.com/InTheBottle/skyrim-community-shaders.git --recursive
 cd skyrim-community-shaders
 ```
 

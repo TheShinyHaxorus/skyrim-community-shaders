@@ -1,9 +1,11 @@
-# Community Shaders Contribution Guidelines
-If you would like to contribute to Community Shaders, you can do so by raising a pull request (PR) or raising an issue with an attached patch.
+# Bottled Shaders Contribution Guidelines
+If you would like to contribute to Bottled Shaders, you can do so by raising a pull request (PR) or raising an issue with an attached patch.
+
+Changes that benefit both projects are best raised against [upstream Community Shaders](https://github.com/community-shaders/skyrim-community-shaders); raise fork-specific work here, against `dev`.
 
 ## What is considered a useful contribution
 
-- New Community Shader features
+- New Bottled Shaders features
 - Bug fixes
 - Performance improvements
 - Documentation
@@ -19,7 +21,7 @@ All contributions fall under this project's license, GPL-3.0 or later.
 - You must understand your own contribution. If a maintainer asks what your code does or why, you need to be able to explain and defend it. If you can't, it isn't ready to PR.
 
 ## PR Guidelines
-- All PRs *must* follow CS coding style and software development best practices.
+- All PRs *must* follow the project's coding style and software development best practices.
 - PRs should have atomic commits. A PR with one large commit may have to be resubmitted as a PR with atomic commits before it is reviewed.
 - PRs will only be merged if all comments are resolved.
   - The exception to this rule is Coderabbit comments, which can be dismissed if not applicable. However, you may need to explain why you dismissed a Coderabbit comment, so ensure you have good reason to do so.
