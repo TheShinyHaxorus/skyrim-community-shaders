@@ -869,10 +869,29 @@ namespace Util
 		}
 		ImU32 headerColor = ImGui::GetColorU32(color);
 
-		// Left-aligned label with a single trailing rule; reads cleanly in a narrow sidebar.
-		drawList->AddText(ImVec2(pos.x, pos.y + 2.0f), headerColor, headerText.c_str());
+		const float fontSize = ImGui::GetFontSize();
+		const float arrowSlot = fontSize * 0.85f;
+		const float arrowLong = fontSize * 0.30f;
+		const float arrowShort = fontSize * 0.24f;
+		const ImVec2 arrowCenter(pos.x + arrowSlot * 0.5f, lineY + 2.0f);
+		if (isExpanded) {
+			drawList->AddTriangleFilled(
+				ImVec2(arrowCenter.x - arrowLong, arrowCenter.y - arrowShort),
+				ImVec2(arrowCenter.x + arrowLong, arrowCenter.y - arrowShort),
+				ImVec2(arrowCenter.x, arrowCenter.y + arrowShort),
+				headerColor);
+		} else {
+			drawList->AddTriangleFilled(
+				ImVec2(arrowCenter.x - arrowShort, arrowCenter.y - arrowLong),
+				ImVec2(arrowCenter.x + arrowShort, arrowCenter.y),
+				ImVec2(arrowCenter.x - arrowShort, arrowCenter.y + arrowLong),
+				headerColor);
+		}
 
-		float ruleStart = pos.x + textSize.x + 8.0f;
+		// Left-aligned label with a single trailing rule; reads cleanly in a narrow sidebar.
+		drawList->AddText(ImVec2(pos.x + arrowSlot, pos.y + 2.0f), headerColor, headerText.c_str());
+
+		float ruleStart = pos.x + arrowSlot + textSize.x + 8.0f;
 		float ruleEnd = pos.x + availableWidth;
 		if (ruleStart < ruleEnd) {
 			ImVec4 ruleColor = color;

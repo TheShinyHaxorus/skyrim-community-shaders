@@ -87,7 +87,6 @@ private:
 		// Helper methods for Feature rendering
 		void RenderFeatureHeader(Feature* feat, bool isDisabled, bool isLoaded, bool sceneControlled);
 		void RenderFeatureSettings(Feature* feat, bool isDisabled, bool isLoaded, bool hasFailedMessage, bool sceneControlled);
-		static void RenderRestoreDefaultsButton(Feature* feat, bool isDisabled, bool isLoaded);
 		void RenderReactiveConstraintWarningDialog();
 	};
 

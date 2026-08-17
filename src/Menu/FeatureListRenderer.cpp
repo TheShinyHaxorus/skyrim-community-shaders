@@ -53,6 +53,17 @@ namespace
 		return std::find(CORE_MENU_NAMES.begin(), CORE_MENU_NAMES.end(), menuName) != CORE_MENU_NAMES.end();
 	}
 
+	std::string g_selectedEntryKey;
+
+	std::string MenuEntryKey(const FeatureListRenderer::MenuFuncInfo& entry)
+	{
+		if (std::holds_alternative<Feature*>(entry))
+			return "F:" + std::get<Feature*>(entry)->GetShortName();
+		if (std::holds_alternative<FeatureListRenderer::BuiltInMenu>(entry))
+			return "B:" + std::get<FeatureListRenderer::BuiltInMenu>(entry).name;
+		return {};
+	}
+
 	// Color for the [ALPHA]/[BETA] stage marker. Alpha (less stable) reads as an error,
 	// Beta as a warning.
 	ImVec4 StageTagColor(Feature::ReleaseStage stage)
@@ -285,6 +296,15 @@ void FeatureListRenderer::RenderFeatureList(
 
 	auto menuList = BuildMenuList(featureSearch, categoryExpansionStates, drawGeneralSettings, drawAdvancedSettings);
 
+	if (!g_selectedEntryKey.empty()) {
+		for (size_t i = 0; i < menuList.size(); ++i) {
+			if (MenuEntryKey(menuList[i]) == g_selectedEntryKey) {
+				selectedMenu = i;
+				break;
+			}
+		}
+	}
+
 	HandlePendingFeatureSelection(pendingFeatureSelection, menuList, selectedMenu);
 
 	// Determine if left panel should be visible based on auto-hide settings
@@ -394,8 +414,14 @@ std::vector<FeatureListRenderer::MenuFuncInfo> FeatureListRenderer::BuildMenuLis
 		return !feat->loaded && feat->IsInMenu() && !feat->IsHiddenUnreleased() && (!FeatureIssues::IsObsoleteFeature(feat->GetShortName()) || globals::state->IsDeveloperMode());
 	});
 	if (std::ranges::distance(unloadedFeatures) != 0) {
-		menuList.push_back(T("menu.features.unloaded_features", "Unloaded Features"));
-		std::ranges::copy(unloadedFeatures, std::back_inserter(menuList));
+		const std::string unloadedLabel = T("menu.features.unloaded_features", "Unloaded Features");
+		if (categoryExpansionStates.find(unloadedLabel) == categoryExpansionStates.end()) {
+			categoryExpansionStates[unloadedLabel] = true;
+		}
+		menuList.push_back(unloadedLabel);
+		if (categoryExpansionStates[unloadedLabel]) {
+			std::ranges::copy(unloadedFeatures, std::back_inserter(menuList));
+		}
 	}
 	// Add top section for feature issues (rejected features, obsolete info, etc.)
 	if (FeatureIssues::HasFeatureIssues()) {
@@ -418,6 +444,7 @@ void FeatureListRenderer::HandlePendingFeatureSelection(
 				Feature* feature = std::get<Feature*>(menuList[i]);
 				if (feature->GetShortName() == pendingFeatureSelection) {
 					selectedMenu = i;
+					g_selectedEntryKey = MenuEntryKey(menuList[i]);
 					logger::info("Navigated to {} feature menu", pendingFeatureSelection);
 					break;
 				}
@@ -438,18 +465,6 @@ void FeatureListRenderer::RenderLeftColumn(
 	ImGui::PushStyleVar(ImGuiStyleVar_FrameBorderSize, 0.0f);
 	ImGui::PushStyleColor(ImGuiCol_FrameBg, ImVec4());
 	if (ImGui::BeginListBox("##MenusList", { -FLT_MIN, -FLT_MIN })) {
-		// Find where core built-in menus end (Home, General, Advanced, Display)
-		size_t coreMenuCount = 0;
-		for (size_t i = 0; i < menuList.size(); i++) {
-			if (std::holds_alternative<BuiltInMenu>(menuList[i])) {
-				const BuiltInMenu& menu = std::get<BuiltInMenu>(menuList[i]);
-				if (IsCoreMenu(menu.name)) {
-					coreMenuCount++;
-				}
-			}
-		}
-
-		// First render the core built-in menus (Home, General, Advanced, Display)
 		size_t renderedCoreMenus = 0;
 		for (size_t i = 0; i < menuList.size() && renderedCoreMenus < CORE_MENU_NAMES.size(); i++) {
 			if (std::holds_alternative<BuiltInMenu>(menuList[i])) {
@@ -461,8 +476,6 @@ void FeatureListRenderer::RenderLeftColumn(
 			}
 		}
 
-		// Add Features header and search bar after built-in settings
-		Util::DrawSectionHeader(T("menu.features.features", "Features"), true);
 		Util::DrawFeatureSearchBar(featureSearch);
 
 		// Then render the rest (features and categories, but skip already rendered core menus)
@@ -506,25 +519,28 @@ void FeatureListRenderer::ListMenuVisitor::operator()(const BuiltInMenu& menu)
 		auto& themeSettings = globals::menu->GetSettings().Theme;
 		ImGui::PushStyleColor(ImGuiCol_Text, themeSettings.StatusPalette.Error);
 
-		if (ImGui::Selectable(fmt::format(" {} ", menu.name).c_str(), selectedMenuRef == listId, ImGuiSelectableFlags_SpanAllColumns))
+		if (ImGui::Selectable(fmt::format(" {} ", menu.name).c_str(), selectedMenuRef == listId, ImGuiSelectableFlags_SpanAllColumns)) {
 			selectedMenuRef = listId;
+			g_selectedEntryKey = "B:" + menu.name;
+		}
 
 		ImGui::PopStyleColor();
 	} else {
-		if (ImGui::Selectable(fmt::format(" {} ", menu.name).c_str(), selectedMenuRef == listId, ImGuiSelectableFlags_SpanAllColumns))
+		if (ImGui::Selectable(fmt::format(" {} ", menu.name).c_str(), selectedMenuRef == listId, ImGuiSelectableFlags_SpanAllColumns)) {
 			selectedMenuRef = listId;
+			g_selectedEntryKey = "B:" + menu.name;
+		}
 	}
 }
 
 void FeatureListRenderer::ListMenuVisitor::operator()(const std::string& label)
 {
-	// Style "Unloaded Features" to match category headers
-	if (label == T("menu.features.unloaded_features", "Unloaded Features")) {
-		Util::DrawSectionHeader(label.c_str(), true);
-	} else {
-		// Use default separator text for other labels - should be themed via ImGuiCol_Separator
-		SeparatorTextWithFont(label, Menu::FontRole::Subheading);
+	bool isExpanded = categoryExpansionStates[label];
+	{
+		MenuFonts::FontRoleGuard fontGuard(Menu::FontRole::Heading);
+		Util::DrawCategoryHeader(label.c_str(), label.c_str(), isExpanded);
 	}
+	categoryExpansionStates[label] = isExpanded;
 }
 
 void FeatureListRenderer::ListMenuVisitor::operator()(const CategoryHeader& header)
@@ -573,6 +589,7 @@ void FeatureListRenderer::ListMenuVisitor::operator()(Feature* feat)
 	ImGui::PushStyleColor(ImGuiCol_Text, textColor);
 	if (ImGui::Selectable(fmt::format(" {} ", feat->GetDisplayName()).c_str(), selectedMenuRef == listId, ImGuiSelectableFlags_SpanAllColumns)) {
 		selectedMenuRef = listId;
+		g_selectedEntryKey = "F:" + featureName;
 	}
 	ImGui::PopStyleColor();
 
@@ -580,14 +597,6 @@ void FeatureListRenderer::ListMenuVisitor::operator()(Feature* feat)
 	if (const auto stage = feat->GetReleaseStage(); stage != Feature::ReleaseStage::Release) {
 		ImGui::SameLine();
 		ImGui::TextColored(StageTagColor(stage), "%s", Feature::GetReleaseStageTag(stage).c_str());
-	}
-
-	// Display version if loaded
-	if (isLoaded) {
-		ImGui::SameLine();
-		std::string formattedVersion = feat->version;
-		std::replace(formattedVersion.begin(), formattedVersion.end(), '-', '.');
-		ImGui::TextDisabled(fmt::format("({})", formattedVersion).c_str());
 	}
 }
 
@@ -611,8 +620,7 @@ void FeatureListRenderer::DrawMenuVisitor::operator()(const std::string&)
 
 void FeatureListRenderer::DrawMenuVisitor::operator()(const CategoryHeader&)
 {
-	// Category headers are not selectable in the right panel
-	ImGui::TextDisabled("%s", T("menu.features.select_feature_left", "Please select a feature from the left."));
+	ImGui::TextDisabled("%s", T("menu.features.select_item_left", "Please select an item on the left."));
 }
 
 void FeatureListRenderer::DrawMenuVisitor::operator()(Feature* feat)
@@ -632,9 +640,6 @@ void FeatureListRenderer::DrawMenuVisitor::operator()(Feature* feat)
 
 		// Render feature settings content
 		RenderFeatureSettings(feat, isDisabled, isLoaded, hasFailedMessage, sceneControlled);
-
-		// Render restore defaults button (floating in bottom-right)
-		RenderRestoreDefaultsButton(feat, isDisabled, isLoaded);
 	}
 	ImGui::EndChild();
 	// Render reactive constraint warning outside the child window so it can appear as a top-level popup
@@ -658,9 +663,17 @@ void FeatureListRenderer::DrawMenuVisitor::RenderFeatureHeader(Feature* feat, bo
 	auto overrideManager = SettingsOverrideManager::GetSingleton();
 	bool hasOverrides = overrideManager && overrideManager->HasFeatureOverrides(featureName);
 
+	const auto& style = ImGui::GetStyle();
+	bool showRestore = !isDisabled && isLoaded;
+	float restoreIconSize = ImGui::GetFrameHeight() - style.FramePadding.y * 2.0f;
+	float restoreButtonWidth = restoreIconSize + style.FramePadding.x * 2.0f;
+
 	float totalButtonWidth = bootToggleWidth;
 	if (!isDisabled && isLoaded && hasOverrides) {
 		totalButtonWidth += overrideButtonWidth + buttonSpacing;
+	}
+	if (showRestore) {
+		totalButtonWidth += restoreButtonWidth + buttonSpacing;
 	}
 
 	// Get available content width for positioning
@@ -750,6 +763,29 @@ void FeatureListRenderer::DrawMenuVisitor::RenderFeatureHeader(Feature* feat, bo
 		}
 	}
 
+	if (showRestore) {
+		ImGui::SameLine(0.0f, buttonSpacing);
+
+		ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.0f, 0.0f, 0.0f, 0.0f));
+		ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(1.0f, 1.0f, 1.0f, 0.3f));
+		ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(1.0f, 1.0f, 1.0f, 0.5f));
+
+		auto& menu = *globals::menu;
+		const ImVec2 iconSize(restoreIconSize, restoreIconSize);
+		bool restorePressed = menu.uiIcons.featureSettingRevert.texture ?
+		                          ImGui::ImageButton("##RestoreDefaults", menu.uiIcons.featureSettingRevert.texture, iconSize) :
+		                          ImGui::Button("R##RestoreDefaults", ImVec2(restoreButtonWidth, ImGui::GetFrameHeight()));
+		if (restorePressed) {
+			feat->RestoreDefaultSettings();
+		}
+
+		ImGui::PopStyleColor(3);
+
+		if (auto _tt = Util::HoverTooltipWrapper()) {
+			ImGui::Text("%s", T("menu.features.restore_defaults_tooltip", "Restore default settings for this feature"));
+		}
+	}
+
 	// Restore cursor position after the title and separator
 	ImGui::SetCursorScreenPos(cursorPosAfterHeader);
 }
@@ -759,34 +795,34 @@ void FeatureListRenderer::DrawMenuVisitor::RenderFeatureSettings(Feature* feat, 
 	auto& themeSettings = globals::menu->GetSettings().Theme;
 
 	if (isDisabled) {
-		ImGui::TextColored(themeSettings.StatusPalette.Disable, "%s", T("menu.features.settings_hidden_disabled", "Feature settings are hidden because this feature is disabled at boot."));
-		ImGui::Spacing();
-		ImGui::Text("%s", T("menu.features.enable_to_access_config", "Enable the feature above to access its configuration options."));
+		ImGui::TextColored(themeSettings.StatusPalette.Disable, "%s", T("menu.features.settings_hidden_disabled", "Disabled at boot. Enable it above to access its settings."));
 	} else {
 		if (isLoaded) {
+			const auto& featureShortName = feat->GetShortName();
 			auto weatherRegistry = WeatherVariables::GlobalWeatherRegistry::GetSingleton();
-			if (weatherRegistry->HasWeatherSupport(feat->GetShortName())) {
-				bool paused = weatherRegistry->IsFeaturePaused(feat->GetShortName());
-				if (ImGui::Checkbox(T("menu.features.pause_weather_overrides", "Pause Weather Overrides"), &paused)) {
-					weatherRegistry->SetFeaturePaused(feat->GetShortName(), paused);
-				}
-				if (auto _tt = Util::HoverTooltipWrapper()) {
-					ImGui::Text(
-						"%s",
-						T("menu.features.pause_weather_tooltip",
-							"Temporarily disable weather-based setting adjustments for this feature.\n"
-							"This state is not saved."));
-				}
-				ImGui::Separator();
-			}
+			auto* sceneMgr = globals::sceneSettingsManager;
+			const bool hasWeatherRow = weatherRegistry->HasWeatherSupport(featureShortName);
+			const bool scenePaused = sceneMgr->IsFeaturePaused(featureShortName);
+			const bool hasSceneRow = sceneControlled || scenePaused;
 
-			// Scene-specific settings toggle (Interior Only / TimeOfDay / Weather-Specific)
-			// Show toggle whenever scene entries exist for this feature, even if feature-paused
-			{
-				const auto& featureShortName = feat->GetShortName();
-				auto* sceneMgr = globals::sceneSettingsManager;
-				bool scenePaused = sceneMgr->IsFeaturePaused(featureShortName);
-				if (sceneControlled || scenePaused) {
+			if (hasWeatherRow || hasSceneRow) {
+				if (hasWeatherRow) {
+					bool paused = weatherRegistry->IsFeaturePaused(featureShortName);
+					if (ImGui::Checkbox(T("menu.features.pause_weather_overrides", "Pause Weather Overrides"), &paused)) {
+						weatherRegistry->SetFeaturePaused(featureShortName, paused);
+					}
+					if (auto _tt = Util::HoverTooltipWrapper()) {
+						ImGui::Text(
+							"%s",
+							T("menu.features.pause_weather_tooltip",
+								"Temporarily disable weather-based setting adjustments for this feature.\n"
+								"This state is not saved."));
+					}
+				}
+
+				if (hasSceneRow) {
+					if (hasWeatherRow)
+						ImGui::SameLine(0.0f, ThemeManager::Constants::BUTTON_SPACING * 2.0f);
 					bool active = !scenePaused;
 					if (Util::FeatureToggle("##PauseSceneSettings", &active))
 						sceneMgr->SetFeaturePaused(featureShortName, !active);
@@ -796,8 +832,9 @@ void FeatureListRenderer::DrawMenuVisitor::RenderFeatureSettings(Feature* feat, 
 						ImGui::Text("%s", T(scenePaused ? "menu.features.scene_paused_tooltip" : "menu.features.scene_active_tooltip",
 											  scenePaused ? "Paused - click to resume" : "Active - click to pause"));
 					}
-					ImGui::Separator();
 				}
+
+				ImGui::Separator();
 			}
 
 			// Disable feature settings while scene overrides are actively applied (not paused)
@@ -892,46 +929,6 @@ void FeatureListRenderer::DrawMenuVisitor::RenderFeatureSettings(Feature* feat, 
 		ImGui::Spacing();
 		SeparatorTextWithFont(T("menu.features.error_header", "Error"), Menu::FontRole::Subheading);
 		ImGui::TextColored(themeSettings.StatusPalette.Error, feat->failedLoadedMessage.c_str());
-	}
-}
-
-void FeatureListRenderer::DrawMenuVisitor::RenderRestoreDefaultsButton(Feature* feat, bool isDisabled, bool isLoaded)
-{
-	if (isDisabled || !isLoaded) {
-		return;
-	}
-
-	// Position button in bottom-right corner, accounting for full button frame size
-	const auto& style = ImGui::GetStyle();
-	ImVec2 windowPos = ImGui::GetWindowPos();
-	ImVec2 windowSize = ImGui::GetWindowSize();
-	float scrollbarWidth = ImGui::GetScrollMaxY() > 0 ? style.ScrollbarSize : 0.0f;
-	float iconDimension = ImGui::GetFrameHeight() * 1.2f;
-	ImVec2 iconSize(iconDimension, iconDimension);
-	ImVec2 frameSize(iconSize.x + style.FramePadding.x * 2, iconSize.y + style.FramePadding.y * 2);
-	ImGui::SetCursorScreenPos(ImVec2(
-		windowPos.x + windowSize.x - frameSize.x - style.WindowPadding.x - scrollbarWidth,
-		windowPos.y + windowSize.y - frameSize.y - style.WindowPadding.y));
-
-	ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.0f, 0.0f, 0.0f, 0.0f));
-	ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(1.0f, 1.0f, 1.0f, 0.3f));
-	ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(1.0f, 1.0f, 1.0f, 0.5f));
-
-	auto& menu = *globals::menu;
-	if (menu.uiIcons.featureSettingRevert.texture) {
-		if (ImGui::ImageButton("##RestoreDefaults", menu.uiIcons.featureSettingRevert.texture, iconSize)) {
-			feat->RestoreDefaultSettings();
-		}
-	} else {
-		if (ImGui::Button("R##RestoreDefaults", iconSize)) {
-			feat->RestoreDefaultSettings();
-		}
-	}
-
-	ImGui::PopStyleColor(3);
-
-	if (auto _tt = Util::HoverTooltipWrapper()) {
-		ImGui::Text("%s", T("menu.features.restore_defaults_tooltip", "Restore default settings for this feature"));
 	}
 }
 
