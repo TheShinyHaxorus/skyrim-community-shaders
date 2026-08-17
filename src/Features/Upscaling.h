@@ -48,6 +48,8 @@ public:
 		kDLSS
 	};
 
+	static constexpr uint32_t kFsr4RuntimeSelectionSchemaVersion = 1;
+
 	struct Settings
 	{
 		uint upscaleMethod = (uint)UpscaleMethod::kDLSS;
@@ -67,9 +69,21 @@ public:
 		bool reflexUseMarkersToOptimize = false;
 		bool reflexUseFPSLimit = false;
 		float reflexFPSLimit = 60.0f;
+
+		// Opt in to AMD's runtime FSR4 upscaler DLL on eligible AMD hardware instead of the
+		// host-linked FSR3 SDK; falls back to FSR3 on any failure. Requires a restart.
+		bool fsr4RuntimeEnable = false;
+
+		// Defaults to current so a fresh config needs no migration; LoadSettings resets it to
+		// 0 when absent from JSON so pre-existing configs run the migration once.
+		uint32_t fsr4RuntimeSelectionSchemaVersion = kFsr4RuntimeSelectionSchemaVersion;
 	};
 
 	Settings settings;
+
+	bool fsr4RuntimeEnableBoot = false;
+	bool fsr4RuntimeEnableBootLatched = false;
+	void LatchFsr4RuntimeBootSetting();
 
 	struct JitterCB
 	{
@@ -127,7 +141,8 @@ public:
 	void CreateUpscalingTextureResources(UpscaleMethod a_upscalemethod);
 	void DestroyUpscalingTextureResources(UpscaleMethod a_upscalemethod);
 
-	winrt::com_ptr<ID3D11ComputeShader> encodeTexturesCS[4];  // One for each UpscaleMethod (kNONE, kTAA, kFSR, kDLSS)
+	winrt::com_ptr<ID3D11ComputeShader> encodeTexturesCS[4];          // One for each UpscaleMethod (kNONE, kTAA, kFSR, kDLSS)
+	winrt::com_ptr<ID3D11ComputeShader> encodeTexturesCSDepthOutput;  // FSR: converts R24G8_TYPELESS depth to R32_FLOAT
 	ID3D11ComputeShader* GetEncodeTexturesCS();
 
 	winrt::com_ptr<ID3D11PixelShader> depthRefractionUpscalePS;
@@ -156,6 +171,7 @@ public:
 	Texture2D* transparencyCompositionMaskTexture = nullptr;
 	Texture2D* motionVectorCopyTexture = nullptr;
 	Texture2D* sharpenerTexture = nullptr;
+	Texture2D* runtimeFsrDepthTexture = nullptr;
 
 	virtual void ClearShaderCache() override;
 

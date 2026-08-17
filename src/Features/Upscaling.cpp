@@ -38,9 +38,34 @@ NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(
 	reflexLowLatencyBoost,
 	reflexUseMarkersToOptimize,
 	reflexUseFPSLimit,
-	reflexFPSLimit);
+	reflexFPSLimit,
+	fsr4RuntimeEnable,
+	fsr4RuntimeSelectionSchemaVersion);
 
 decltype(&D3D11CreateDeviceAndSwapChain) ptrD3D11CreateDeviceAndSwapChainUpscaling;
+
+/**
+ * @brief One-shot migration of fsr4RuntimeEnable for the detected adapter's FSR4 support class.
+ *
+ * Auto-enables the runtime path once on RX 7000-class adapters, whose eligibility was added
+ * after fsr4RuntimeEnable already defaulted to off. Leaves RX 9000 and unsupported adapters
+ * alone; unsupported adapters are left unstamped so the migration re-runs on a supported one.
+ */
+void ApplyLegacyFsr4RuntimeSelectionMigration(Upscaling::Settings& a_settings, FidelityFX::Fsr4AdapterSupport a_adapterSupport)
+{
+	if (a_settings.fsr4RuntimeSelectionSchemaVersion >= Upscaling::kFsr4RuntimeSelectionSchemaVersion)
+		return;
+
+	if (a_adapterSupport == FidelityFX::Fsr4AdapterSupport::Unsupported)
+		return;
+
+	if (a_adapterSupport == FidelityFX::Fsr4AdapterSupport::RadeonRx7000 && !a_settings.fsr4RuntimeEnable) {
+		a_settings.fsr4RuntimeEnable = true;
+		logger::info("[Upscaling] Auto-enabled Runtime FSR4 for detected RX 7000-class adapter");
+	}
+
+	a_settings.fsr4RuntimeSelectionSchemaVersion = Upscaling::kFsr4RuntimeSelectionSchemaVersion;
+}
 
 /**
  * @brief Creates a Direct3D 11 device and swap chain, with support for advanced upscaling and frame generation features.
@@ -63,11 +88,14 @@ HRESULT WINAPI hk_D3D11CreateDeviceAndSwapChainUpscaling(
 	D3D_FEATURE_LEVEL* pFeatureLevel,
 	ID3D11DeviceContext** ppImmediateContext)
 {
-	DXGI_ADAPTER_DESC adapterDesc;
-	pAdapter->GetDesc(&adapterDesc);
-	globals::state->SetAdapterDescription(adapterDesc.Description);
-
 	auto& upscaling = globals::features::upscaling;
+
+	DXGI_ADAPTER_DESC adapterDesc{};
+	if (pAdapter && SUCCEEDED(pAdapter->GetDesc(&adapterDesc))) {
+		globals::state->SetAdapterDescription(adapterDesc.Description);
+		ApplyLegacyFsr4RuntimeSelectionMigration(upscaling.settings, FidelityFX::GetFsr4AdapterSupport(adapterDesc));
+	}
+
 	upscaling.LoadUpscalingSDKs();
 
 	// FLIP_DISCARD requires BufferCount >= 2 and a flip-model-compatible (non-sRGB) format.
@@ -270,6 +298,22 @@ void Upscaling::DrawSettings()
 
 		if (upscaleMethod == UpscaleMethod::kFSR) {
 			ImGui::SliderFloat(T(TKEY("sharpness"), "Sharpness"), &settings.sharpnessFSR, 0.0f, 1.0f, "%.1f");
+			// Hidden entirely on ineligible GPUs so it can't be toggled somewhere it silently no-ops.
+			if (fidelityFX.IsRuntimeFsr4AutoEligible()) {
+				ImGui::Checkbox(T(TKEY("fsr4_runtime_enable"), "Use Runtime FSR4"), &settings.fsr4RuntimeEnable);
+				if (auto _tt = Util::HoverTooltipWrapper()) {
+					ImGui::Text("%s", T(TKEY("fsr4_runtime_enable_tooltip"),
+										  "Dispatch FSR through AMD's runtime upscaler DLL (FSR 4) instead of the\n"
+										  "built-in FSR 3 SDK. Requires a restart."));
+				}
+				if (settings.fsr4RuntimeEnable) {
+					ImGui::TextDisabled("%s: %s", T(TKEY("fsr4_active_path"), "Active path"), fidelityFX.GetDisplayedFsrPathLabel().c_str());
+					if (fidelityFX.IsRuntimeFsr4FailureLatched())
+						Util::Text::Warning(T(TKEY("fsr4_failed_fallback"), "Runtime FSR4 failed this session -- using FSR3 fallback."));
+					else if (fidelityFX.IsRuntimeUpscalerFailureLatched())
+						Util::Text::Warning(T(TKEY("fsr4_runtime_failed_fallback"), "Runtime upscaler DLL failed this session -- using host FSR3 SDK."));
+				}
+			}
 		} else if (upscaleMethod == UpscaleMethod::kDLSS) {
 			ImGui::Checkbox(T(TKEY("enable_sharpening"), "Enable Sharpening"), &settings.sharpnessEnabledDLSS);
 			if (auto _tt = Util::HoverTooltipWrapper()) {
@@ -476,9 +520,24 @@ void Upscaling::SaveSettings(json& o_json)
 	}
 }
 
+void Upscaling::LatchFsr4RuntimeBootSetting()
+{
+	if (fsr4RuntimeEnableBootLatched)
+		return;
+
+	fsr4RuntimeEnableBoot = settings.fsr4RuntimeEnable;
+	fsr4RuntimeEnableBootLatched = true;
+}
+
 void Upscaling::LoadSettings(json& o_json)
 {
+	// NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT fills an absent key with the CURRENT
+	// schema version, not 0 -- detect absence explicitly so an existing config still migrates.
+	const bool hadFsr4SchemaVersion = o_json.contains("fsr4RuntimeSelectionSchemaVersion");
 	settings = o_json;
+	if (!hadFsr4SchemaVersion)
+		settings.fsr4RuntimeSelectionSchemaVersion = 0;
+	ApplyLegacyFsr4RuntimeSelectionMigration(settings, fidelityFX.GetFsr4AdapterSupport());
 
 	// Sanitize loaded settings to ensure enum indices are valid
 	constexpr auto enumCount = 4;  // UpscaleMethod has 4 values: kNONE, kTAA, kFSR, kDLSS
@@ -621,6 +680,32 @@ void Upscaling::CreateUpscalingTextureResources(UpscaleMethod a_upscalemethod)
 			transparencyCompositionMaskTexture->CreateSRV(srvDesc);
 			transparencyCompositionMaskTexture->CreateUAV(uavDesc);
 		}
+
+		// Cross-API runtime sharing does not support the game's R24G8 depth allocation.
+		if (a_upscalemethod == UpscaleMethod::kFSR && fidelityFX.ShouldUseRuntimeUpscalerForFSR() && !runtimeFsrDepthTexture) {
+			D3D11_TEXTURE2D_DESC depthDesc{};
+			depthDesc.Width = texDesc.Width;
+			depthDesc.Height = texDesc.Height;
+			depthDesc.MipLevels = 1;
+			depthDesc.ArraySize = 1;
+			depthDesc.Format = DXGI_FORMAT_R32_FLOAT;
+			depthDesc.SampleDesc.Count = 1;
+			depthDesc.Usage = D3D11_USAGE_DEFAULT;
+			depthDesc.BindFlags = D3D11_BIND_SHADER_RESOURCE | D3D11_BIND_UNORDERED_ACCESS;
+
+			D3D11_SHADER_RESOURCE_VIEW_DESC depthSrvDesc{};
+			depthSrvDesc.Format = depthDesc.Format;
+			depthSrvDesc.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D;
+			depthSrvDesc.Texture2D.MipLevels = 1;
+
+			D3D11_UNORDERED_ACCESS_VIEW_DESC depthUavDesc{};
+			depthUavDesc.Format = depthDesc.Format;
+			depthUavDesc.ViewDimension = D3D11_UAV_DIMENSION_TEXTURE2D;
+
+			runtimeFsrDepthTexture = new Texture2D(depthDesc, "Upscaling::RuntimeFsrDepth");
+			runtimeFsrDepthTexture->CreateSRV(depthSrvDesc);
+			runtimeFsrDepthTexture->CreateUAV(depthUavDesc);
+		}
 	}
 
 	// Motion vector copy texture is only needed for DLSS
@@ -687,6 +772,15 @@ void Upscaling::DestroyUpscalingTextureResources(UpscaleMethod a_upscalemethod)
 			delete transparencyCompositionMaskTexture;
 			transparencyCompositionMaskTexture = nullptr;
 		}
+	}
+
+	if (a_upscalemethod != UpscaleMethod::kFSR && runtimeFsrDepthTexture) {
+		runtimeFsrDepthTexture->srv = nullptr;
+		runtimeFsrDepthTexture->uav = nullptr;
+		runtimeFsrDepthTexture->resource = nullptr;
+
+		delete runtimeFsrDepthTexture;
+		runtimeFsrDepthTexture = nullptr;
 	}
 
 	// Motion vector copy texture is only needed for DLSS - destroy when switching away from DLSS
@@ -775,6 +869,21 @@ ID3D11ComputeShader* Upscaling::GetEncodeTexturesCS()
 
 		encodeTexturesCS[methodIndex].attach((ID3D11ComputeShader*)Util::CompileShader(L"Data/Shaders/Upscaling/EncodeTexturesCS.hlsl", defines, "cs_5_0"));
 	}
+
+	// Runtime FSR requires typed R32_FLOAT depth instead of the game's R24G8 resource.
+	if (upscaleMethod == UpscaleMethod::kFSR && runtimeFsrDepthTexture) {
+		if (!encodeTexturesCSDepthOutput) {
+			logger::debug("Compiling EncodeTexturesCS.hlsl for FSR typed depth output");
+			std::vector<std::pair<const char*, const char*>> depthDefines = {
+				{ "FSR", "" },
+				{ "DEPTH_OUTPUT", "" }
+			};
+			encodeTexturesCSDepthOutput.attach((ID3D11ComputeShader*)Util::CompileShader(L"Data/Shaders/Upscaling/EncodeTexturesCS.hlsl", depthDefines, "cs_5_0"));
+		}
+		if (encodeTexturesCSDepthOutput)
+			return encodeTexturesCSDepthOutput.get();
+	}
+
 	return encodeTexturesCS[methodIndex].get();
 }
 
@@ -948,6 +1057,8 @@ void Upscaling::SetupResources()
 {
 	QueryPerformanceFrequency(&qpf);
 
+	LatchFsr4RuntimeBootSetting();
+
 	auto renderer = globals::game::renderer;
 	auto& main = renderer->GetRuntimeData().renderTargets[RE::RENDER_TARGETS::kMAIN];
 
@@ -1018,6 +1129,7 @@ void Upscaling::ClearShaderCache()
 	for (int i = 0; i < 4; ++i) {
 		encodeTexturesCS[i] = nullptr;  // com_ptr automatically releases
 	}
+	encodeTexturesCSDepthOutput = nullptr;  // com_ptr automatically releases
 
 	depthRefractionUpscalePS = nullptr;  // com_ptr automatically releases
 	underwaterMaskUpscalePS = nullptr;   // com_ptr automatically releases
@@ -1393,11 +1505,16 @@ void Upscaling::Upscale()
 		context->CSSetConstantBuffers(0, 1, &upscalingBuffer);
 
 		// u2 (MotionVectorOutput): DLSS only — 5x5 dilated MVec for ghosting reduction.
+		// u3 (DepthOutput): runtime FSR only — typed R32_FLOAT copy for the DX12 bridge.
+		ID3D11UnorderedAccessView* depthOutput = nullptr;
+		if (upscaleMethod == UpscaleMethod::kFSR && runtimeFsrDepthTexture)
+			depthOutput = runtimeFsrDepthTexture->uav.get();
+
 		ID3D11UnorderedAccessView* uavs[4] = {
 			reactiveMaskTexture->uav.get(),
 			transparencyCompositionMaskTexture->uav.get(),
 			(upscaleMethod == UpscaleMethod::kDLSS) ? motionVectorCopyTexture->uav.get() : nullptr,
-			nullptr
+			depthOutput
 		};
 		context->CSSetUnorderedAccessViews(0, ARRAYSIZE(uavs), uavs, nullptr);
 
@@ -1427,7 +1544,9 @@ void Upscaling::Upscale()
 		if (upscaleMethod == UpscaleMethod::kDLSS) {
 			streamline.Upscale(main.texture, reactiveMaskTexture->resource.get(), transparencyCompositionMaskTexture->resource.get(), motionVectorCopyTexture->resource.get());
 		} else if (upscaleMethod == UpscaleMethod::kFSR) {
-			fidelityFX.Upscale(main.texture, reactiveMaskTexture->resource.get(), transparencyCompositionMaskTexture->resource.get(), motionVector.texture, settings.sharpnessFSR);
+			auto& depth = renderer->GetDepthStencilData().depthStencils[RE::RENDER_TARGETS_DEPTHSTENCIL::kMAIN];
+			ID3D11Resource* fsrDepth = runtimeFsrDepthTexture ? runtimeFsrDepthTexture->resource.get() : depth.texture;
+			fidelityFX.Upscale(main.texture, fsrDepth, reactiveMaskTexture->resource.get(), transparencyCompositionMaskTexture->resource.get(), motionVector.texture, settings.sharpnessFSR);
 		}
 
 		state->EndPerfEvent();

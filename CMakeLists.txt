@@ -482,6 +482,8 @@ install(
     COMPONENT Shaders
     PATTERN "Tests" EXCLUDE
 )
+include(FeaturePackaging)
+include(FidelityFX-Runtime)
 install(CODE "file(REMOVE \${CMAKE_INSTALL_PREFIX}/Core)" COMPONENT Shaders)
 
 # #######################################################################################################################
@@ -670,7 +672,7 @@ if(AUTO_PLUGIN_DEPLOYMENT OR AIO_ZIP_TO_DIST)
     set(_shader_copy_cmds)
 
     set(_feature_shader_paths_file "${CMAKE_CURRENT_BINARY_DIR}/feature_shader_paths.txt")
-    file(WRITE "${_feature_shader_paths_file}" "")
+    file(WRITE "${_feature_shader_paths_file}" "${FFX_RUNTIME_SHADER_ROOT}\n")
     foreach(_fpath IN LISTS FEATURE_PATHS)
         if(EXISTS "${_fpath}/Shaders")
             file(APPEND "${_feature_shader_paths_file}" "${_fpath}/Shaders\n")
@@ -704,6 +706,9 @@ if(AUTO_PLUGIN_DEPLOYMENT OR AIO_ZIP_TO_DIST)
         endif()
     endforeach()
 
+    # Last so the downloaded runtime DLLs overwrite the older checked-in copies.
+    append_copy_if_different(_shader_copy_cmds FFX_RUNTIME_FILES "${FFX_RUNTIME_SHADER_ROOT}" "${AIO_DIR}/Shaders")
+
     add_custom_command(
         OUTPUT copy_shaders.stamp
         COMMAND
@@ -712,6 +717,7 @@ if(AUTO_PLUGIN_DEPLOYMENT OR AIO_ZIP_TO_DIST)
         COMMAND ${CMAKE_COMMAND} -E touch copy_shaders.stamp
         DEPENDS
             ${HLSL_FILES}
+            ${FFX_RUNTIME_FILES}
             ${CMAKE_SOURCE_DIR}/cmake/CleanupStaleEntries.cmake
         COMMENT "Copying changed shaders into AIO/Shaders"
     )
@@ -995,14 +1001,22 @@ if(ZIP_TO_DIST)
         message(
             "Zipping ${FEATURE_PATH} to ${CMAKE_SOURCE_DIR}/dist/${FEATURE}-${UTC_NOW}.zip"
         )
+        set(FEATURE_ZIP_STAGE
+            "${CMAKE_CURRENT_BINARY_DIR}/feature_zip/${FEATURE}"
+        )
+        feature_package_commands(
+            FEATURE_ZIP_COMMANDS
+            "${FEATURE}"
+            "${FEATURE_PATH}"
+            "${FEATURE_ZIP_STAGE}"
+            "${CMAKE_SOURCE_DIR}/dist/${FEATURE}-${UTC_NOW}.zip"
+            cf
+            zip
+        )
         add_custom_command(
             TARGET ${PROJECT_NAME}
             POST_BUILD
-            COMMAND
-                ${CMAKE_COMMAND} -E tar cf
-                ${CMAKE_SOURCE_DIR}/dist/${FEATURE}-${UTC_NOW}.zip --format=zip
-                -- .
-            WORKING_DIRECTORY ${FEATURE_PATH}
+            ${FEATURE_ZIP_COMMANDS}
         )
     endforeach()
 endif()
@@ -1125,11 +1139,22 @@ foreach(FEATURE_PATH ${FEATURE_PATHS})
     get_filename_component(FEATURE ${FEATURE_PATH} NAME)
     set(FEATURE_PACKAGE "${DIST_PATH}/${FEATURE}-${UTC_NOW}.zip")
 
+    set(FEATURE_PACKAGE_STAGE
+        "${CMAKE_CURRENT_BINARY_DIR}/feature_package/${FEATURE}"
+    )
+    feature_package_commands(
+        FEATURE_PACKAGE_COMMANDS
+        "${FEATURE}"
+        "${FEATURE_PATH}"
+        "${FEATURE_PACKAGE_STAGE}"
+        "${FEATURE_PACKAGE}"
+        cfv
+        zip
+    )
+    feature_payload_dependencies("${FEATURE}" FEATURE_PACKAGE_DEPENDENCIES)
     add_custom_command(
-        OUTPUT ${FEATURE_PACKAGE}
-        COMMAND ${CMAKE_COMMAND} -E tar cfv ${FEATURE_PACKAGE} --format=zip -- .
-        WORKING_DIRECTORY "${FEATURE_PATH}"
-        DEPENDS ${FEATURE_SOURCES}
+        OUTPUT ${FEATURE_PACKAGE} ${FEATURE_PACKAGE_COMMANDS}
+        DEPENDS ${FEATURE_SOURCES} ${FEATURE_PACKAGE_DEPENDENCIES}
         COMMENT "Creating ${FEATURE} zip package"
     )
 
