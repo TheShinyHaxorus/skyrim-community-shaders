@@ -34,6 +34,19 @@ NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(
 	Reblur)
 
 ////////////////////////////////////////////////////////////////////////////////////
+static float SanitizeRange(float a_value, float a_min, float a_max, float a_fallback)
+{
+	if (!std::isfinite(a_value) || a_value < a_min || a_value > a_max)
+		return a_fallback;
+	return a_value;
+}
+
+static uint SanitizeRange(uint a_value, uint a_min, uint a_max, uint a_fallback)
+{
+	if (a_value < a_min || a_value > a_max)
+		return a_fallback;
+	return a_value;
+}
 
 void ScreenSpaceGI::RestoreDefaultSettings()
 {
@@ -248,6 +261,14 @@ void ScreenSpaceGI::DrawSettings()
 void ScreenSpaceGI::LoadSettings(json& o_json)
 {
 	settings = o_json;
+
+	const Settings defaults{};
+	settings.NumSteps = SanitizeRange(settings.NumSteps, 1u, 32u, defaults.NumSteps);
+	settings.Thickness = SanitizeRange(settings.Thickness, 0.f, 0.2f, defaults.Thickness);
+	settings.AOPower = SanitizeRange(settings.AOPower, 0.f, 6.f, defaults.AOPower);
+	settings.GIStrength = SanitizeRange(settings.GIStrength, 0.f, 6.f, defaults.GIStrength);
+	settings.DiffuseCubemapMult = SanitizeRange(settings.DiffuseCubemapMult, 0.f, 5.f, defaults.DiffuseCubemapMult);
+
 	if (settings.QuarterRes)
 		settings.HalfRes = false;
 	if (!settings.EnableREBLUR) {
