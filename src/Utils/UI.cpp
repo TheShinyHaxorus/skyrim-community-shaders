@@ -300,7 +300,7 @@ namespace Util
 			ImGui::Spacing();
 
 			// Center buttons
-			constexpr float buttonWidth = ThemeManager::Constants::POPUP_BUTTON_WIDTH;
+			const float buttonWidth = Util::ScaleUI(ThemeManager::Constants::POPUP_BUTTON_WIDTH);
 			const float spacing = ImGui::GetStyle().ItemSpacing.x;
 			const float totalWidth = buttonWidth * 2 + spacing;
 			const float windowWidth = ImGui::GetWindowWidth();
@@ -364,7 +364,7 @@ namespace Util
 			if (showDontAskAgain)
 				ImGui::Checkbox(T("ui.dont_ask_again", "Don't ask me again"), &dontAskCheckbox);
 
-			constexpr float buttonWidth = ThemeManager::Constants::POPUP_BUTTON_WIDTH;
+			const float buttonWidth = Util::ScaleUI(ThemeManager::Constants::POPUP_BUTTON_WIDTH);
 			const float spacing = ImGui::GetStyle().ItemSpacing.x;
 			const float totalWidth = buttonWidth * 2 + spacing;
 			const float offset = (ImGui::GetWindowWidth() - totalWidth) * 0.5f;
@@ -466,7 +466,7 @@ namespace Util
 		ImGui::SameLine();
 
 		// Add consistent spacing between logo and text
-		ImGui::SetCursorPosX(ImGui::GetCursorPosX() + 8.0f);
+		ImGui::SetCursorPosX(ImGui::GetCursorPosX() + ScaleUI(8.0f));
 
 		// Reset cursor for text with proper vertical alignment
 		ImGui::SetCursorPos(ImVec2(ImGui::GetCursorPosX(), startPos.y));

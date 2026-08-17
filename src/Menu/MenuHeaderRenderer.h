@@ -27,18 +27,20 @@ public:
 	 * Draws the title text, optional logo, and action icon buttons. The layout
 	 * adapts based on whether the window is docked or floating.
 	 *
+	 * Every size here is derived from the live font size, which already carries the theme's
+	 * GlobalScale, so the header keeps a fixed ratio to the body text at any resolution.
+	 *
 	 * @param isDocked True if the menu window is docked into a tab bar.
 	 * @param showLogo True if the Bottled Shaders logo should be displayed.
 	 * @param canShowIcons True if action icons (save, load, clear cache, etc.) should be shown.
-	 * @param uiScale Current UI scale factor for sizing icon buttons.
 	 * @param uiIcons Reference to the loaded icon textures and sizes.
 	 */
-	static void RenderHeader(bool isDocked, bool showLogo, bool canShowIcons, float uiScale, const Menu::UIIcons& uiIcons);
+	static void RenderHeader(bool isDocked, bool showLogo, bool canShowIcons, const Menu::UIIcons& uiIcons);
 
 private:
 	static std::vector<ActionIcon> BuildActionIcons(bool canShowIcons, const Menu::UIIcons& uiIcons);
-	static void RenderActionIcons(const std::vector<ActionIcon>& actionIcons, bool isDocked, float uiScale);
-	static void RenderDockedIcons(const std::vector<ActionIcon>& actionIcons, float uiScale);
-	static void RenderUndockedIcons(const std::vector<ActionIcon>& actionIcons, float uiScale);
+	static void RenderActionIcons(const std::vector<ActionIcon>& actionIcons, bool isDocked);
+	static void RenderDockedIcons(const std::vector<ActionIcon>& actionIcons);
+	static void RenderUndockedIcons(const std::vector<ActionIcon>& actionIcons);
 	static void RenderWatermarkLogo(const Menu::UIIcons& uiIcons);
 };

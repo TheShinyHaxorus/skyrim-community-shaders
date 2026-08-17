@@ -48,7 +48,7 @@ public:
 	 * ]
 	 *
 	 * SizeScale multiplies the base FontSize for each role.
-	 * Example: FontSize=27, Heading SizeScale=1.05 → 28.35px rendered size
+	 * Example: FontSize=22, Heading SizeScale=1.05 → 23.1px rendered size
 	 *
 	 * Migration from Legacy:
 	 * Old "FontName" field auto-populates Body role on theme load.
@@ -282,7 +282,7 @@ public:
 		bool UseSimplePalette = false;      // DEPRECATED: No longer affects behavior. UI now shows both Simple and Advanced controls.
 		bool ShowActionIcons = true;        // whether to show action buttons as icons
 		bool UseMonochromeIcons = false;    // whether to use monochrome (white) action icons with text color tinting
-		bool UseMonochromeLogo = false;     // whether to use monochrome CS logo
+		bool UseMonochromeLogo = true;      // whether to use monochrome CS logo (tinted with the theme text color)
 		bool ShowFooter = true;             // whether to show the footer with game version/GPU info
 		bool CenterHeader = false;          // whether to center the header title and logo
 		float TooltipHoverDelay = 0.5f;     // tooltip hover delay in seconds
@@ -334,8 +334,8 @@ public:
 		{
 			ImVec4 ColorDefault{ 0.902f, 0.929f, 0.953f, 1.0f };
 			ImVec4 ColorHovered{ 0.298f, 0.647f, 1.0f, 1.0f };
-			float MinimizedFactor = 0.7f;    // 70% of original alpha for when the header is minimized
-			float FeatureTitleScale = 1.5f;  // Scale multiplier for feature title text in settings tab
+			float MinimizedFactor = 0.7f;  // 70% of original alpha for when the header is minimized
+			float FeatureTitleScale = ThemeManager::Constants::DEFAULT_FEATURE_TITLE_SCALE;
 		} FeatureHeading;
 
 		ImGuiStyle Style = []() {

@@ -95,7 +95,7 @@ namespace
 		float currentTime = static_cast<float>(ImGui::GetTime());
 
 		// Use constants for auto-hide behavior
-		const float activationZoneWidth = ThemeManager::Constants::AUTOHIDE_ACTIVATION_ZONE_WIDTH;
+		const float activationZoneWidth = Util::ScaleUI(ThemeManager::Constants::AUTOHIDE_ACTIVATION_ZONE_WIDTH);
 		const float expandDelay = ThemeManager::Constants::AUTOHIDE_EXPAND_DELAY;
 		const float panelWidth = windowSize.x * ThemeManager::Constants::AUTOHIDE_PANEL_WIDTH_RATIO;
 
@@ -605,7 +605,7 @@ void FeatureListRenderer::DrawMenuVisitor::operator()(const BuiltInMenu& menu)
 	if (ImGui::BeginChild("##FeatureConfigFrame", { 0, 0 }, true)) {
 		// Add spacing only for Home menu
 		if (menu.name == T("menu.features.home", "Home")) {
-			ImGui::Dummy(ImVec2(0, ThemeManager::Constants::BUTTON_SPACING));
+			ImGui::Dummy(ImVec2(0, Util::ScaleUI(ThemeManager::Constants::BUTTON_SPACING)));
 		}
 		menu.func();
 	}
@@ -652,8 +652,8 @@ void FeatureListRenderer::DrawMenuVisitor::RenderFeatureHeader(Feature* feat, bo
 	const auto featureName = feat->GetShortName();
 
 	// Calculate action button widths
-	float buttonPadding = ThemeManager::Constants::BUTTON_PADDING;
-	float buttonSpacing = ThemeManager::Constants::BUTTON_SPACING;
+	float buttonPadding = Util::ScaleUI(ThemeManager::Constants::BUTTON_PADDING);
+	float buttonSpacing = Util::ScaleUI(ThemeManager::Constants::BUTTON_SPACING);
 
 	const char* overrideButtonText = T("menu.features.apply_override", "Apply Override");
 	float bootToggleWidth = ImGui::GetFrameHeight() * 1.6f;
@@ -822,7 +822,7 @@ void FeatureListRenderer::DrawMenuVisitor::RenderFeatureSettings(Feature* feat, 
 
 				if (hasSceneRow) {
 					if (hasWeatherRow)
-						ImGui::SameLine(0.0f, ThemeManager::Constants::BUTTON_SPACING * 2.0f);
+						ImGui::SameLine(0.0f, Util::ScaleUI(ThemeManager::Constants::BUTTON_SPACING * 2.0f));
 					bool active = !scenePaused;
 					if (Util::FeatureToggle("##PauseSceneSettings", &active))
 						sceneMgr->SetFeaturePaused(featureShortName, !active);
@@ -1046,7 +1046,7 @@ void FeatureListRenderer::DrawMenuVisitor::RenderReactiveConstraintWarningDialog
 		ImGui::Spacing();
 
 		// Centered OK button
-		constexpr float buttonWidth = ThemeManager::Constants::POPUP_BUTTON_WIDTH;
+		const float buttonWidth = Util::ScaleUI(ThemeManager::Constants::POPUP_BUTTON_WIDTH);
 		const float windowWidth = ImGui::GetWindowWidth();
 		const float offset = (windowWidth - buttonWidth) * 0.5f;
 		if (offset > 0)

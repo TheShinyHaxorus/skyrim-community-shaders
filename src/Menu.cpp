@@ -776,14 +776,6 @@ void Menu::DrawSettings()
 		bool isDocked = ImGui::IsWindowDocked();
 		wasDocked = isDocked;
 
-		float globalScale = settings.Theme.GlobalScale;
-
-		// Use default global scale (0.0) for built-in themes when GlobalScale equals the default
-		if (std::abs(globalScale - ThemeManager::Constants::DEFAULT_GLOBAL_SCALE) < 0.001f) {
-			globalScale = ThemeManager::Constants::DEFAULT_GLOBAL_SCALE;  // Ensure built-in themes stay at 0.0
-		}
-
-		const float uiScale = exp2(globalScale);  // User's manual GlobalScale for header icons
 		// Check if we can show icons - require setting enabled and at least some icons loaded (for undocked)
 		// For docked mode, always show icons if textures are available
 		bool canShowIcons = settings.Theme.ShowActionIcons &&
@@ -793,7 +785,7 @@ void Menu::DrawSettings()
 		bool showLogo = uiIcons.logo.texture != nullptr;
 
 		// Render header using extracted component
-		MenuHeaderRenderer::RenderHeader(isDocked, showLogo, canShowIcons, uiScale, uiIcons);
+		MenuHeaderRenderer::RenderHeader(isDocked, showLogo, canShowIcons, uiIcons);
 
 		// Main content starts here - no additional separator needed as it's already handled in the conditions above
 
@@ -817,7 +809,7 @@ void Menu::DrawSettings()
 
 		if (settings.Theme.ShowFooter) {
 			ImGui::Spacing();
-			ImGui::SeparatorEx(ImGuiSeparatorFlags_Horizontal, ThemeManager::Constants::SEPARATOR_THICKNESS);
+			ImGui::SeparatorEx(ImGuiSeparatorFlags_Horizontal, Util::GetSeparatorThickness());
 			ImGui::Spacing();
 			DrawFooter();
 		}

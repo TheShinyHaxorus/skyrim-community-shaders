@@ -24,7 +24,7 @@ using json = nlohmann::json;
  *   "Version": "1.0.0",
  *   "Author": "Your name",
  *   "Theme": {
- *     "FontSize": 27.0,                    // Base font size (16-108px range)
+ *     "FontSize": 0.0,                     // Base font size (12-108px; 0 = derive from screen height)
  *     "FontName": "Jost/Jost-Regular.ttf", // Legacy font path (use FontRoles instead)
  *     "GlobalScale": 0.0,                   // UI scale exponent (-2.0 to 2.0, 0.0=100%)
  *
@@ -156,11 +156,18 @@ public:
 	struct Constants
 	{
 		// Font size constants
-		static constexpr float DEFAULT_SCREEN_HEIGHT = 1080.0f;       // Default screen resolution to use for subsequent calculations
-		static constexpr float DEFAULT_FONT_RATIO = (7.0f / 360.0f);  // 21px @ 1080p, 28px @ 1440p, 42px @ 4K
-		static constexpr float MIN_FONT_SIZE = 16.0f;                 // ~1.5% @ 1080px height
-		static constexpr float MAX_FONT_SIZE = 108.0f;                // 5.0% @ 2160px height
-		static constexpr float DEFAULT_FONT_SIZE = 27.0f;
+		static constexpr float DEFAULT_SCREEN_HEIGHT = 1080.0f;    // Default screen resolution to use for subsequent calculations
+		static constexpr float DEFAULT_FONT_RATIO = (1.0f / 64.0f);  // 16.9px @ 1080p, 22.5px @ 1440p, 33.75px @ 4K
+		static constexpr float MIN_FONT_SIZE = 12.0f;
+		static constexpr float MAX_FONT_SIZE = 108.0f;  // 5.0% @ 2160px height
+		static constexpr float DEFAULT_FONT_SIZE = DEFAULT_SCREEN_HEIGHT * DEFAULT_FONT_RATIO;
+
+		// Layout baselines. Theme `Style` pixel values and the raw pixel constants below are
+		// authored against STYLE_BASELINE_FONT_SIZE; every consumer divides the live font size by
+		// it (Util::GetUIScale) so spacing stays a fixed ratio of the text. Keeping this decoupled
+		// from DEFAULT_FONT_RATIO means changing the ratio rescales type *and* chrome together.
+		static constexpr float STYLE_BASELINE_FONT_SIZE = 21.0f;   // 1080p at the legacy 7/360 ratio
+		static constexpr float SEARCH_BASELINE_FONT_SIZE = 28.0f;  // search chrome was authored at 2K
 
 		// Global scale constants
 		static constexpr float DEFAULT_GLOBAL_SCALE = 0.0f;  // Default global scale for built-in themes
@@ -171,10 +178,11 @@ public:
 		static constexpr bool FCONF_PIXELSNAP_H = true;           // ImGui default = false
 		static constexpr float FCONF_RASTERIZER_MULTIPLY = 1.1f;  // ImGui default = 1.0f
 
-		// Header rendering constants
-		static constexpr float HEADER_BASE_TEXT_SCALE = 1.7f;
-		static constexpr float HEADER_BASE_ICON_MULTIPLIER = 1.85f;
-		static constexpr float HEADER_FALLBACK_TEXT_SCALE = 1.5f;
+		// Header rendering constants. These are multiples of the live font size, so they stay a
+		// fixed ratio of the body text at every resolution.
+		static constexpr float HEADER_BASE_TEXT_SCALE = 1.4f;
+		static constexpr float HEADER_BASE_ICON_MULTIPLIER = 1.55f;
+		static constexpr float HEADER_FALLBACK_TEXT_SCALE = 1.3f;
 		static constexpr float DOCKED_ICON_SIZE_MULTIPLIER = 1.5f;
 		static constexpr float DOCKED_ICON_SPACING = 8.0f;
 		static constexpr float DOCKED_RIGHT_MARGIN = 45.0f;
@@ -188,13 +196,13 @@ public:
 		static constexpr float OVERLAY_WINDOW_POSITION = 10.0f;
 		static constexpr float FONT_CACHE_EPSILON = 0.01f;
 		static constexpr float CURSOR_POSITION_PADDING = 14.0f;
-		static constexpr float SEPARATOR_THICKNESS = 3.0f;
+		static constexpr float SEPARATOR_THICKNESS = 2.0f;
 		static constexpr float UNDOCKED_ICON_ITEM_SPACING = 6.0f;
 		static constexpr float POPUP_BUTTON_WIDTH = 180.0f;
 		static constexpr float EDITOR_VIEWPORT_BACKGROUND_DIM_ALPHA = 0.35f;  // Extra backdrop dim while the CS Editor viewport is open
 
 		// Feature header constants
-		static constexpr float DEFAULT_FEATURE_TITLE_SCALE = 1.5f;  // Default scale for feature title text
+		static constexpr float DEFAULT_FEATURE_TITLE_SCALE = 1.3f;  // Default scale for feature title text
 		static constexpr float VERSION_TEXT_OPACITY = 0.6f;         // Opacity for version text next to feature title
 
 		// Auto-hide feature list constants
@@ -210,7 +218,6 @@ public:
 		static constexpr float SCENE_VALUE_LABEL_OFFSET_RATIO = 0.5f;  // Value label right-alignment ratio
 
 		// Search input constants
-		static constexpr float SEARCH_BASELINE_SCREEN_HEIGHT = 1440.0f;  // Search chrome is authored for 2K.
 		static constexpr float SEARCH_ICON_SIZE = 20.0f;              // Default search icon size
 		static constexpr float SEARCH_ICON_ALPHA = 0.7f;              // Default search icon opacity
 		static constexpr float SEARCH_ICON_OFFSET_X = 8.0f;           // Search icon offset from input edge

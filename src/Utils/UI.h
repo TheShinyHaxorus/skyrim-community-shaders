@@ -1,6 +1,7 @@
 #pragma once
 #include <algorithm>
 #include <cfloat>  // For FLT_MAX
+#include <cmath>
 #include <cstdio>
 #include <functional>
 #include <imgui.h>
@@ -65,17 +66,31 @@ namespace Util
 	// Text rendering constants
 	constexpr float DefaultHeaderTextScale = 1.5f;  // Larger scale for header text to improve readability
 
-	// Baseline font size for UI layout scaling (1080p dynamic font: DEFAULT_SCREEN_HEIGHT * DEFAULT_FONT_RATIO).
-	// Theme style values and pixel constants are designed for this size.
-	constexpr float kBaselineFontSize = ThemeManager::Constants::DEFAULT_SCREEN_HEIGHT * ThemeManager::Constants::DEFAULT_FONT_RATIO;
+	// Baseline font size for UI layout scaling. Theme style values and pixel constants are
+	// authored for this size; dividing the live font size by it turns every raw pixel constant
+	// into a constant ratio of the text.
+	constexpr float kBaselineFontSize = ThemeManager::Constants::STYLE_BASELINE_FONT_SIZE;
 
 	inline float GetUIScaleForBaseline(float baselineFontSize) { return ImGui::GetFontSize() / baselineFontSize; }
 
-	/** @brief Returns a scale factor relative to the 1080p baseline font size. */
+	/** @brief Returns a scale factor relative to the layout baseline font size. */
 	inline float GetUIScale() { return GetUIScaleForBaseline(kBaselineFontSize); }
 
 	/** @brief Returns a scale factor for search controls authored against the 2K baseline. */
-	inline float GetSearchUIScale() { return GetUIScaleForBaseline(ThemeManager::Constants::SEARCH_BASELINE_SCREEN_HEIGHT * ThemeManager::Constants::DEFAULT_FONT_RATIO); }
+	inline float GetSearchUIScale() { return GetUIScaleForBaseline(ThemeManager::Constants::SEARCH_BASELINE_FONT_SIZE); }
+
+	/** @brief Converts a pixel value authored at the layout baseline into current UI pixels. */
+	inline float ScaleUI(float baselinePixels) { return baselinePixels * GetUIScale(); }
+
+	/** @brief Converts a baseline pixel pair (padding, spacing, sizes) into current UI pixels. */
+	inline ImVec2 ScaleUI(const ImVec2& baselinePixels)
+	{
+		const float scale = GetUIScale();
+		return { baselinePixels.x * scale, baselinePixels.y * scale };
+	}
+
+	/** @brief Separator line thickness, floored at 1px so it never disappears when scaled down. */
+	inline float GetSeparatorThickness() { return std::max(1.0f, std::floor(ScaleUI(ThemeManager::Constants::SEPARATOR_THICKNESS))); }
 
 	/**
 	 * Usage:

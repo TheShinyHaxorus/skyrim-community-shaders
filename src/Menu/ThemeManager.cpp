@@ -183,12 +183,11 @@ void ThemeManager::SetupImGuiStyle(const Menu& menu)
 		globalScale = Constants::DEFAULT_GLOBAL_SCALE;  // Ensure built-in themes stay at 0.0
 	}
 
-	// Scale style sizes by GlobalScale and font-size ratio (theme values target 1080p baseline)
+	// Scale style sizes by GlobalScale and font-size ratio (theme values target the layout baseline)
 	float fontScale = 1.0f;
 	auto& io = ImGui::GetIO();
 	if (io.FontDefault) {
-		constexpr float kBaselineFontSize = Constants::DEFAULT_SCREEN_HEIGHT * Constants::DEFAULT_FONT_RATIO;
-		fontScale = io.FontDefault->LegacySize / kBaselineFontSize;
+		fontScale = io.FontDefault->LegacySize / Constants::STYLE_BASELINE_FONT_SIZE;
 	}
 	const float scaleFactor = fontScale * exp2(globalScale);
 	styleCopy.ScaleAllSizes(scaleFactor);
