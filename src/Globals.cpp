@@ -28,6 +28,7 @@
 #include "Features/ScreenSpaceReflections.h"
 #include "Features/ScreenSpaceShadows.h"
 #include "Features/ScreenshotFeature.h"
+#include "Features/PostProcessing.h"
 #include "Features/Skin.h"
 #include "Features/SkySync.h"
 #include "Features/Skylighting.h"
@@ -109,6 +110,7 @@ namespace globals
 		TruePBR truePBR{};
 		Skin skin{};
 		Effects11 effects11{};
+		PostProcessing postProcessing{};
 
 		namespace llf
 		{

@@ -547,6 +547,21 @@ bool Effects11::ReplacedTonemapperThisFrame() const
 	return tonemapReplacedFrame == globals::state->frameCount;
 }
 
+bool Effects11::WantsTonemapOwnership()
+{
+	CheckCommonData();
+
+	// The initialized check must be part of ownership, not just of rendering: if it were only
+	// checked at render time, the arbiter would still report Effects 11 as the owner while the
+	// vanilla pass ran, having already stripped Post Processing's tonemap flag and skipped its
+	// pipeline for that frame.
+	auto& effectManager = EffectManager::GetSingleton();
+	if (!effectManager.IsInitialized() || !effectManager.IsPresetLoaded())
+		return false;
+
+	return enableEffect && !SettingManager::GetSingleton().GetValue<bool>("UseOriginalPostProcessing", "EFFECT");
+}
+
 bool Effects11::HandleTonemapRender(RE::RENDER_TARGET a_input, RE::RENDER_TARGET a_output)
 {
 	CheckCommonData();

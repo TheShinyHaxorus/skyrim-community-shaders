@@ -353,6 +353,12 @@ namespace SharedData
 		uint pad0;
 	};
 
+	struct PostProcessingSettings
+	{
+		uint DisableVanillaTonemapping;
+		uint3 pad0;
+	};
+
 	struct ExponentialHeightFogSettings
 	{
 		uint enabled;
@@ -525,6 +531,7 @@ namespace SharedData
 		SpecularAASettings specularAASettings;
 		SSGISettings ssgiSettings;
 		SSRSettings ssrSettings;
+		PostProcessingSettings postProcessingSettings;
 	};
 
 	Texture2D<float4> DepthTexture : register(t17);

@@ -129,6 +129,13 @@ public:
 	__declspec(noinline) void ModifyParticle(RE::BSRenderPass* Pass);
 	void ParticleShaderHacks();
 	bool HandleTonemapRender(RE::RENDER_TARGET a_input, RE::RENDER_TARGET a_output);
+	/**
+	 * @brief Whether Effects 11 wants to replace the vanilla tonemap this frame.
+	 *
+	 * Queried by State::GetTonemapOwner() to arbitrate against Post Processing. Does not
+	 * imply the chain will succeed — HandleTonemapRender still re-checks before claiming.
+	 */
+	bool WantsTonemapOwnership();
 	/** @brief True when the effect chain replaced ISHDR this frame, leaving an SDR scene for HDR Display to expand. */
 	bool ReplacedTonemapperThisFrame() const;
 

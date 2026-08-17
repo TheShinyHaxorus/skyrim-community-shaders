@@ -45,6 +45,7 @@ struct HDRDisplay;
 struct ScreenshotFeature;
 struct Skin;
 struct Effects11;
+struct PostProcessing;
 
 class State;
 class Deferred;
@@ -142,6 +143,7 @@ namespace globals
 		extern TruePBR truePBR;
 		extern Skin skin;
 		extern Effects11 effects11;
+		extern PostProcessing postProcessing;
 
 	}
 
