@@ -23,6 +23,7 @@ struct ScreenSpaceReflections;
 struct ScreenSpaceShadows;
 struct Skylighting;
 struct TerrainVariation;
+struct SkyGradient;
 struct SkySync;
 struct SnowCover;
 struct SpecularAntialiasing;
@@ -119,6 +120,7 @@ namespace globals
 		extern ScreenSpaceShadows screenSpaceShadows;
 		extern Skylighting skylighting;
 		extern TerrainVariation terrainVariation;
+		extern SkyGradient skyGradient;
 		extern SkySync skySync;
 		extern SnowCover snowCover;
 		extern SpecularAntialiasing specularAntialiasing;

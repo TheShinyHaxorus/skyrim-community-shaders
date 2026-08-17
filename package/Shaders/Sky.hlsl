@@ -3,6 +3,7 @@
 #include "Common/Math.hlsli"
 #include "Common/Permutation.hlsli"
 #include "Common/SharedData.hlsli"
+#include "SkyGradient/SkyGradient.hlsli"
 
 struct VS_INPUT
 {
@@ -42,6 +43,8 @@ struct VS_OUTPUT
 #if !defined(OCCLUSION) && !defined(MOONMASK) && !defined(HORIZFADE)
 	float4 SkyBlendColor0: TEXCOORD5;
 	float4 SkyBlendColor2: TEXCOORD6;
+	float4 SkyBlendColor1: TEXCOORD7;
+	float4 SkyBlendWeights: TEXCOORD8;
 #endif
 
 	float4 WorldPosition: POSITION1;
@@ -117,6 +120,8 @@ VS_OUTPUT main(VS_INPUT input)
 	vsout.Color.w = BlendColor[0].w * input.Color.w;
 	vsout.SkyBlendColor0 = float4(BlendColor[0].xyz * VParams, 0);
 	vsout.SkyBlendColor2 = float4(BlendColor[2].xyz * VParams, 0);
+	vsout.SkyBlendColor1 = float4(BlendColor[1].xyz * VParams, 0);
+	vsout.SkyBlendWeights = float4(input.Color.xyz, 0);
 #	endif      // OCCLUSION MOONMASK HORIZFADE
 
 	vsout.Position = mul(WorldViewProj, inputPosition).xyww;
@@ -261,17 +266,38 @@ PS_OUTPUT main(PS_INPUT input)
 	psout.Color.w = baseColor.w * input.Color.w;
 #			else
 	float3 skyGradientColor = input.Color.xyz;
+	float3 skyStopWeights = input.SkyBlendWeights.xyz;
 
 #if defined(EFFECTS11)
 	float3 viewDirection = normalize(input.WorldPosition.xyz);
 	if (SharedData::enbSettings.UseProceduralGradientWeights) {
 		float gradientPosition = pow(1.0 - saturate(viewDirection.z), SharedData::enbSettings.ProceduralGradientWeightCurve);
 		skyGradientColor = lerp(input.SkyBlendColor2.xyz, input.SkyBlendColor0.xyz, gradientPosition);
+		skyStopWeights = float3(gradientPosition, 0.0, 1.0 - gradientPosition);
 	}
 #endif
-	psout.Color.xyz = Color::Sky(skyGradientColor) + skyScale;
+	float3 skyLinear = Color::Sky(skyGradientColor);
+
+	[branch] if (SharedData::skyGradientSettings.Enable)
+	{
+		float3 blended = SkyGradient::BlendStops(
+			skyLinear,
+			skyStopWeights,
+			Color::Sky(input.SkyBlendColor0.xyz),
+			Color::Sky(input.SkyBlendColor1.xyz),
+			Color::Sky(input.SkyBlendColor2.xyz));
+		skyLinear = lerp(skyLinear, blended, SharedData::skyGradientSettings.Strength);
+	}
+
+	psout.Color.xyz = skyLinear + skyScale;
 
 	psout.Color.xyz *= 1.0 + noiseGrad;
+
+	[branch] if (SharedData::skyGradientSettings.Enable && SharedData::skyGradientSettings.DitherStrength > 0.0)
+	{
+		psout.Color.xyz += SkyGradient::Dither(psout.Color.xyz, input.Position.xy);
+	}
+
 	psout.Color.w = input.Color.w;
 #			endif  // TEX
 

@@ -30,6 +30,7 @@
 #include "Features/ScreenshotFeature.h"
 #include "Features/PostProcessing.h"
 #include "Features/Skin.h"
+#include "Features/SkyGradient.h"
 #include "Features/SkySync.h"
 #include "Features/Skylighting.h"
 #include "Features/SnowCover.h"
@@ -86,6 +87,7 @@ namespace globals
 		ScreenSpaceShadows screenSpaceShadows{};
 		Skylighting skylighting{};
 		TerrainVariation terrainVariation{};
+		SkyGradient skyGradient{};
 		SkySync skySync{};
 		SnowCover snowCover{};
 		SpecularAntialiasing specularAntialiasing{};

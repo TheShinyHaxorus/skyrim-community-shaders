@@ -31,6 +31,7 @@
 #include "Features/ScreenSpaceShadows.h"
 #include "Features/ScreenshotFeature.h"
 #include "Features/Skin.h"
+#include "Features/SkyGradient.h"
 #include "Features/SkySync.h"
 #include "Features/Skylighting.h"
 #include "Features/SnowCover.h"
@@ -245,6 +246,7 @@ const std::vector<Feature*>& Feature::GetFeatureList()
 		&globals::features::screenSpaceGI,
 		&globals::features::screenSpaceReflections,
 		&globals::features::skylighting,
+		&globals::features::skyGradient,
 		&globals::features::skySync,
 		&globals::features::terrainBlending,
 		&globals::features::terrainHelper,

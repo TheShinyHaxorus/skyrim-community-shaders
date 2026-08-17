@@ -18,6 +18,7 @@
 #include "Features/ScreenSpaceGI.h"
 #include "Features/ScreenSpaceReflections.h"
 #include "Features/Skin.h"
+#include "Features/SkyGradient.h"
 #include "Features/Skylighting.h"
 #include "Features/SnowCover.h"
 #include "Features/SpecularAntialiasing.h"
@@ -76,5 +77,6 @@ std::pair<unsigned char*, size_t> GetFeatureBufferData(bool a_inWorld)
 		globals::features::specularAntialiasing.GetCommonBufferData(),
 		globals::features::screenSpaceGI.GetCommonBufferData(),
 		globals::features::screenSpaceReflections.GetCommonBufferData(),
-		globals::features::postProcessing.GetCommonBufferData());
+		globals::features::postProcessing.GetCommonBufferData(),
+		globals::features::skyGradient.GetCommonBufferData());
 }

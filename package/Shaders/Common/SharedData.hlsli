@@ -504,6 +504,17 @@ namespace SharedData
 		uint pad;
 	};
 
+	struct SkyGradientSettings
+	{
+		uint Enable;
+		float Strength;
+		float ChromaPreservation;
+		float Smoothing;
+
+		float DitherStrength;
+		float3 pad0;
+	};
+
 	cbuffer FeatureData : register(b6)
 	{
 		GrassLightingSettings grassLightingSettings;
@@ -532,6 +543,7 @@ namespace SharedData
 		SSGISettings ssgiSettings;
 		SSRSettings ssrSettings;
 		PostProcessingSettings postProcessingSettings;
+		SkyGradientSettings skyGradientSettings;
 	};
 
 	Texture2D<float4> DepthTexture : register(t17);
