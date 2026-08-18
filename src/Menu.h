@@ -554,6 +554,7 @@ private:
 
 	void DrawGeneralSettings();
 	void DrawAdvancedSettings();
+	void DrawEditorSettings();
 	void DrawDisableAtBootSettings();
 	void DrawFooter();
 

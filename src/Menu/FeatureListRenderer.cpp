@@ -29,8 +29,13 @@ namespace
 {
 	// Core built-in menu names that always appear first in the menu list
 	// These are canonical identifiers used for logic — NOT translated
-	constexpr std::array<const char*, 2> CORE_MENU_NAMES = {
-		"General", "Advanced"
+	constexpr std::array<const char*, 3> CORE_MENU_NAMES = {
+		"General", "Advanced", "Editor"
+	};
+
+	// Features relocated from the Utility category onto the Editor page
+	constexpr std::array<std::string_view, 2> EDITOR_PAGE_FEATURES = {
+		"CSEditor", "Screenshot"
 	};
 
 	const char* GetCoreMenuDisplayName(const char* canonicalName)
@@ -41,6 +46,8 @@ namespace
 			return T("menu.features.general", "General");
 		if (std::strcmp(canonicalName, "Advanced") == 0)
 			return T("menu.features.advanced", "Advanced");
+		if (std::strcmp(canonicalName, "Editor") == 0)
+			return T("menu.features.editor", "Editor");
 		if (std::strcmp(canonicalName, "Profiling") == 0)
 			return T("menu.features.profiling", "Profiling");
 		if (std::strcmp(canonicalName, "Display") == 0)
@@ -290,11 +297,12 @@ void FeatureListRenderer::RenderFeatureList(
 	std::string& pendingFeatureSelection,
 	std::map<std::string, bool>& categoryExpansionStates,
 	const std::function<void()>& drawGeneralSettings,
-	const std::function<void()>& drawAdvancedSettings)
+	const std::function<void()>& drawAdvancedSettings,
+	const std::function<void()>& drawEditorSettings)
 {
 	ImGui::BeginChild("Menus Table", ImVec2(0, -footerHeight));
 
-	auto menuList = BuildMenuList(featureSearch, categoryExpansionStates, drawGeneralSettings, drawAdvancedSettings);
+	auto menuList = BuildMenuList(featureSearch, categoryExpansionStates, drawGeneralSettings, drawAdvancedSettings, drawEditorSettings);
 
 	if (!g_selectedEntryKey.empty()) {
 		for (size_t i = 0; i < menuList.size(); ++i) {
@@ -334,7 +342,8 @@ std::vector<FeatureListRenderer::MenuFuncInfo> FeatureListRenderer::BuildMenuLis
 	const std::string& featureSearch,
 	std::map<std::string, bool>& categoryExpansionStates,
 	const std::function<void()>& drawGeneralSettings,
-	const std::function<void()>& drawAdvancedSettings)
+	const std::function<void()>& drawAdvancedSettings,
+	const std::function<void()>& drawEditorSettings)
 {
 	// Build the menu list
 	auto& featureList = Feature::GetFeatureList();
@@ -353,14 +362,24 @@ std::vector<FeatureListRenderer::MenuFuncInfo> FeatureListRenderer::BuildMenuLis
 	auto menuList = std::vector<MenuFuncInfo>{
 		BuiltInMenu{ T("menu.features.general", "General"), drawGeneralSettings },
 		BuiltInMenu{ T("menu.features.advanced", "Advanced"), drawAdvancedSettings }
-	};  // NOTE: The menu list is rebuilt every frame, so category expansion states
+	};
+
+	if (!GetEditorPageFeatures().empty()) {
+		menuList.push_back(BuiltInMenu{ T("menu.features.editor", "Editor"), drawEditorSettings });
+	}  // NOTE: The menu list is rebuilt every frame, so category expansion states
 	// persist correctly. This is acceptable since the list is small and built
 	// infrequently, but could be optimized if performance becomes an issue.
 
 	// Group features by category
+	// Utility features live on the Editor and Advanced pages, so they are dropped
+	// from the categorised list. While a search is active they stay listed, so the
+	// search box can still find them.
+	const bool searching = !featureSearch.empty();
 	std::map<std::string, std::vector<Feature*>> categorizedFeatures;
 	for (Feature* feat : sortedFeatureList) {
 		if (feat->IsInMenu() && feat->loaded) {
+			if (!searching && (IsEditorPageFeature(feat) || IsAdvancedPageFeature(feat)))
+				continue;
 			std::string category(feat->GetCategory());
 			categorizedFeatures[category].push_back(feat);
 		}
@@ -493,6 +512,55 @@ void FeatureListRenderer::RenderLeftColumn(
 	}
 	ImGui::PopStyleVar();
 	ImGui::PopStyleColor();
+}
+
+bool FeatureListRenderer::IsEditorPageFeature(Feature* feat)
+{
+	if (!feat)
+		return false;
+	const auto shortName = feat->GetShortName();
+	return std::ranges::find(EDITOR_PAGE_FEATURES, shortName) != EDITOR_PAGE_FEATURES.end();
+}
+
+bool FeatureListRenderer::IsAdvancedPageFeature(Feature* feat)
+{
+	return feat && feat->GetCategory() == FeatureCategories::kUtility && !IsEditorPageFeature(feat);
+}
+
+namespace
+{
+	std::vector<Feature*> CollectHostedFeatures(bool (*predicate)(Feature*))
+	{
+		std::vector<Feature*> hosted;
+		for (Feature* feat : Feature::GetFeatureList()) {
+			if (feat->IsInMenu() && feat->loaded && predicate(feat))
+				hosted.push_back(feat);
+		}
+		std::ranges::sort(hosted, [](Feature* a, Feature* b) {
+			return a->GetDisplayName() < b->GetDisplayName();
+		});
+		return hosted;
+	}
+}
+
+std::vector<Feature*> FeatureListRenderer::GetEditorPageFeatures()
+{
+	return CollectHostedFeatures(&FeatureListRenderer::IsEditorPageFeature);
+}
+
+std::vector<Feature*> FeatureListRenderer::GetAdvancedPageFeatures()
+{
+	return CollectHostedFeatures(&FeatureListRenderer::IsAdvancedPageFeature);
+}
+
+void FeatureListRenderer::RenderFeaturePanel(Feature* feat)
+{
+	if (!feat)
+		return;
+
+	static std::string hostedFeatureSelection;
+	DrawMenuVisitor visitor{ hostedFeatureSelection };
+	visitor(feat);
 }
 
 void FeatureListRenderer::RenderRightColumn(

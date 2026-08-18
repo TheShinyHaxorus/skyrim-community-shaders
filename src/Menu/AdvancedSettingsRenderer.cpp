@@ -13,6 +13,7 @@
 #include "Globals.h"
 #include "I18n/I18n.h"
 #include "Menu.h"
+#include "Menu/FeatureListRenderer.h"
 #include "ProfilingRenderer.h"
 #include "ShaderCache.h"
 #include "State.h"
@@ -77,6 +78,14 @@ void AdvancedSettingsRenderer::RenderAdvancedSettings(
 			}
 			ImGui::EndChild();
 			ImGui::EndTabItem();
+		}
+
+		// Utility features relocated from the feature list, one tab each
+		for (Feature* feat : FeatureListRenderer::GetAdvancedPageFeatures()) {
+			if (MenuFonts::BeginTabItemWithFont(feat->GetDisplayName().c_str(), Menu::FontRole::Subheading)) {
+				FeatureListRenderer::RenderFeaturePanel(feat);
+				ImGui::EndTabItem();
+			}
 		}
 
 		ImGui::EndTabBar();

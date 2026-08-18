@@ -805,7 +805,8 @@ void Menu::DrawSettings()
 			pendingFeatureSelection,
 			categoryExpansionStates,
 			[&]() { DrawGeneralSettings(); },
-			[&]() { DrawAdvancedSettings(); });
+			[&]() { DrawAdvancedSettings(); },
+			[&]() { DrawEditorSettings(); });
 
 		if (settings.Theme.ShowFooter) {
 			ImGui::Spacing();
@@ -857,6 +858,31 @@ void Menu::DrawAdvancedSettings()
 {
 	AdvancedSettingsRenderer::RenderAdvancedSettings(
 		[this]() { DrawDisableAtBootSettings(); });
+}
+
+/**
+ * @brief Renders the Editor page content
+ *
+ * Hosts the scene editing tools that previously lived under the Utility
+ * category, one tab per feature.
+ */
+void Menu::DrawEditorSettings()
+{
+	const auto editorFeatures = FeatureListRenderer::GetEditorPageFeatures();
+	if (editorFeatures.empty()) {
+		ImGui::TextDisabled("%s", T("menu.editor.no_features", "No editor features are loaded."));
+		return;
+	}
+
+	if (ImGui::BeginTabBar("##EditorTabs", ImGuiTabBarFlags_None)) {
+		for (Feature* feat : editorFeatures) {
+			if (MenuFonts::BeginTabItemWithFont(feat->GetDisplayName().c_str(), Menu::FontRole::Subheading)) {
+				FeatureListRenderer::RenderFeaturePanel(feat);
+				ImGui::EndTabItem();
+			}
+		}
+		ImGui::EndTabBar();
+	}
 }
 
 void Menu::DrawDisableAtBootSettings()

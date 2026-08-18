@@ -56,7 +56,31 @@ public:
 		std::string& pendingFeatureSelection,
 		std::map<std::string, bool>& categoryExpansionStates,
 		const std::function<void()>& drawGeneralSettings,
-		const std::function<void()>& drawAdvancedSettings);
+		const std::function<void()>& drawAdvancedSettings,
+		const std::function<void()>& drawEditorSettings);
+
+	/**
+	 * @brief Renders the full settings panel for a single feature.
+	 *
+	 * Draws the same header (boot toggle, override and restore actions) and
+	 * settings body used by the right-hand column, so features relocated onto
+	 * the Editor and Advanced pages keep their complete UI.
+	 *
+	 * @param feat Feature whose panel should be drawn.
+	 */
+	static void RenderFeaturePanel(Feature* feat);
+
+	/** @brief True when the feature is hosted on the Editor page instead of the feature list. */
+	static bool IsEditorPageFeature(Feature* feat);
+
+	/** @brief True when the feature is hosted on the Advanced page instead of the feature list. */
+	static bool IsAdvancedPageFeature(Feature* feat);
+
+	/** @brief Returns the loaded features hosted on the Editor page, sorted by display name. */
+	static std::vector<Feature*> GetEditorPageFeatures();
+
+	/** @brief Returns the loaded features hosted on the Advanced page, sorted by display name. */
+	static std::vector<Feature*> GetAdvancedPageFeatures();
 
 private:
 	struct ListMenuVisitor
@@ -94,7 +118,8 @@ private:
 		const std::string& featureSearch,
 		std::map<std::string, bool>& categoryExpansionStates,
 		const std::function<void()>& drawGeneralSettings,
-		const std::function<void()>& drawAdvancedSettings);
+		const std::function<void()>& drawAdvancedSettings,
+		const std::function<void()>& drawEditorSettings);
 
 	static void HandlePendingFeatureSelection(
 		std::string& pendingFeatureSelection,
