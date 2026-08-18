@@ -1187,18 +1187,17 @@ PS_OUTPUT main(PS_INPUT input, bool frontFace : SV_IsFrontFace)
 #	if defined(EYES)
 #		if defined(EYE)
 	const bool isEyeGeometry = true;
-	const float3 corneaGeometricNormal = normalize(input.EyeNormal);
 #		else
 	const bool isEyeGeometry = (Permutation::ExtraShaderDescriptor & Permutation::ExtraFlags::IsEye) != 0;
-	const float3 corneaGeometricNormal = tbnTr[2];
 #		endif
+	const float3 eyeballNormal = tbnTr[2];
+	const float eyeUVPerRadian = Eyes::GetUVPerRadian(uv, eyeballNormal);
 	const bool eyesEnabled = isEyeGeometry && SharedData::eyesSettings.Enable;
-	float corneaMask = 1.0;
+	float corneaCoverage = 1.0;
 	[branch] if (eyesEnabled)
 	{
-		if (SharedData::eyesSettings.UseEnvMaskAsCorneaMask && EnvmapData.y != 0.0)
-			corneaMask = saturate(envMaskBase);
-		uv = Eyes::RefractIrisUV(uv, corneaGeometricNormal, viewDirection, tbnTr, corneaMask);
+		corneaCoverage = Eyes::GetCorneaCoverage(envMaskBase, EnvmapData.y != 0.0);
+		uv = Eyes::RefractIris(uv, eyeballNormal, viewDirection, tbnTr, eyeUVPerRadian, corneaCoverage);
 	}
 #	endif
 
@@ -1951,10 +1950,10 @@ PS_OUTPUT main(PS_INPUT input, bool frontFace : SV_IsFrontFace)
 
 	float3 envReflectionNormal = worldNormal.xyz;
 #		if defined(EYES)
-	Eyes::CorneaState corneaState = Eyes::InitCorneaState(corneaGeometricNormal, worldNormal.xyz, corneaMask);
+	Eyes::Cornea cornea = Eyes::InitCornea(eyeballNormal, worldNormal.xyz, corneaCoverage);
 	const bool useCorneaReflection = eyesEnabled && SharedData::eyesSettings.EnableCorneaReflection;
 	if (useCorneaReflection)
-		envReflectionNormal = corneaState.normal;
+		envReflectionNormal = cornea.normal;
 #		endif
 
 	float viewNormalAngle = dot(envReflectionNormal, viewDirection);
@@ -2079,6 +2078,11 @@ PS_OUTPUT main(PS_INPUT input, bool frontFace : SV_IsFrontFace)
 			envColor = envColorBase.xyz * envMask;
 		}
 	}
+
+#		if defined(EYES)
+	[flatten] if (useCorneaReflection)
+		envColor = 0.0;
+#		endif
 
 #	endif  // defined (ENVMAP) || defined (MULTI_LAYER_PARALLAX) || defined(EYE)
 
@@ -2392,7 +2396,7 @@ PS_OUTPUT main(PS_INPUT input, bool frontFace : SV_IsFrontFace)
 #	endif
 #	if defined(EYES)
 	[branch] if (eyesEnabled)
-		Eyes::EvaluateCorneaLighting(corneaState, dirLightContext, dirLightOutput);
+		Eyes::EvaluateCorneaLighting(cornea, dirLightContext, dirLightOutput);
 #	endif
 
 	lightsDiffuseColor += dirLightOutput.diffuse;
@@ -2456,7 +2460,7 @@ PS_OUTPUT main(PS_INPUT input, bool frontFace : SV_IsFrontFace)
 #			endif
 #			if defined(EYES)
 		[branch] if (eyesEnabled)
-			Eyes::EvaluateCorneaLighting(corneaState, pointLightContext, pointLightOutput);
+			Eyes::EvaluateCorneaLighting(cornea, pointLightContext, pointLightOutput);
 #			endif
 		lightsDiffuseColor += pointLightOutput.diffuse;
 		lightsSpecularColor += pointLightOutput.specular;
@@ -2623,7 +2627,7 @@ PS_OUTPUT main(PS_INPUT input, bool frontFace : SV_IsFrontFace)
 #			endif
 #			if defined(EYES)
 		[branch] if (eyesEnabled)
-			Eyes::EvaluateCorneaLighting(corneaState, pointLightContext, pointLightOutput);
+			Eyes::EvaluateCorneaLighting(cornea, pointLightContext, pointLightOutput);
 #			endif
 
 		lightsDiffuseColor += pointLightOutput.diffuse;
@@ -2843,7 +2847,7 @@ PS_OUTPUT main(PS_INPUT input, bool frontFace : SV_IsFrontFace)
 #	if defined(EYES)
 	[branch] if (useCorneaReflection)
 	{
-		float3 corneaReflectance = Eyes::GetCorneaIndirectLobeWeights(indirectLobeWeights, corneaState, viewDirection);
+		float3 corneaReflectance = Eyes::GetCorneaIndirectLobeWeights(indirectLobeWeights, cornea, viewDirection);
 		indirectLobeWeights.specular = corneaReflectance;
 	}
 #	endif
@@ -2924,8 +2928,8 @@ PS_OUTPUT main(PS_INPUT input, bool frontFace : SV_IsFrontFace)
 #	if defined(EYES)
 	[branch] if (useCorneaReflection)
 	{
-		reflectionNormal = corneaState.normal;
-		reflectionRoughness = corneaState.roughness;
+		reflectionNormal = cornea.normal;
+		reflectionRoughness = cornea.roughness;
 	}
 #	endif
 
@@ -3167,8 +3171,8 @@ PS_OUTPUT main(PS_INPUT input, bool frontFace : SV_IsFrontFace)
 #		if defined(EYES)
 	[branch] if (useCorneaReflection)
 	{
-		screenSpaceNormal = normalize(FrameBuffer::WorldToView(corneaState.normal, false));
-		material.Roughness = corneaState.roughness;
+		screenSpaceNormal = normalize(FrameBuffer::WorldToView(cornea.normal, false));
+		material.Roughness = cornea.roughness;
 	}
 #		endif
 

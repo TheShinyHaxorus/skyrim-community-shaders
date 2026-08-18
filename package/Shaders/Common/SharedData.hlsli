@@ -519,12 +519,17 @@ namespace SharedData
 	{
 		uint Enable;
 		float CorneaRoughness;
+		float ScleraRoughness;
 		float CorneaF0;
-		float CorneaNormalStrength;
 
-		float IrisDepth;
-		float IrisIOR;
-		uint UseEnvMaskAsCorneaMask;
+		float CorneaSmoothing;
+		float CorneaFromEnvMask;
+		float CatchlightSize;
+		float CatchlightStrength;
+
+		float AnteriorChamberDepth;
+		float AqueousIOR;
+		float ReflectionStrength;
 		uint EnableCorneaReflection;
 	};
 

@@ -11,11 +11,11 @@ struct Eyes : Feature
 	virtual inline std::pair<std::string, std::vector<std::string>> GetFeatureSummary() override
 	{
 		return {
-			T("feature.eyes.description", "Physically based eye shading using the analytic corneal normal."),
-			{ T("feature.eyes.key_feature_1", "Sharp corneal specular highlight from the eyeball sphere normal"),
-				T("feature.eyes.key_feature_2", "Refracted iris parallax through the corneal bulge"),
-				T("feature.eyes.key_feature_3", "Energy conserving clear coat over the iris and sclera"),
-				T("feature.eyes.key_feature_4", "Corneal reflections that track the eyeball, not the normal map") }
+			T("feature.eyes.description", "Shades eyes as a refractive cornea over the iris, following the eye models used by Unreal Engine and Unity HDRP."),
+			{ T("feature.eyes.key_feature_1", "Tear film clear coat driven by the smooth eyeball normal instead of the iris normal map"),
+				T("feature.eyes.key_feature_2", "Iris parallax refracted through the anterior chamber, scaled from the measured curvature of the mesh"),
+				T("feature.eyes.key_feature_3", "Separate cornea and sclera gloss taken from the eye environment mask"),
+				T("feature.eyes.key_feature_4", "Corneal reflections that replace the vanilla eye cubemap and track the eyeball") }
 		};
 	}
 
@@ -30,12 +30,18 @@ struct Eyes : Feature
 	struct alignas(16) Settings
 	{
 		uint Enable = true;
-		float CorneaRoughness = 0.08f;
-		float CorneaF0 = 0.027f;
-		float CorneaNormalStrength = 1.0f;
-		float IrisDepth = 0.04f;
-		float IrisIOR = 1.376f;
-		uint UseEnvMaskAsCorneaMask = false;
+		float CorneaRoughness = 0.06f;
+		float ScleraRoughness = 0.25f;
+		float CorneaF0 = 0.028f;
+
+		float CorneaSmoothing = 1.0f;
+		float CorneaFromEnvMask = 1.0f;
+		float CatchlightSize = 0.006f;
+		float CatchlightStrength = 1.0f;
+
+		float AnteriorChamberDepth = 0.25f;
+		float AqueousIOR = 1.336f;
+		float ReflectionStrength = 1.0f;
 		uint EnableCorneaReflection = true;
 	} settings;
 };
