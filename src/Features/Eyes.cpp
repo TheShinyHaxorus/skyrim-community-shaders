@@ -75,7 +75,8 @@ void Eyes::DrawSettings()
 
 	ImGui::Checkbox(T("feature.eyes.use_env_mask", "Cornea Mask From Environment Mask"), reinterpret_cast<bool*>(&settings.UseEnvMaskAsCorneaMask));
 	if (auto _tt = Util::HoverTooltipWrapper()) {
-		ImGui::Text("%s", T("feature.eyes.use_env_mask_tooltip", "Vanilla eye assets paint the corneal disc into the environment mask. Disable only for meshes without one, which applies the effect across the whole eye."));
+		ImGui::Text("%s", T("feature.eyes.use_env_mask_tooltip", "Restricts the effect to the environment mask of the eye. Off by default, which covers the whole eyeball in tear film."));
+		ImGui::BulletText("%s", T("feature.eyes.use_env_mask_bullet", "Most eye assets author this map as a faint reflection strength mask rather than a corneal disc, so enabling it usually removes the effect. It is ignored on meshes with no environment mask."));
 	}
 
 	ImGui::EndDisabled();

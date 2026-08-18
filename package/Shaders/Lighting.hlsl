@@ -40,6 +40,10 @@
 #	define GLINT
 #endif
 
+#if defined(PSHADER) && defined(CS_EYES) && (defined(EYE) || defined(ENVMAP)) && (defined(SKINNED) || !defined(MODELSPACENORMALS))
+#	define EYES
+#endif
+
 struct VS_INPUT
 {
 	float4 Position: POSITION0;
@@ -895,7 +899,7 @@ float GetSnowParameterY(float texProjTmp, float alpha)
 #		include "Skin/Skin.hlsli"
 #	endif
 
-#	if defined(EYE) && defined(CS_EYES)
+#	if defined(EYES)
 #		include "Eyes/Eyes.hlsli"
 #	endif
 
@@ -1180,15 +1184,21 @@ PS_OUTPUT main(PS_INPUT input, bool frontFace : SV_IsFrontFace)
 	float envMaskBase = TexEnvMaskSampler.Sample(SampEnvMaskSampler, uv).x;
 #	endif  // EMAT
 
-#	if defined(EYE) && defined(CS_EYES)
-	float3 corneaGeometricNormal = normalize(input.EyeNormal);
-	float corneaMask = 1.0;
-	[branch] if (SharedData::eyesSettings.Enable)
-	{
-		corneaMask = SharedData::eyesSettings.UseEnvMaskAsCorneaMask ? saturate(envMaskBase) : 1.0;
-#		if defined(SKINNED) || !defined(MODELSPACENORMALS)
-		uv = Eyes::RefractIrisUV(uv, corneaGeometricNormal, viewDirection, tbnTr, corneaMask);
+#	if defined(EYES)
+#		if defined(EYE)
+	const bool isEyeGeometry = true;
+	const float3 corneaGeometricNormal = normalize(input.EyeNormal);
+#		else
+	const bool isEyeGeometry = (Permutation::ExtraShaderDescriptor & Permutation::ExtraFlags::IsEye) != 0;
+	const float3 corneaGeometricNormal = tbnTr[2];
 #		endif
+	const bool eyesEnabled = isEyeGeometry && SharedData::eyesSettings.Enable;
+	float corneaMask = 1.0;
+	[branch] if (eyesEnabled)
+	{
+		if (SharedData::eyesSettings.UseEnvMaskAsCorneaMask && EnvmapData.y != 0.0)
+			corneaMask = saturate(envMaskBase);
+		uv = Eyes::RefractIrisUV(uv, corneaGeometricNormal, viewDirection, tbnTr, corneaMask);
 	}
 #	endif
 
@@ -1940,9 +1950,9 @@ PS_OUTPUT main(PS_INPUT input, bool frontFace : SV_IsFrontFace)
 	float envMask = EnvmapData.x * MaterialData.x;
 
 	float3 envReflectionNormal = worldNormal.xyz;
-#		if defined(EYE) && defined(CS_EYES)
+#		if defined(EYES)
 	Eyes::CorneaState corneaState = Eyes::InitCorneaState(corneaGeometricNormal, worldNormal.xyz, corneaMask);
-	const bool useCorneaReflection = SharedData::eyesSettings.Enable && SharedData::eyesSettings.EnableCorneaReflection;
+	const bool useCorneaReflection = eyesEnabled && SharedData::eyesSettings.EnableCorneaReflection;
 	if (useCorneaReflection)
 		envReflectionNormal = corneaState.normal;
 #		endif
@@ -2380,8 +2390,8 @@ PS_OUTPUT main(PS_INPUT input, bool frontFace : SV_IsFrontFace)
 	if (waterRoughnessSpecular < 1)
 		EvaluateWetnessLighting(wetnessNormal, dirLightContext, waterRoughnessSpecular, dirLightOutput);
 #	endif
-#	if defined(EYE) && defined(CS_EYES)
-	[branch] if (SharedData::eyesSettings.Enable)
+#	if defined(EYES)
+	[branch] if (eyesEnabled)
 		Eyes::EvaluateCorneaLighting(corneaState, dirLightContext, dirLightOutput);
 #	endif
 
@@ -2444,8 +2454,8 @@ PS_OUTPUT main(PS_INPUT input, bool frontFace : SV_IsFrontFace)
 		if (waterRoughnessSpecular < 1)
 			EvaluateWetnessLighting(wetnessNormal, pointLightContext, waterRoughnessSpecular, pointLightOutput);
 #			endif
-#			if defined(EYE) && defined(CS_EYES)
-		[branch] if (SharedData::eyesSettings.Enable)
+#			if defined(EYES)
+		[branch] if (eyesEnabled)
 			Eyes::EvaluateCorneaLighting(corneaState, pointLightContext, pointLightOutput);
 #			endif
 		lightsDiffuseColor += pointLightOutput.diffuse;
@@ -2611,8 +2621,8 @@ PS_OUTPUT main(PS_INPUT input, bool frontFace : SV_IsFrontFace)
 		if (waterRoughnessSpecular < 1)
 			EvaluateWetnessLighting(wetnessNormal, pointLightContext, waterRoughnessSpecular, pointLightOutput);
 #			endif
-#			if defined(EYE) && defined(CS_EYES)
-		[branch] if (SharedData::eyesSettings.Enable)
+#			if defined(EYES)
+		[branch] if (eyesEnabled)
 			Eyes::EvaluateCorneaLighting(corneaState, pointLightContext, pointLightOutput);
 #			endif
 
@@ -2830,7 +2840,7 @@ PS_OUTPUT main(PS_INPUT input, bool frontFace : SV_IsFrontFace)
 		indirectLobeWeights.specular *= envMask;
 #	endif
 
-#	if defined(EYE) && defined(CS_EYES)
+#	if defined(EYES)
 	[branch] if (useCorneaReflection)
 	{
 		float3 corneaReflectance = Eyes::GetCorneaIndirectLobeWeights(indirectLobeWeights, corneaState, viewDirection);
@@ -2911,7 +2921,7 @@ PS_OUTPUT main(PS_INPUT input, bool frontFace : SV_IsFrontFace)
 
 	float3 reflectionNormal = worldNormal.xyz;
 	float reflectionRoughness = material.Roughness;
-#	if defined(EYE) && defined(CS_EYES)
+#	if defined(EYES)
 	[branch] if (useCorneaReflection)
 	{
 		reflectionNormal = corneaState.normal;
@@ -3154,7 +3164,7 @@ PS_OUTPUT main(PS_INPUT input, bool frontFace : SV_IsFrontFace)
 	}
 #		endif
 
-#		if defined(EYE) && defined(CS_EYES)
+#		if defined(EYES)
 	[branch] if (useCorneaReflection)
 	{
 		screenSpaceNormal = normalize(FrameBuffer::WorldToView(corneaState.normal, false));

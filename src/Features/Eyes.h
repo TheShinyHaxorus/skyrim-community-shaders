@@ -35,7 +35,7 @@ struct Eyes : Feature
 		float CorneaNormalStrength = 1.0f;
 		float IrisDepth = 0.04f;
 		float IrisIOR = 1.376f;
-		uint UseEnvMaskAsCorneaMask = true;
+		uint UseEnvMaskAsCorneaMask = false;
 		uint EnableCorneaReflection = true;
 	} settings;
 };

@@ -235,6 +235,66 @@ namespace GrassExtensions
 	};
 }
 
+namespace LightingExtensions
+{
+	constexpr auto IsEyeDescriptor = static_cast<std::uint32_t>(State::ExtraShaderDescriptors::IsEye);
+
+	bool ContainsEye(std::string_view a_name)
+	{
+		constexpr std::string_view eye = "eye";
+		return std::search(
+				   a_name.begin(), a_name.end(),
+				   eye.begin(), eye.end(),
+				   [](char a_lhs, char a_rhs) {
+					   return static_cast<char>(std::tolower(static_cast<unsigned char>(a_lhs))) == a_rhs;
+				   }) != a_name.end();
+	}
+
+	bool IsEyePass(const RE::BSLightingShader* a_shader, const RE::BSRenderPass* a_pass)
+	{
+		if (a_shader) {
+			const auto technique = static_cast<SIE::ShaderCache::LightingShaderTechniques>(0x3F & (a_shader->currentRawTechnique >> 24));
+			if (technique == SIE::ShaderCache::LightingShaderTechniques::Eye) {
+				return true;
+			}
+		}
+
+		if (!a_pass || !a_pass->shaderProperty) {
+			return false;
+		}
+
+		const auto* lightingProperty = a_pass->shaderProperty->GetRTTI() == globals::rtti::BSLightingShaderPropertyRTTI.get() ?
+		                                   static_cast<const RE::BSLightingShaderProperty*>(a_pass->shaderProperty) :
+		                                   nullptr;
+		if (!lightingProperty || !lightingProperty->material) {
+			return false;
+		}
+
+		const auto feature = lightingProperty->material->GetFeature();
+		if (feature == RE::BSShaderMaterial::Feature::kEye) {
+			return true;
+		}
+
+		return feature == RE::BSShaderMaterial::Feature::kEnvironmentMap &&
+		       a_pass->geometry &&
+		       ContainsEye(a_pass->geometry->name.c_str());
+	}
+
+	struct BSLightingShader_SetupGeometry
+	{
+		static void thunk(RE::BSLightingShader* a_shader, RE::BSRenderPass* a_pass, uint32_t a_renderFlags)
+		{
+			auto& descriptor = globals::state->permutationData.ExtraShaderDescriptor;
+			descriptor &= ~IsEyeDescriptor;
+			if (IsEyePass(a_shader, a_pass)) {
+				descriptor |= IsEyeDescriptor;
+			}
+			func(a_shader, a_pass, a_renderFlags);
+		}
+		static inline REL::Relocation<decltype(thunk)> func;
+	};
+}
+
 namespace WaterBlendHistory
 {
 	struct BSImagespaceShader_Render
@@ -1019,6 +1079,7 @@ namespace Hooks
 		stl::detour_thunk<MenuManagerDrawInterfaceStart>(REL::RelocationID(79947, 82084));
 
 		logger::info("Installing SetupGeometry hooks");
+		stl::write_vfunc<0x6, LightingExtensions::BSLightingShader_SetupGeometry>(RE::VTABLE_BSLightingShader[0]);
 		stl::write_vfunc<0x6, EffectExtensions::BSEffectShader_SetupGeometry>(RE::VTABLE_BSEffectShader[0]);
 		stl::write_vfunc<0x6, SkyExtensions::BSSkyShader_SetupGeometry>(RE::VTABLE_BSSkyShader[0]);
 		stl::write_thunk_call<GrassExtensions::BSGrassShaderProperty_ctor>(REL::RelocationID(15214, 15383).address() + REL::Relocate(0x45B, 0x4F5));
