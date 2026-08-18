@@ -13,12 +13,24 @@ colour  category icons are pure white (the UI tints them with the theme text
 import sys
 from pathlib import Path
 
-from iconlib import (ACCENT, DANGER, STROKE, Mask, arc_pts, bezier, compose,
+from iconlib import (ACCENT, DANGER, SIZE, STROKE, Mask, arc_pts, bezier, compose,
                      ellipse_pts, silhouette_ring)
+from svg_to_icon import render as render_svg
 
 W = STROKE
+SAFE = 104
 CATEGORY = {}
 ACTION = {}
+
+SVG_DIR = Path(__file__).parent / "svg"
+
+# Action icons drawn from checked-in SVG artwork rather than procedurally.
+SVG_ACTION = {
+    "restore-settings": "undo.svg",
+    "save-settings": "save.svg",
+    "clear-cache": "refresh-cw-alt.svg",
+    "load-settings": "loader-lines-alt.svg",
+}
 
 
 def category(fn):
@@ -256,9 +268,17 @@ def main(out_root):
         n += 1
 
     for name, fn in ACTION.items():
+        if name in SVG_ACTION:
+            continue
         base, acc, col = unpack(fn())
         compose(base, acc, col, mono=False).save(act_dir / f"{name}.png")
         compose(base, acc, col, mono=True).save(mono_dir / f"{name}.png")
+        n += 2
+
+    for name, svg in SVG_ACTION.items():
+        image = render_svg(SVG_DIR / svg, SIZE, SAFE, (255, 255, 255))
+        image.save(act_dir / f"{name}.png")
+        image.save(mono_dir / f"{name}.png")
         n += 2
 
     print(f"wrote {n} icons to {out_root}")
