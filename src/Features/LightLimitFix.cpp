@@ -38,20 +38,6 @@ static float SanitizeFloat(float value, float lo, float hi)
 	return std::clamp(value, lo, hi);
 }
 
-static constexpr uint32_t SHADOW_MASK_CHANNEL_COUNT = 4;
-
-static bool TryAssignShadowMask(LightLimitFix::LightData& a_light, RE::BSLight* a_bsLight)
-{
-	auto* shadowLight = static_cast<RE::BSShadowLight*>(a_bsLight);
-	const uint32_t maskIndex = shadowLight->GetRuntimeData().maskIndex;
-	if (maskIndex >= SHADOW_MASK_CHANNEL_COUNT)
-		return false;
-
-	a_light.shadowMaskIndex = maskIndex;
-	a_light.lightFlags.set(LightLimitFix::LightFlags::Shadow);
-	return true;
-}
-
 void LightLimitFix::DrawSettings()
 {
 	auto shaderCache = globals::shaderCache;
@@ -387,7 +373,10 @@ void LightLimitFix::BSLightingShader_SetupGeometry_GeometrySetupConstantPointLig
 		SetLightPosition(light, niLight->world.translate, inWorld);
 
 		if (i < a_pass->numShadowLights) {
-			TryAssignShadowMask(light, bsLight);
+			auto* shadowLight = static_cast<RE::BSShadowLight*>(bsLight);
+			auto& maskIndex = shadowLight->GetRuntimeData().maskIndex;
+			light.shadowMaskIndex = maskIndex;
+			light.lightFlags.set(LightFlags::Shadow);
 		}
 
 		strictLightDataTemp.StrictLights[writeIdx++] = light;
@@ -399,9 +388,8 @@ void LightLimitFix::BSLightingShader_SetupGeometry_GeometrySetupConstantPointLig
 		if (!bsLight)
 			continue;
 		auto* shadowLight = static_cast<RE::BSShadowLight*>(bsLight);
-		const uint32_t maskIndex = shadowLight->GetRuntimeData().maskIndex;
-		if (maskIndex < SHADOW_MASK_CHANNEL_COUNT)
-			strictLightDataTemp.ShadowBitMask |= (1u << maskIndex);
+		auto& maskIndex = shadowLight->GetRuntimeData().maskIndex;
+		strictLightDataTemp.ShadowBitMask |= (1u << maskIndex);
 	}
 }
 
@@ -582,13 +570,19 @@ void LightLimitFix::UpdateLights()
 					}
 
 					if (bsLight->IsShadowLight()) {
-						TryAssignShadowMask(light, bsLight);
+						auto* shadowLight = static_cast<RE::BSShadowLight*>(bsLight);
+						auto& maskIndex = shadowLight->GetRuntimeData().maskIndex;
+						light.shadowMaskIndex = maskIndex;
+						light.lightFlags.set(LightFlags::Shadow);
 					}
 
-					SetLightPosition(light, niLight->world.translate);
+					// Check for inactive shadow light
+					if (light.shadowMaskIndex != 255) {
+						SetLightPosition(light, niLight->world.translate);
 
-					if ((light.color.x + light.color.y + light.color.z) * light.fade > 1e-4 && light.radius > 1e-4) {
-						lightsData.push_back(light);
+						if ((light.color.x + light.color.y + light.color.z) * light.fade > 1e-4 && light.radius > 1e-4) {
+							lightsData.push_back(light);
+						}
 					}
 				}
 			}
