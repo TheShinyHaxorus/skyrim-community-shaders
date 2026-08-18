@@ -8,7 +8,6 @@
 #include "Features/ExponentialHeightFog.h"
 #include "Features/ExtendedMaterials.h"
 #include "Features/ExtendedTranslucency.h"
-#include "Features/Eyes.h"
 #include "Features/GrassLighting.h"
 #include "Features/HairSpecular.h"
 #include "Features/IBL.h"
@@ -79,6 +78,5 @@ std::pair<unsigned char*, size_t> GetFeatureBufferData(bool a_inWorld)
 		globals::features::screenSpaceGI.GetCommonBufferData(),
 		globals::features::screenSpaceReflections.GetCommonBufferData(),
 		globals::features::postProcessing.GetCommonBufferData(),
-		globals::features::skyGradient.GetCommonBufferData(),
-		globals::features::eyes.settings);
+		globals::features::skyGradient.GetCommonBufferData());
 }

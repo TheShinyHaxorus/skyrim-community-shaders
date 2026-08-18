@@ -6,7 +6,6 @@ struct CloudShadows;
 struct DynamicCubemaps;
 struct VolumetricShadows;
 struct ExtendedMaterials;
-struct Eyes;
 struct GrassCollision;
 struct GrassLighting;
 struct GrassOptimizations;
@@ -136,7 +135,6 @@ namespace globals
 		extern PerformanceOverlay performanceOverlay;
 		extern WetnessEffects wetnessEffects;
 		extern ExtendedTranslucency extendedTranslucency;
-		extern Eyes eyes;
 		extern Upscaling upscaling;
 		extern HDRDisplay hdrDisplay;
 		extern RenderDoc renderDoc;

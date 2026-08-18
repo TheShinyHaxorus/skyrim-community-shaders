@@ -515,24 +515,6 @@ namespace SharedData
 		float3 pad0;
 	};
 
-	struct EyesSettings
-	{
-		uint Enable;
-		float CorneaRoughness;
-		float ScleraRoughness;
-		float CorneaF0;
-
-		float CorneaSmoothing;
-		float CorneaFromEnvMask;
-		float CatchlightSize;
-		float CatchlightStrength;
-
-		float AnteriorChamberDepth;
-		float AqueousIOR;
-		float ReflectionStrength;
-		uint EnableCorneaReflection;
-	};
-
 	cbuffer FeatureData : register(b6)
 	{
 		GrassLightingSettings grassLightingSettings;
@@ -562,7 +544,6 @@ namespace SharedData
 		SSRSettings ssrSettings;
 		PostProcessingSettings postProcessingSettings;
 		SkyGradientSettings skyGradientSettings;
-		EyesSettings eyesSettings;
 	};
 
 	Texture2D<float4> DepthTexture : register(t17);

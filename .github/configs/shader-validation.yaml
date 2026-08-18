@@ -200,7 +200,6 @@ file_common_defines:
             - ISL
             - EXTENDED_MATERIALS
             - EXTENDED_TRANSLUCENCY
-            - CS_EYES
         VSHADER:
             - TERRAIN_SHADOWS
             - CS_HAIR
@@ -14241,7 +14240,6 @@ shaders:
                   - ISL
                   - EXTENDED_MATERIALS
                   - EXTENDED_TRANSLUCENCY
-                  - CS_EYES
               entries:
                   - entry: Lighting:Pixel:4100001
                     defines:
