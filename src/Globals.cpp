@@ -7,6 +7,7 @@
 #include "Features/ExponentialHeightFog.h"
 #include "Features/ExtendedMaterials.h"
 #include "Features/ExtendedTranslucency.h"
+#include "Features/Eyes.h"
 #include "Features/GrassCollision.h"
 #include "Features/GrassLighting.h"
 #include "Features/GrassOptimizations.h"
@@ -113,6 +114,7 @@ namespace globals
 		Skin skin{};
 		Effects11 effects11{};
 		PostProcessing postProcessing{};
+		Eyes eyes{};
 
 		namespace llf
 		{

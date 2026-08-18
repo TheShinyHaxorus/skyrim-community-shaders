@@ -200,6 +200,7 @@ file_common_defines:
             - ISL
             - EXTENDED_MATERIALS
             - EXTENDED_TRANSLUCENCY
+            - CS_EYES
         VSHADER:
             - TERRAIN_SHADOWS
             - CS_HAIR

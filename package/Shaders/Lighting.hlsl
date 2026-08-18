@@ -895,6 +895,10 @@ float GetSnowParameterY(float texProjTmp, float alpha)
 #		include "Skin/Skin.hlsli"
 #	endif
 
+#	if defined(EYE) && defined(CS_EYES)
+#		include "Eyes/Eyes.hlsli"
+#	endif
+
 #	define LinearSampler SampColorSampler
 
 #	include "Common/ShadowSampling.hlsli"
@@ -1175,6 +1179,18 @@ PS_OUTPUT main(PS_INPUT input, bool frontFace : SV_IsFrontFace)
 #	elif defined(ENVMAP) || defined(MULTI_LAYER_PARALLAX) || defined(EYE)
 	float envMaskBase = TexEnvMaskSampler.Sample(SampEnvMaskSampler, uv).x;
 #	endif  // EMAT
+
+#	if defined(EYE) && defined(CS_EYES)
+	float3 corneaGeometricNormal = normalize(input.EyeNormal);
+	float corneaMask = 1.0;
+	[branch] if (SharedData::eyesSettings.Enable)
+	{
+		corneaMask = SharedData::eyesSettings.UseEnvMaskAsCorneaMask ? saturate(envMaskBase) : 1.0;
+#		if defined(SKINNED) || !defined(MODELSPACENORMALS)
+		uv = Eyes::RefractIrisUV(uv, corneaGeometricNormal, viewDirection, tbnTr, corneaMask);
+#		endif
+	}
+#	endif
 
 #	if defined(SNOW)
 	bool useSnowSpecular = true;
@@ -1923,8 +1939,16 @@ PS_OUTPUT main(PS_INPUT input, bool frontFace : SV_IsFrontFace)
 #	if defined(ENVMAP) || defined(MULTI_LAYER_PARALLAX) || defined(EYE)
 	float envMask = EnvmapData.x * MaterialData.x;
 
-	float viewNormalAngle = dot(worldNormal.xyz, viewDirection);
-	float3 envSamplingPoint = (viewNormalAngle * 2) * worldNormal.xyz - viewDirection;
+	float3 envReflectionNormal = worldNormal.xyz;
+#		if defined(EYE) && defined(CS_EYES)
+	Eyes::CorneaState corneaState = Eyes::InitCorneaState(corneaGeometricNormal, worldNormal.xyz, corneaMask);
+	const bool useCorneaReflection = SharedData::eyesSettings.Enable && SharedData::eyesSettings.EnableCorneaReflection;
+	if (useCorneaReflection)
+		envReflectionNormal = corneaState.normal;
+#		endif
+
+	float viewNormalAngle = dot(envReflectionNormal, viewDirection);
+	float3 envSamplingPoint = (viewNormalAngle * 2) * envReflectionNormal - viewDirection;
 
 	if (envMask > 0.0) {
 		if (EnvmapData.y) {
@@ -2356,6 +2380,10 @@ PS_OUTPUT main(PS_INPUT input, bool frontFace : SV_IsFrontFace)
 	if (waterRoughnessSpecular < 1)
 		EvaluateWetnessLighting(wetnessNormal, dirLightContext, waterRoughnessSpecular, dirLightOutput);
 #	endif
+#	if defined(EYE) && defined(CS_EYES)
+	[branch] if (SharedData::eyesSettings.Enable)
+		Eyes::EvaluateCorneaLighting(corneaState, dirLightContext, dirLightOutput);
+#	endif
 
 	lightsDiffuseColor += dirLightOutput.diffuse;
 	lightsSpecularColor += dirLightOutput.specular;
@@ -2415,6 +2443,10 @@ PS_OUTPUT main(PS_INPUT input, bool frontFace : SV_IsFrontFace)
 #			if defined(WETNESS_EFFECTS)
 		if (waterRoughnessSpecular < 1)
 			EvaluateWetnessLighting(wetnessNormal, pointLightContext, waterRoughnessSpecular, pointLightOutput);
+#			endif
+#			if defined(EYE) && defined(CS_EYES)
+		[branch] if (SharedData::eyesSettings.Enable)
+			Eyes::EvaluateCorneaLighting(corneaState, pointLightContext, pointLightOutput);
 #			endif
 		lightsDiffuseColor += pointLightOutput.diffuse;
 		lightsSpecularColor += pointLightOutput.specular;
@@ -2578,6 +2610,10 @@ PS_OUTPUT main(PS_INPUT input, bool frontFace : SV_IsFrontFace)
 #			if defined(WETNESS_EFFECTS)
 		if (waterRoughnessSpecular < 1)
 			EvaluateWetnessLighting(wetnessNormal, pointLightContext, waterRoughnessSpecular, pointLightOutput);
+#			endif
+#			if defined(EYE) && defined(CS_EYES)
+		[branch] if (SharedData::eyesSettings.Enable)
+			Eyes::EvaluateCorneaLighting(corneaState, pointLightContext, pointLightOutput);
 #			endif
 
 		lightsDiffuseColor += pointLightOutput.diffuse;
@@ -2794,6 +2830,14 @@ PS_OUTPUT main(PS_INPUT input, bool frontFace : SV_IsFrontFace)
 		indirectLobeWeights.specular *= envMask;
 #	endif
 
+#	if defined(EYE) && defined(CS_EYES)
+	[branch] if (useCorneaReflection)
+	{
+		float3 corneaReflectance = Eyes::GetCorneaIndirectLobeWeights(indirectLobeWeights, corneaState, viewDirection);
+		indirectLobeWeights.specular = corneaReflectance;
+	}
+#	endif
+
 #	if defined(SPECULAR) && !defined(TRUE_PBR)
 	indirectLobeWeights.specular *= MaterialData.yyy;
 	specularColor *= MaterialData.yyy;
@@ -2865,6 +2909,16 @@ PS_OUTPUT main(PS_INPUT input, bool frontFace : SV_IsFrontFace)
 	indirectLobeWeights.diffuse *= Color::PBRLightingScale;
 #	endif
 
+	float3 reflectionNormal = worldNormal.xyz;
+	float reflectionRoughness = material.Roughness;
+#	if defined(EYE) && defined(CS_EYES)
+	[branch] if (useCorneaReflection)
+	{
+		reflectionNormal = corneaState.normal;
+		reflectionRoughness = corneaState.roughness;
+	}
+#	endif
+
 	float3 outputAlbedo = indirectLobeWeights.diffuse * vertexColor.xyz;
 
 	directionalAmbientColor *= outputAlbedo;
@@ -2884,13 +2938,13 @@ PS_OUTPUT main(PS_INPUT input, bool frontFace : SV_IsFrontFace)
 	)
 #		if defined(DYNAMIC_CUBEMAPS)
 #			if defined(SKYLIGHTING)
-		color.xyz += indirectLobeWeights.specular * DynamicCubemaps::GetDynamicCubemapSpecularIrradiance(worldNormal, viewDirection, material.Roughness, skylightingSH);
+		color.xyz += indirectLobeWeights.specular * DynamicCubemaps::GetDynamicCubemapSpecularIrradiance(reflectionNormal, viewDirection, reflectionRoughness, skylightingSH);
 #				if defined(WETNESS_EFFECTS)
 	if (waterRoughnessSpecular < 1)
 		color.xyz += wetnessReflectance * DynamicCubemaps::GetDynamicCubemapSpecularIrradiance(wetnessNormal, viewDirection, waterRoughnessSpecular, skylightingSH);
 #				endif
 #			else
-		color.xyz += indirectLobeWeights.specular * DynamicCubemaps::GetDynamicCubemapSpecularIrradiance(worldNormal, viewDirection, material.Roughness);
+		color.xyz += indirectLobeWeights.specular * DynamicCubemaps::GetDynamicCubemapSpecularIrradiance(reflectionNormal, viewDirection, reflectionRoughness);
 #				if defined(WETNESS_EFFECTS)
 	if (waterRoughnessSpecular < 1)
 		color.xyz += wetnessReflectance * DynamicCubemaps::GetDynamicCubemapSpecularIrradiance(wetnessNormal, viewDirection, waterRoughnessSpecular);
@@ -3097,6 +3151,14 @@ PS_OUTPUT main(PS_INPUT input, bool frontFace : SV_IsFrontFace)
 		// Reflection is from the water film surface; wetnessReflectance scales intensity by wetness amount.
 		screenSpaceNormal = normalize(FrameBuffer::WorldToView(wetnessNormal, false));
 		material.Roughness = SpecularAA::FilterRoughness(waterRoughnessSpecular, SpecularAA::NormalVariance(wetnessNormal));
+	}
+#		endif
+
+#		if defined(EYE) && defined(CS_EYES)
+	[branch] if (useCorneaReflection)
+	{
+		screenSpaceNormal = normalize(FrameBuffer::WorldToView(corneaState.normal, false));
+		material.Roughness = corneaState.roughness;
 	}
 #		endif
 
