@@ -371,14 +371,10 @@ std::vector<FeatureListRenderer::MenuFuncInfo> FeatureListRenderer::BuildMenuLis
 	// infrequently, but could be optimized if performance becomes an issue.
 
 	// Group features by category
-	// Utility features live on the Editor and Advanced pages, so they are dropped
-	// from the categorised list. While a search is active they stay listed, so the
-	// search box can still find them.
-	const bool searching = !featureSearch.empty();
 	std::map<std::string, std::vector<Feature*>> categorizedFeatures;
 	for (Feature* feat : sortedFeatureList) {
 		if (feat->IsInMenu() && feat->loaded) {
-			if (!searching && (IsEditorPageFeature(feat) || IsAdvancedPageFeature(feat)))
+			if (IsEditorPageFeature(feat) || IsAdvancedPageFeature(feat))
 				continue;
 			std::string category(feat->GetCategory());
 			categorizedFeatures[category].push_back(feat);
