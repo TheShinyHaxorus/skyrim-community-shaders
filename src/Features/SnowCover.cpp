@@ -60,9 +60,9 @@ void SnowCover::DrawSettings()
 	ImGui::Checkbox("Snow on Mobile Objects", (bool*)&settings.AffectHavok);
 	if (auto _tt = Util::HoverTooltipWrapper()) {
 		ImGui::Text(
-			"Movable objects (Havok rigidbodies), such as clutter, will receive snow.\n"
-			"Snow now stays on them while they move, instead of vanishing.\n"
-			"It is projected from world space, so it drifts a little while an object is in motion.");
+			"Movable clutter (Havok rigidbodies) such as barrels, crates and dropped items will receive snow.\n"
+			"Snow stays on them while they move instead of vanishing. It is projected from world space,\n"
+			"so it drifts across the surface while an object is tumbling. Actors are never affected.");
 	}
 	ImGui::SliderFloat("Snow Offset", &settings.SnowHeightOffset, -20000.0f, 20000.0f);
 	if (auto _tt = Util::HoverTooltipWrapper()) {
@@ -724,7 +724,7 @@ void SnowCover::BSLightingShader_Setup(RE::BSRenderPass* a_pass)
 	// Hash once per pass; fnv_hash dereferences unguarded and BSFixedString::c_str() can be null.
 	const uint64_t nameHash = name ? FormIdParser::fnv_hash(name) : 0;
 	if ((a_pass->geometry->HasAnimation() || (userData && ((userData->GetObjectReference() && userData->GetObjectReference()->IsBoundAnimObject()) || userData->CanBeMoved()))) && !(name && whitelist.contains(nameHash))) {
-		if (settings.AffectHavok && userData && userData->CanBeMoved())
+		if (settings.AffectHavok && userData && userData->formType != RE::FormType::ActorCharacter && userData->CanBeMoved())
 			state->permutationData.ExtraShaderDescriptor &= ~(uint)State::ExtraShaderDescriptors::NoSnow;
 		else
 			state->permutationData.ExtraShaderDescriptor |= (uint)State::ExtraShaderDescriptors::NoSnow;
