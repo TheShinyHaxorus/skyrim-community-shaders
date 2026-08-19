@@ -28,6 +28,7 @@ NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(
 	SkyIBLSaturation,
 	FogAmount,
 	DALCMode,
+	EnableEyeSpecialHandling,
 	DisableInInteriors,
 	DisableInWorldMap,
 	DisableInLoadingScreen)
@@ -94,6 +95,10 @@ void IBL::DrawSettings()
 	ImGui::Checkbox(T(TKEY("use_static_ibl"), "Use Static IBL For Out-of-World Objects"), (bool*)&settings.UseStaticIBL);
 	if (auto _tt = Util::HoverTooltipWrapper()) {
 		ImGui::Text("%s", T(TKEY("use_static_ibl_tooltip"), "Uses pre-baked static IBL cubemap textures for objects rendered outside the game world (e.g. inventory items, loading screens)."));
+	}
+	ImGui::Checkbox(T(TKEY("eye_special_handling"), "Eye Special Handling"), (bool*)&settings.EnableEyeSpecialHandling);
+	if (auto _tt = Util::HoverTooltipWrapper()) {
+		ImGui::Text("%s", T(TKEY("eye_special_handling_tooltip"), "Keeps the game's own ambient light on eyes instead of replacing it with IBL.\nEyes are shaded with the iris normal map, which the directional IBL ambient can drive to near-black."));
 	}
 	Util::WeatherUI::SliderFloat(T(TKEY("fog_mix"), "Fog Mix"), this, "FogAmount", &settings.FogAmount, 0.0f, 1.0f, "%.2f");
 	if (auto _tt = Util::HoverTooltipWrapper()) {
@@ -227,7 +232,8 @@ IBL::PerFrame IBL::GetCommonBufferData() const
 		.EnvIBLSaturation = settings.EnvIBLSaturation,
 		.SkyIBLSaturation = settings.SkyIBLSaturation,
 		.FogAmount = settings.FogAmount,
-		.DALCMode = settings.DALCMode
+		.DALCMode = settings.DALCMode,
+		.EnableEyeSpecialHandling = settings.EnableEyeSpecialHandling
 	};
 
 	if (!sceneDisabled && globals::features::effects11.loaded) {
