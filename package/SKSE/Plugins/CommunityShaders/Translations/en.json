@@ -839,7 +839,7 @@
     "feature.ibl.env_ibl_scale": "Env IBL Scale",
     "feature.ibl.env_ibl_scale_tooltip": "Intensity multiplier for the environment IBL (from Dynamic Cubemaps).\nControls how strongly the surrounding environment contributes to ambient lighting.",
     "feature.ibl.eye_special_handling": "Eye Special Handling",
-    "feature.ibl.eye_special_handling_tooltip": "Keeps the game's own ambient light on eyes instead of replacing it with IBL.\nEyes are shaded with the iris normal map, which the directional IBL ambient can drive to near-black.",
+    "feature.ibl.eye_special_handling_tooltip": "Evaluates the IBL ambient without direction on eyes.\nEyes are shaded with the iris normal map, which the directional IBL ambient can drive to near-black. Keeping the ambient energy but dropping its directionality avoids that without darkening eyes relative to skin.",
     "feature.ibl.fog_mix": "Fog Mix",
     "feature.ibl.fog_mix_tooltip": "Blends the fog color toward the IBL ambient color.\n0 = vanilla fog, 1 = fog fully tinted by IBL.",
     "feature.ibl.key_feature_1": "Projects environment and sky cubemaps into spherical harmonics (SH) for irradiance",

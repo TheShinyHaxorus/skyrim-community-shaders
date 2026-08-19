@@ -35,12 +35,20 @@ NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(
 
 void IBL::DrawSettings()
 {
+	auto drawEyeSpecialHandling = [this]() {
+		ImGui::Checkbox(T(TKEY("eye_special_handling"), "Eye Special Handling"), (bool*)&settings.EnableEyeSpecialHandling);
+		if (auto _tt = Util::HoverTooltipWrapper()) {
+			ImGui::Text("%s", T(TKEY("eye_special_handling_tooltip"), "Evaluates the IBL ambient without direction on eyes.\nEyes are shaded with the iris normal map, which the directional IBL ambient can drive to near-black. Keeping the ambient energy but dropping its directionality avoids that without darkening eyes relative to skin."));
+		}
+	};
+
 	if (globals::features::effects11.loaded) {
 		auto& enb = globals::features::effects11;
 		if (enb.enableEffect) {
 			auto& settingManager = SettingManager::GetSingleton();
 			if (settingManager.GetValue<bool>("EnableImageBasedLighting", "EFFECT")) {
 				ImGui::TextColored(globals::menu->GetSettings().Theme.StatusPalette.Warning, "%s", T("common.settings_managed_by_enb", "Settings are currently managed by ENB."));
+				drawEyeSpecialHandling();
 				return;
 			}
 		}
@@ -96,10 +104,7 @@ void IBL::DrawSettings()
 	if (auto _tt = Util::HoverTooltipWrapper()) {
 		ImGui::Text("%s", T(TKEY("use_static_ibl_tooltip"), "Uses pre-baked static IBL cubemap textures for objects rendered outside the game world (e.g. inventory items, loading screens)."));
 	}
-	ImGui::Checkbox(T(TKEY("eye_special_handling"), "Eye Special Handling"), (bool*)&settings.EnableEyeSpecialHandling);
-	if (auto _tt = Util::HoverTooltipWrapper()) {
-		ImGui::Text("%s", T(TKEY("eye_special_handling_tooltip"), "Keeps the game's own ambient light on eyes instead of replacing it with IBL.\nEyes are shaded with the iris normal map, which the directional IBL ambient can drive to near-black."));
-	}
+	drawEyeSpecialHandling();
 	Util::WeatherUI::SliderFloat(T(TKEY("fog_mix"), "Fog Mix"), this, "FogAmount", &settings.FogAmount, 0.0f, 1.0f, "%.2f");
 	if (auto _tt = Util::HoverTooltipWrapper()) {
 		ImGui::Text("%s", T(TKEY("fog_mix_tooltip"), "Blends the fog color toward the IBL ambient color.\n0 = vanilla fog, 1 = fog fully tinted by IBL."));

@@ -2685,9 +2685,9 @@ PS_OUTPUT main(PS_INPUT input, bool frontFace : SV_IsFrontFace)
 #		else
 	const bool iblIsEyeMaterial = (Permutation::ExtraShaderDescriptor & Permutation::ExtraFlags::IsEye) != 0;
 #		endif
-	const bool iblKeepVanillaAmbient = iblIsEyeMaterial && SharedData::iblSettings.EnableEyeSpecialHandling;
+	const bool iblEyeSpecialHandling = iblIsEyeMaterial && SharedData::iblSettings.EnableEyeSpecialHandling;
 
-	if (SharedData::iblSettings.EnableIBL && !iblKeepVanillaAmbient) {
+	if (SharedData::iblSettings.EnableIBL && !iblEyeSpecialHandling) {
 		if (SharedData::iblSettings.UseStaticIBL && !inWorld && !inReflection) {
 			directionalAmbientColor = ImageBasedLighting::GetStaticDiffuseIBL(ambientNormal, SampColorSampler);
 		}
@@ -2741,9 +2741,10 @@ PS_OUTPUT main(PS_INPUT input, bool frontFace : SV_IsFrontFace)
 #	endif
 
 #	if defined(IBL)
-	if (SharedData::iblSettings.EnableIBL && !iblKeepVanillaAmbient) {
+	if (SharedData::iblSettings.EnableIBL) {
 		if (!(SharedData::iblSettings.UseStaticIBL && !inWorld && !inReflection)) {
-			directionalAmbientColor = ImageBasedLighting::GetDiffuseIBL(directionalAmbientColor, -ambientNormal);
+			const float3 iblAmbientRayDir = iblEyeSpecialHandling ? float3(0, 0, 0) : -ambientNormal;
+			directionalAmbientColor = ImageBasedLighting::GetDiffuseIBL(directionalAmbientColor, iblAmbientRayDir);
 		}
 	}
 #	endif
