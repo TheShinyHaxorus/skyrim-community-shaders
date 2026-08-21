@@ -480,6 +480,10 @@ struct BSInputDeviceManager_PollInputDevices
 		auto menu = globals::menu;
 
 		if (a_events) {
+			if (auto* inputManager = RE::BSInputDeviceManager::GetSingleton()) {
+				if (const auto* mouse = inputManager->GetMouse())
+					menu->RecordDirectInputWheelDelta(mouse->GetRuntimeData().dInputNextState.z);
+			}
 			menu->ProcessInputEvents(a_events);
 
 			if (*a_events) {
