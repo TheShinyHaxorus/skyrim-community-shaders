@@ -4,7 +4,6 @@
 #include "ShaderCache.h"
 #include "State.h"
 #include "Utils/Format.h"
-#include "Features/Effects11/ShaderPatches.h"
 #include <DDSTextureLoader.h>
 #include <DirectXTex.h>
 #include <d3dcompiler.h>
@@ -106,44 +105,6 @@ namespace Util
 
 		Resource->SetPrivateData(WKPDID_D3DDebugObjectNameT, len, buffer);
 	}
-
-	struct CustomInclude : public ID3DInclude
-	{
-		HRESULT Open([[maybe_unused]] D3D_INCLUDE_TYPE IncludeType, LPCSTR pFileName, [[maybe_unused]] LPCVOID pParentData, LPCVOID* ppData, UINT* pBytes) override
-		{
-			std::filesystem::path filePath = pFileName;
-			filePath = L"Data\\Shaders" / filePath;
-
-			std::ifstream file(filePath, std::ios::binary);
-			if (!file.is_open()) {
-				*ppData = NULL;
-				*pBytes = 0;
-				return E_FAIL;
-			}
-
-			// Get filesize
-			file.seekg(0, std::ios::end);
-			UINT size = static_cast<UINT>(file.tellg());
-			file.seekg(0, std::ios::beg);
-
-			// Create buffer and read file
-			std::string content(size, '\0');
-			file.read(content.data(), size);
-			ShaderPatches::Apply(pFileName, content);
-			char* data = new char[content.size()];
-			memcpy(data, content.data(), content.size());
-			*ppData = data;
-			*pBytes = static_cast<UINT>(content.size());
-			return S_OK;
-		}
-
-		HRESULT Close(LPCVOID pData) override
-		{
-			if (pData)
-				delete[] pData;
-			return S_OK;
-		}
-	};
 
 	ID3D11DeviceChild* CompileShader(const wchar_t* FilePath, const std::vector<std::pair<const char*, const char*>>& Defines, const char* ProgramType, const char* Program)
 	{
