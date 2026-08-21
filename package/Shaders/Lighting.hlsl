@@ -1,4 +1,4 @@
-﻿#define LIGHTING
+#define LIGHTING
 
 #include "Common/Color.hlsli"
 #include "Common/FrameBuffer.hlsli"

@@ -1,4 +1,4 @@
-﻿#include "DynamicCubemaps.h"
+#include "DynamicCubemaps.h"
 
 #include <cassert>
 #include <DDSTextureLoader.h>
