@@ -104,6 +104,8 @@ public:
 		float DiffuseCubemapMult = 1.0f;
 		// NRD REBLUR
 		bool EnableREBLUR = true;
+		float HitDistA = 210.0f;
+		float HitDistB = 0.1f;
 		NRD::REBLURSettings Reblur;
 	} settings;
 

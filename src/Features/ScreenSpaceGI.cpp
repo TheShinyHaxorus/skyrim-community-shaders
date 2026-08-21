@@ -31,6 +31,8 @@ NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(
 	UseDynamicCubemapsAsFallback,
 	DiffuseCubemapMult,
 	EnableREBLUR,
+	HitDistA,
+	HitDistB,
 	Reblur)
 
 ////////////////////////////////////////////////////////////////////////////////////
@@ -225,8 +227,16 @@ void ScreenSpaceGI::DrawSettings()
 			hasMultiBounceHistory = false;
 		}
 
-		if (settings.EnableREBLUR)
+		if (settings.EnableREBLUR) {
 			resetReblurHistory |= globals::features::nrd.DrawReblurSettings(settings.Reblur, showAdvanced, "ssgi_reblur");
+			if (showAdvanced) {
+				ImGui::SeparatorText(T(TKEY("nrd_hit_distance_parameters"), "NRD Hit Distance Parameters"));
+				bool hitDistanceChanged = false;
+				hitDistanceChanged |= ImGui::SliderFloat(T(TKEY("hit_dist_a"), "Hit Dist A"), &settings.HitDistA, 1.0f, 1000.0f, "%.1f");
+				hitDistanceChanged |= ImGui::SliderFloat(T(TKEY("hit_dist_b"), "Hit Dist B"), &settings.HitDistB, 0.0f, 1.0f, "%.3f");
+				resetReblurHistory |= hitDistanceChanged;
+			}
+		}
 	}
 
 	///////////////////////////////
@@ -268,6 +278,9 @@ void ScreenSpaceGI::LoadSettings(json& o_json)
 	settings.AOPower = SanitizeRange(settings.AOPower, 0.f, 6.f, defaults.AOPower);
 	settings.GIStrength = SanitizeRange(settings.GIStrength, 0.f, 6.f, defaults.GIStrength);
 	settings.DiffuseCubemapMult = SanitizeRange(settings.DiffuseCubemapMult, 0.f, 5.f, defaults.DiffuseCubemapMult);
+	settings.HitDistA = SanitizeRange(settings.HitDistA, 1.f, 1000.f, defaults.HitDistA);
+	settings.HitDistB = SanitizeRange(settings.HitDistB, 0.f, 1.f, defaults.HitDistB);
+	settings.Reblur.DiffusePrepassBlurRadius = SanitizeRange(settings.Reblur.DiffusePrepassBlurRadius, 0.f, 75.f, defaults.Reblur.DiffusePrepassBlurRadius);
 
 	if (settings.QuarterRes)
 		settings.HalfRes = false;
@@ -871,8 +884,10 @@ void ScreenSpaceGI::DrawSSGI()
 				reblurSettings.hitDistanceReconstructionMode = nrd::HitDistanceReconstructionMode::AREA_3X3;
 			// Probabilistic inputs require spatial reuse to redistribute the
 			// probability-compensated radiance before temporal accumulation.
-			reblurSettings.diffusePrepassBlurRadius = std::max(reblurSettings.maxBlurRadius, 1.0f);
+			reblurSettings.diffusePrepassBlurRadius = std::max({ reblurSettings.diffusePrepassBlurRadius, reblurSettings.maxBlurRadius, 1.0f });
 		}
+		reblurSettings.hitDistanceParameters.A = std::max(settings.HitDistA, 1.0f);
+		reblurSettings.hitDistanceParameters.B = std::max(settings.HitDistB, 0.0f);
 		nrdReblur.SetDenoiserSettings(&reblurSettings);
 
 		nrdReblur.SetNamedSRV(nrd::ResourceType::IN_MV, nrdSvc.GetMotionVectorSRV());

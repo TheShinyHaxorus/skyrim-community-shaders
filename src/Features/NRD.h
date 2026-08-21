@@ -69,6 +69,7 @@ struct NRD : Feature
 		uint32_t HistoryFixBasePixelStride = 14;
 		uint32_t HistoryFixAlternatePixelStride = 14;
 		float FastHistoryClampingSigmaScale = 2.0f;
+		float DiffusePrepassBlurRadius = 30.0f;
 		float MinHitDistanceWeight = 0.1f;
 		float MinBlurRadius = 1.0f;
 		float MaxBlurRadius = 30.0f;
@@ -138,6 +139,7 @@ NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(
 	HistoryFixBasePixelStride,
 	HistoryFixAlternatePixelStride,
 	FastHistoryClampingSigmaScale,
+	DiffusePrepassBlurRadius,
 	MinHitDistanceWeight,
 	MinBlurRadius,
 	MaxBlurRadius,
