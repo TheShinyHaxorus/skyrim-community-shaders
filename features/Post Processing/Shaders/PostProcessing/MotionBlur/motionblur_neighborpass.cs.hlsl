@@ -15,30 +15,12 @@ RWTexture2D<float4> RWTexNeighborMax : register(u0);  // [20×20] output
 // Constants
 cbuffer MotionBlurCB : register(b0)
 {
-	float g_VelocityScale;  // Velocity multiplier
+	float4 g_VelocityParams;    // x: shutter fraction, yz: motion-vector source scale, w: max blur radius in px
+	float4 g_TargetResolution;  // xy: rendered area of the color target, in pixels
 }
 
 // Fixed parameters
 static const uint GRID_SIZE = 20;  // Fixed grid size
-
-// Extract velocity from encoded color
-float2 ExtractVelocity(float4 colorSample)
-{
-	// Extract direction from R,G channels
-	float2 dir;
-	dir.x = (colorSample.r * 2.0f) - 1.0f;
-	dir.y = (colorSample.g * 2.0f) - 1.0f;
-
-	// Normalize if needed
-	float dirLength = length(dir);
-	if (dirLength > 0.001f)
-		dir /= dirLength;
-
-	// Get magnitude from B channel
-	float magnitude = colorSample.b * 20.0f;
-
-	return dir * magnitude;
-}
 
 // Process one cell in the grid
 [numthreads(8, 8, 1)] void main(uint3 DTid : SV_DispatchThreadID) {
@@ -60,13 +42,17 @@ float2 ExtractVelocity(float4 colorSample)
 
 			// Skip out-of-bounds neighbors
 			if (neighborCellIndex.x < 0 || neighborCellIndex.y < 0 ||
-				neighborCellIndex.x >= GRID_SIZE ||
-				neighborCellIndex.y >= GRID_SIZE)
+				neighborCellIndex.x >= int(GRID_SIZE) ||
+				neighborCellIndex.y >= int(GRID_SIZE))
 				continue;
 
 			// Get neighbor velocity
-			float4 neighborColor = TexVertical[neighborCellIndex];
-			float2 neighborVelocity = ExtractVelocity(neighborColor);
+			float4 neighborSample = TexVertical[neighborCellIndex];
+			float2 neighborVelocity = neighborSample.xy;
+			float neighborVelocityMagnitude = neighborSample.z;
+
+			if (neighborVelocityMagnitude <= 0.0f)
+				continue;
 
 			// For diagonal neighbors, only include if velocity points toward current cell
 			bool isDiagonal = (x != 0 && y != 0);
@@ -75,7 +61,7 @@ float2 ExtractVelocity(float4 colorSample)
 				float2 dirToCurrentCell = normalize(float2(-x, -y));
 
 				// Neighbor velocity direction
-				float2 neighborDir = normalize(neighborVelocity);
+				float2 neighborDir = neighborVelocity / neighborVelocityMagnitude;
 
 				// Skip if velocity doesn't point toward current cell
 				if (dot(neighborDir, dirToCurrentCell) <= 0.0f)
@@ -83,7 +69,6 @@ float2 ExtractVelocity(float4 colorSample)
 			}
 
 			// Keep largest velocity
-			float neighborVelocityMagnitude = length(neighborVelocity);
 			if (neighborVelocityMagnitude > maxVelocityMagnitude) {
 				maxVelocityMagnitude = neighborVelocityMagnitude;
 				maxVelocity = neighborVelocity;
@@ -91,20 +76,5 @@ float2 ExtractVelocity(float4 colorSample)
 		}
 	}
 
-	// Encode velocity for output
-	// R: normalized x direction mapped to 0..1
-	// G: normalized y direction mapped to 0..1
-	// B: velocity magnitude scaled to 0..1
-	float2 normalizedDir = maxVelocityMagnitude > 0.001f ? normalize(maxVelocity) : float2(0.0f, 0.0f);
-	float encodedMagnitude = saturate(maxVelocityMagnitude * 0.05f);
-
-	// Create output color
-	float4 outputColor = float4(
-		normalizedDir.x * 0.5f + 0.5f,
-		normalizedDir.y * 0.5f + 0.5f,
-		encodedMagnitude,
-		1.0f);
-
-	// Write to grid coordinates
-	RWTexNeighborMax[DTid.xy] = outputColor;
+	RWTexNeighborMax[DTid.xy] = float4(maxVelocity, maxVelocityMagnitude, 1.0f);
 }

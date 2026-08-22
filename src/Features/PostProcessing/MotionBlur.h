@@ -27,12 +27,11 @@ struct MotionBlur : public PostProcessFeature
 	virtual inline bool DisableInMainLoadingMenu() const override { return true; }
 
 	// Constants
-	static constexpr float MaxBlurRadius = 40.0f;
-	static constexpr float DepthBiasFactor = 1.5f;
-	static constexpr int UseDepthBounds = 1;
+	static constexpr float MaxBlurRadiusAt1080p = 40.0f;
+	static constexpr float ReferenceHeight = 1080.0f;
 	static constexpr int FixedGridSize = 20;
 
-	// Motion scale presets
+	// Shutter presets
 	enum class MotionScale
 	{
 		VeryShort = 0,
@@ -45,28 +44,26 @@ struct MotionBlur : public PostProcessFeature
 	// Settings
 	struct Settings
 	{
-		float VelocityScale = 300.0f;  // Will be mapped from MotionScale
-		int SampleCount = 8;           // Doubled internally before sending to shader
+		int SampleCount = 8;  // Doubled internally before sending to shader
 		MotionScale ScalePreset = MotionScale::Medium;
 	};
 	Settings settings;
 
-	// Function to map MotionScale enum to actual velocity scale value
-	float GetScaleValueFromPreset(MotionScale preset) const
+	float GetShutterFromPreset(MotionScale preset) const
 	{
 		switch (preset) {
 		case MotionScale::VeryShort:
-			return 100.0f;
+			return 0.125f;
 		case MotionScale::Short:
-			return 200.0f;
+			return 0.25f;
 		case MotionScale::Medium:
-			return 300.0f;
+			return 0.5f;
 		case MotionScale::Long:
-			return 400.0f;
+			return 0.75f;
 		case MotionScale::VeryLong:
-			return 500.0f;
+			return 1.0f;
 		default:
-			return 300.0f;
+			return 0.5f;
 		}
 	}
 
@@ -99,15 +96,17 @@ struct MotionBlur : public PostProcessFeature
 	// Constant buffer structs
 	struct alignas(16) MotionBlurConstantBuffer
 	{
-		float4 VelocityParams;  // x: velocity scale, yz: motion-vector source/display scale
+		float4 VelocityParams;    // x: shutter fraction, yz: motion-vector source scale, w: max blur radius in px
+		float4 TargetResolution;  // xy: rendered area of the color target, in pixels
+		float4 DepthParams;       // Util::GetCameraData(): far, near, far - near, far * near
 		int32_t SampleCount;
 		float Padding[3] = {};
 	};
 
 	struct alignas(16) ReductionPassConstantBuffer
 	{
-		float4 VelocityParams;    // x: velocity scale, yz: motion-vector source/display scale
-		float4 TargetResolution;  // xy: output color resolution
+		float4 VelocityParams;    // x: shutter fraction, yz: motion-vector source scale, w: max blur radius in px
+		float4 TargetResolution;  // xy: rendered area of the color target, in pixels
 	};
 
 	// CB instances

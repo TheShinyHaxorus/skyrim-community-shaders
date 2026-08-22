@@ -219,8 +219,7 @@
         "enabled": false,
         "settings": {
             "SampleCount": 8,
-            "ScalePreset": 4,
-            "VelocityScale": 300.0
+            "ScalePreset": 2
         }
     },
     "Physical Glare": {

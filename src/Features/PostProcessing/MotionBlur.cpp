@@ -8,7 +8,6 @@
 // Define serialization for settings
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(
 	MotionBlur::Settings,
-	VelocityScale,
 	SampleCount,
 	ScalePreset)
 
@@ -36,13 +35,14 @@ void MotionBlur::SetupResources()
 	CompileComputeShaders();
 
 	// Initialize constant buffer structs
+	const float shutter = GetShutterFromPreset(settings.ScalePreset);
 	motionBlurCB = {
-		.VelocityParams = { GetScaleValueFromPreset(settings.ScalePreset), 1.0f, 1.0f, 0.0f },
+		.VelocityParams = { shutter, 1.0f, 1.0f, MaxBlurRadiusAt1080p },
 		.SampleCount = (settings.SampleCount * 2) & ~1  // Double and ensure it's always even
 	};
 
 	reductionPassCB = {
-		.VelocityParams = { GetScaleValueFromPreset(settings.ScalePreset), 1.0f, 1.0f, 0.0f }
+		.VelocityParams = { shutter, 1.0f, 1.0f, MaxBlurRadiusAt1080p }
 	};
 
 	// Create the actual D3D constant buffers
@@ -108,7 +108,6 @@ void MotionBlur::RestoreDefaultSettings()
 {
 	// Reset to defaults
 	settings = Settings{};
-	settings.VelocityScale = 300.0f;
 	settings.SampleCount = 8;  // 8 base samples = 16 actual samples
 	settings.ScalePreset = MotionScale::Medium;
 }
@@ -119,7 +118,6 @@ void MotionBlur::LoadSettings(json& j)
 		settings = j;
 
 		// Enforce valid ranges
-		settings.VelocityScale = std::clamp(settings.VelocityScale, 10.0f, 800.0f);
 		settings.SampleCount = std::clamp(settings.SampleCount, 8, 16);
 
 		// Ensure valid enum value
@@ -139,16 +137,25 @@ void MotionBlur::SaveSettings(json& j)
 
 void MotionBlur::DrawSettings()
 {
-	ImGui::Text("Motion Blur Settings");
+	ImGui::Text("%s", T("feature.post_processing.motion_blur.settings", "Motion Blur Settings"));
 
-	// Motion scale presets
+	// Shutter presets
 	const char* presets[] = {
-		"Very Short", "Short", "Medium", "Long", "Very Long"
+		T("feature.post_processing.motion_blur.length_very_short", "Very Short"),
+		T("feature.post_processing.motion_blur.length_short", "Short"),
+		T("feature.post_processing.motion_blur.length_medium", "Medium"),
+		T("feature.post_processing.motion_blur.length_long", "Long"),
+		T("feature.post_processing.motion_blur.length_very_long", "Very Long")
 	};
 
 	int preset = static_cast<int>(settings.ScalePreset);
-	if (ImGui::Combo("Motion Length", &preset, presets, IM_ARRAYSIZE(presets))) {
+	if (ImGui::Combo(T("feature.post_processing.motion_blur.motion_length", "Motion Length"), &preset, presets, IM_ARRAYSIZE(presets))) {
 		settings.ScalePreset = static_cast<MotionScale>(preset);
+	}
+	ImGui::SameLine();
+	ImGui::TextDisabled(T("feature.post_processing.motion_blur.a", "(?)"));
+	if (auto _tt = Util::HoverTooltipWrapper()) {
+		ImGui::Text("%s", T("feature.post_processing.motion_blur.motion_length_tooltip", "Shutter length: the fraction of a frame's on-screen motion the blur covers.\nMedium matches the 180-degree shutter used in film."));
 	}
 
 	// Samples (each UI sample represents 2 actual samples)
@@ -368,10 +375,9 @@ bool MotionBlur::UpdateConstantBuffers()
 
 	bool updated = false;
 
-	// Get actual velocity scale value from preset
-	float velocityScale = GetScaleValueFromPreset(settings.ScalePreset);
+	float shutter = GetShutterFromPreset(settings.ScalePreset);
 	float2 velocityTextureScale = { 1.0f, 1.0f };
-	float2 targetResolution = { static_cast<float>(lastWidth), static_cast<float>(lastHeight) };
+	float2 targetResolution = { static_cast<float>(dynamicWidth), static_cast<float>(dynamicHeight) };
 
 	auto& upscaling = globals::features::upscaling;
 	if (upscaling.loaded && upscaling.IsUpscalingActive()) {
@@ -379,14 +385,22 @@ bool MotionBlur::UpdateConstantBuffers()
 		velocityTextureScale.y = std::clamp(upscaling.resolutionScale.y, 0.0f, 1.0f);
 	}
 
+	float maxBlurRadius = MaxBlurRadiusAt1080p;
+	if (targetResolution.y > 0.0f)
+		maxBlurRadius *= targetResolution.y / ReferenceHeight;
+
+	float4 depthParams = Util::GetCameraData();
+
 	// Set current values
 	motionBlurCB = {
-		.VelocityParams = { velocityScale, velocityTextureScale.x, velocityTextureScale.y, 0.0f },
+		.VelocityParams = { shutter, velocityTextureScale.x, velocityTextureScale.y, maxBlurRadius },
+		.TargetResolution = { targetResolution.x, targetResolution.y, 0.0f, 0.0f },
+		.DepthParams = depthParams,
 		.SampleCount = (settings.SampleCount * 2) & ~1  // Double and ensure it's always even
 	};
 
 	reductionPassCB = {
-		.VelocityParams = { velocityScale, velocityTextureScale.x, velocityTextureScale.y, 0.0f },
+		.VelocityParams = { shutter, velocityTextureScale.x, velocityTextureScale.y, maxBlurRadius },
 		.TargetResolution = { targetResolution.x, targetResolution.y, 0.0f, 0.0f }
 	};
 
@@ -486,9 +500,9 @@ void MotionBlur::ExecuteHorizontalPass()
 	ID3D11Buffer* reductionCB = reductionPassConstantBufferObj->CB();
 	SetupComputePass(horizontalPassShader.get(), &velocitySRV, 1, horizontalPassTexture->uav.get(), reductionCB);
 
-	// Dispatch horizontal pass: output is [GRID_SIZE × height], so dispatch covers grid width and full height
+	// Dispatch horizontal pass: output covers grid width and the full texture height
 	uint32_t dispatchX = (FixedGridSize + 7) / 8;
-	uint32_t dispatchY = (dynamicHeight + 7) / 8;
+	uint32_t dispatchY = (horizontalPassTexture->desc.Height + 7) / 8;
 	context->Dispatch(dispatchX, dispatchY, 1);
 
 	ClearComputeResources(1);
