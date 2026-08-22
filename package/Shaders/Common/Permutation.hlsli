@@ -78,6 +78,7 @@ namespace Permutation
 		static const uint SuppressExternalEmittance = (1 << 5);
 		static const uint IsEye = (1 << 6);
 		static const uint NoSnow = (1 << 7);
+		static const uint NoFoliageTint = (1 << 8);
 	}
 
 	namespace ExtraFeatureFlags

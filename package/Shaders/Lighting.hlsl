@@ -2132,7 +2132,7 @@ PS_OUTPUT main(PS_INPUT input, bool frontFace : SV_IsFrontFace)
 		float3 snowNormal = worldNormal;
 #		if defined(TREE_ANIM)
 		snowNormal = normalize(snowNormal + float3(0, 0, 0.5));
-		if (SharedData::snowCoverSettings.AffectTreeTint)
+		if (SharedData::snowCoverSettings.AffectTreeTint && !(Permutation::ExtraShaderDescriptor & Permutation::ExtraFlags::NoFoliageTint))
 			SnowCover::ApplyFoliageColor(material.BaseColor, SnowCover::GetEnvironmentalMultiplier(adjustedWorldPos));
 #		endif
 #		if defined(LODLANDSCAPE) || defined(LODLANDNOISE)

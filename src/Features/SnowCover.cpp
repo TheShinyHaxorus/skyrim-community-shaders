@@ -18,6 +18,7 @@ NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(
 	SnowCover::UserSettings,
 	EnableExpensiveFoliage,
 	AffectHavok,
+	AffectFloraTint,
 	SnowHeightOffset,
 	EnableFireMelt,
 	FireRadiusScale,
@@ -63,6 +64,13 @@ void SnowCover::DrawSettings()
 			"Movable clutter (Havok rigidbodies) such as barrels, crates and dropped items will receive snow.\n"
 			"Snow stays on them while they move instead of vanishing. It is projected from world space,\n"
 			"so it drifts across the surface while an object is tumbling. Actors are never affected.");
+	}
+	ImGui::Checkbox("Tint Harvestable Plants", (bool*)&settings.AffectFloraTint);
+	if (auto _tt = Util::HoverTooltipWrapper()) {
+		ImGui::Text(
+			"Lets the seasonal tree tint recolour harvestable flora such as mountain flowers,\n"
+			"lavender and deathbell. Their petals are not green, so the shift towards autumn\n"
+			"hues sends them to the wrong colour. Off by default; snow still settles on them.");
 	}
 	ImGui::SliderFloat("Snow Offset", &settings.SnowHeightOffset, -20000.0f, 20000.0f);
 	if (auto _tt = Util::HoverTooltipWrapper()) {
@@ -732,5 +740,27 @@ void SnowCover::BSLightingShader_Setup(RE::BSRenderPass* a_pass)
 		state->permutationData.ExtraShaderDescriptor |= (uint)State::ExtraShaderDescriptors::NoSnow;
 	} else {
 		state->permutationData.ExtraShaderDescriptor &= ~(uint)State::ExtraShaderDescriptors::NoSnow;
+	}
+
+	if (!settings.AffectFloraTint && IsHarvestableFlora(userData))
+		state->permutationData.ExtraShaderDescriptor |= (uint)State::ExtraShaderDescriptors::NoFoliageTint;
+	else
+		state->permutationData.ExtraShaderDescriptor &= ~(uint)State::ExtraShaderDescriptors::NoFoliageTint;
+}
+
+bool SnowCover::IsHarvestableFlora(RE::TESObjectREFR* a_ref)
+{
+	if (!a_ref)
+		return false;
+	auto base = a_ref->GetObjectReference();
+	if (!base)
+		return false;
+	switch (base->GetFormType()) {
+	case RE::FormType::Flora:
+		return true;
+	case RE::FormType::Tree:
+		return static_cast<RE::TESObjectTREE*>(base)->produceItem != nullptr;
+	default:
+		return false;
 	}
 }

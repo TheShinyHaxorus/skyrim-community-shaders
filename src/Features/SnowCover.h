@@ -57,7 +57,7 @@ public:
 		uint EnableExpensiveFoliage = 1;
 		float SnowHeightOffset = 0.0f;
 		uint AffectHavok = 0;
-		uint pad0 = 0;
+		uint AffectFloraTint = 0;
 
 		uint EnableFireMelt = 1;
 		float FireRadiusScale = 3.0f;
@@ -217,6 +217,7 @@ public:
 	virtual inline void PostPostLoad() override { Hooks::Install(); }
 
 	void BSLightingShader_Setup(RE::BSRenderPass* Pass);
+	static bool IsHarvestableFlora(RE::TESObjectREFR* a_ref);
 
 	struct Hooks
 	{
