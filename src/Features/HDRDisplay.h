@@ -235,10 +235,11 @@ public:
 
 	std::vector<std::pair<RE::RENDER_TARGETS::RENDER_TARGET, SavedRenderTarget>> savedLDRTargets;
 
-	/** @brief Force alpha blend to [One, InvSrcAlpha, Add] */
-	bool forceStandardAlphaBlending = false;
+	/** @brief Force alpha blend to [One, InvSrcAlpha, Add]. Defaults on; only a loaded OIT clears it, for its transparency pass. */
+	bool forceStandardAlphaBlending = true;
 	/** @brief Enables or disables custom blending */
 	void EnableCustomBlending(bool enable) { forceStandardAlphaBlending = !enable; }
+
 private:
 	bool showHDRWarningPopup = false;
 	bool pendingHDREnable = false;
