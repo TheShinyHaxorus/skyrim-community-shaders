@@ -11,7 +11,6 @@
 #include "Features/Effects11.h"
 #include "Features/IBL.h"
 #include "Features/NRD.h"
-#include "Features/OrderIndependentTransparency.h"
 #include "Features/ScreenSpaceGI.h"
 #include "Features/ScreenSpaceReflections.h"
 #include "Features/Skylighting.h"
@@ -738,11 +737,6 @@ void Deferred::Hooks::Main_RenderWorld_BlendedDecals::thunk(RE::BSShaderAccumula
 	context->CopyResource(depthCopy.texture, depth.texture);
 
 	// After this point, water starts rendering
-	auto& oit = globals::features::orderIndependentTransparency;
-	if (oit.loaded)
-	{
-		oit.BeginWater();
-	}
 };
 
 void Deferred::Hooks::BSCubeMapCamera_RenderCubemap::thunk(RE::NiAVObject* camera, int a2, bool a3, bool a4, bool a5)

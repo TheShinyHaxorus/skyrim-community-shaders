@@ -15,7 +15,6 @@
 #include "Utils/D3D.h"
 
 #include "Features/DynamicCubemaps.h"
-#include "Features/OrderIndependentTransparency.h"
 
 #include "Plugin.h"
 
@@ -137,12 +136,6 @@ namespace SIE
 			return 0x3F & (descriptor >> 24);
 		}
 
-		static void AddDefines(std::span<D3D_SHADER_MACRO> defines, size_t& lastIndex, std::span<const D3D_SHADER_MACRO> more)
-		{
-			std::ranges::copy(more, defines.begin() + lastIndex);
-			lastIndex += more.size();
-		}
-
 		static void GetLightingShaderDefines(uint32_t descriptor, std::span<D3D_SHADER_MACRO> defines)
 		{
 			static REL::Relocation<void(uint32_t, D3D_SHADER_MACRO*)> VanillaGetLightingShaderDefines(RELOCATION_ID(101631, 108698));
@@ -158,9 +151,6 @@ namespace SIE
 				if ((descriptor & static_cast<uint32_t>(ShaderCache::LightingShaderFlags::AnisoLighting)) != 0) {
 					defines[lastIndex++] = { "GLINT", nullptr };
 				}
-			}
-			if (descriptor & static_cast<uint32_t>(ShaderCache::LightingShaderFlags::OIT)) {
-				AddDefines(defines, lastIndex, globals::features::orderIndependentTransparency.GetShaderDefines());
 			}
 
 			for (auto* feature : Feature::GetFeatureList()) {
@@ -314,7 +304,7 @@ namespace SIE
 		{
 			using enum ShaderCache::ParticleShaderTechniques;
 
-			const auto technique = static_cast<ShaderCache::ParticleShaderTechniques>(descriptor & ~static_cast<uint32_t>(ShaderCache::ParticleShaderFlags::OIT));
+			const auto technique = static_cast<ShaderCache::ParticleShaderTechniques>(descriptor);
 			size_t lastIndex = 0;
 			switch (technique) {
 			case ParticlesGryColor:
@@ -345,9 +335,6 @@ namespace SIE
 					defines[lastIndex++] = { "RAIN", nullptr };
 					break;
 				}
-			}
-			if (descriptor & static_cast<uint32_t>(ShaderCache::ParticleShaderFlags::OIT)) {
-				AddDefines(defines, lastIndex, globals::features::orderIndependentTransparency.GetShaderDefines());
 			}
 
 			for (auto* feature : Feature::GetFeatureList()) {
@@ -444,10 +431,6 @@ namespace SIE
 
 			if (descriptor & static_cast<uint32_t>(ShaderCache::EffectShaderFlags::Deferred)) {
 				defines[lastIndex++] = { "DEFERRED", nullptr };
-			}
-
-			if (descriptor & static_cast<uint32_t>(ShaderCache::EffectShaderFlags::OIT)) {
-				AddDefines(defines, lastIndex, globals::features::orderIndependentTransparency.GetShaderDefines());
 			}
 
 			for (auto* feature : Feature::GetFeatureList()) {

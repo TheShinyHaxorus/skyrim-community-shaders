@@ -44,7 +44,6 @@ struct CSEditor;
 struct ExponentialHeightFog;
 struct HDRDisplay;
 struct ScreenshotFeature;
-struct OrderIndependentTransparency;
 struct Skin;
 struct Effects11;
 struct PostProcessing;
@@ -144,7 +143,6 @@ namespace globals
 		extern CSEditor csEditor;
 		extern ExponentialHeightFog exponentialHeightFog;
 		extern TruePBR truePBR;
-		extern OrderIndependentTransparency orderIndependentTransparency;
 		extern Skin skin;
 		extern Effects11 effects11;
 		extern PostProcessing postProcessing;

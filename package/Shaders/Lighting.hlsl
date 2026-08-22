@@ -314,11 +314,6 @@ struct PS_OUTPUT
 {
 	float4 Diffuse: SV_Target0;
 	float4 MotionVectors: SV_Target1;
-#	if defined(OIT) && OIT == 3
-	float4 OITFrontAccumalation: SV_Target3;
-	float4 OITAccumalation: SV_Target4;
-	float4 OITRevealage: SV_Target5;
-#	endif
 };
 #endif
 
@@ -912,16 +907,8 @@ float GetSnowParameterY(float texProjTmp, float alpha)
 #		include "ExponentialHeightFog/ExponentialHeightFog.hlsli"
 #	endif
 
-#	if defined(OIT)
-#		define OIT_WRITE_DEPTH 1
-#		include "OIT/OITCapture.hlsli"
-#	endif
-
 #	include "Common/LightingEval.hlsli"
 
-#	if defined(OIT)
-[earlydepthstencil]
-#	endif
 PS_OUTPUT main(PS_INPUT input, bool frontFace : SV_IsFrontFace)
 {
 	PS_OUTPUT psout;
@@ -3159,16 +3146,6 @@ PS_OUTPUT main(PS_INPUT input, bool frontFace : SV_IsFrontFace)
 #		undef LANDSCAPE_PARALLAX_ENABLED
 #	endif
 
-#	if defined(OIT)
-#		if OIT == 3 && !defined(DEFERRED)
-	WBOITResult oit = OIT_CaptureWBOIT(int2(input.Position.xy), psout.Diffuse, input.Position.z);
-	psout.OITFrontAccumalation = oit.accumFront;
-	psout.OITAccumalation = oit.accumAll;
-	psout.OITRevealage = oit.revealage;
-#		else
-	psout.Diffuse = OIT_Capture(int2(input.Position.xy), psout.Diffuse, input.Position.z);
-#		endif
-#	endif
 	return psout;
 }
 #endif  // PSHADER
