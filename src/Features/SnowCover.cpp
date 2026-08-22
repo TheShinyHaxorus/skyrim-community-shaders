@@ -291,11 +291,23 @@ void SnowCover::CheckFireSource(RE::BSRenderPass* a_pass, uint32_t a_descriptor)
 	if (a_pass->shaderProperty->GetRTTI() != globals::rtti::BSEffectShaderPropertyRTTI.get())
 		return;
 
-	// Additive draws with GRAYSCALE_TO_COLOR; the texture filter below narrows this to actual flames.
+	if (!globals::game::shadowState)
+		return;
+
 	using EffectFlags = SIE::ShaderCache::EffectShaderFlags;
 	const bool addBlend = a_descriptor & static_cast<uint32_t>(EffectFlags::AddBlend);
+	const bool soft = a_descriptor & static_cast<uint32_t>(EffectFlags::Soft);
 	const bool grayscale = a_descriptor & static_cast<uint32_t>(EffectFlags::GrayscaleToColor);
-	if (!addBlend || !grayscale)
+	if (!addBlend || (soft && !grayscale))
+		return;
+
+	const RE::NiPoint3 center = a_pass->geometry->worldBound.center;
+	const float boundRadius = a_pass->geometry->worldBound.radius;
+	if (!(boundRadius > 0.0f) || boundRadius > FIRE_MAX_BOUND_RADIUS)
+		return;
+
+	const float maxDistance = std::max(1.0f, settings.FireMaxDistance);
+	if (center.GetSquaredDistance(Util::GetEyePosition()) > maxDistance * maxDistance)
 		return;
 
 	// Impact effects (arrow hits, weapon strikes, blood, sparks) are additive too; only
@@ -307,7 +319,7 @@ void SnowCover::CheckFireSource(RE::BSRenderPass* a_pass, uint32_t a_descriptor)
 		if (!a_path || !*a_path)
 			return false;
 		const std::string_view path{ a_path };
-		static constexpr std::array<std::string_view, 4> tokens{ "fire", "flame", "ember", "candle" };
+		static constexpr std::array<std::string_view, 6> tokens{ "fire", "flame", "ember", "candle", "lava", "magma" };
 		for (const auto token : tokens) {
 			auto found = std::ranges::search(path, token, [](char a, char b) {
 				return std::tolower(static_cast<unsigned char>(a)) == b;
@@ -318,18 +330,6 @@ void SnowCover::CheckFireSource(RE::BSRenderPass* a_pass, uint32_t a_descriptor)
 		return false;
 	};
 	if (!isFireTexture(material->sourceTexturePath.c_str()) && !isFireTexture(material->greyscaleTexturePath.c_str()))
-		return;
-
-	if (!globals::game::shadowState)
-		return;
-
-	const RE::NiPoint3 center = a_pass->geometry->worldBound.center;
-	const float boundRadius = a_pass->geometry->worldBound.radius;
-	if (!(boundRadius > 0.0f) || boundRadius > FIRE_MAX_BOUND_RADIUS)
-		return;
-
-	const float maxDistance = std::max(1.0f, settings.FireMaxDistance);
-	if (center.GetSquaredDistance(Util::GetEyePosition()) > maxDistance * maxDistance)
 		return;
 
 	const float meltRadius = std::min(boundRadius * settings.FireRadiusScale, FIRE_MAX_MELT_RADIUS);
