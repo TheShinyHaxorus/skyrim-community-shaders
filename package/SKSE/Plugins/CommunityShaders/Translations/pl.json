@@ -133,18 +133,18 @@
     "feature.oit.performance": "Wydajność",
     "feature.oit.pixel_buffer_size": "Rozmiar bufora pikseli",
     "feature.oit.pixel_buffer_size_tooltip": "Mnożnik rozmiaru tylnego bufora zarezerwowanego dla przezroczystych warstw.\nPrzepełnienie bufora może powodować migotanie.\nDostosuj go do dostępnej wydajności i pamięci systemu.",
+    "feature.oit.ssr_alpha_scale": "Skala alfa SSR",
+    "feature.oit.ssr_alpha_scale_tooltip": "Skaluje wartość alfa używaną do odbić w przestrzeni ekranu (SSR).\nDostosowanie tego może wpływać na widoczność i intensywność odbić.\nUżyj Ctrl+Klik, aby wprowadzić wartość powyżej 1.0",
     "feature.oit.wboit_additive_alpha_scale": "Skala alfa addytywnego",
     "feature.oit.wboit_additive_alpha_scale_tooltip": "Dostosuj tę wartość, gdy addytywne efekty Lighting lub Particle mają wyraźnie widoczne krawędzie.",
     "feature.oit.wboit_advanced_tuning": "Aby przeprowadzić zaawansowane dostrajanie, edytuj bezpośrednio WBOITWeight.hlsli.",
     "feature.oit.wboit_final_weight_tooltip": "Steruje końcowym zakresem wag WBOIT.\nSzerszy zakres poprawia dokładność bliskich warstw i sprzyja odzieży.\nWęższy zakres ogranicza prześwietlone odległe warstwy i sprzyja mgle.",
     "feature.oit.wboit_max_final_weight": "Maksymalna waga końcowa",
     "feature.oit.wboit_min_final_weight": "Minimalna waga końcowa",
-    "feature.oit.wboit_min_pre_alpha_weight": "Minimalna waga przed alfą",
     "feature.oit.wboit_min_projected_distance": "Minimalna odległość rzutowana",
     "feature.oit.wboit_min_projected_distance_tooltip": "Zwiększ tę wartość, jeśli cząsteczki deszczu lub śniegu wyglądają na prześwietlone.",
     "feature.oit.wboit_parameters": "Dostrajanie",
     "feature.oit.write_depth": "Zapisz głębię",
     "feature.oit.write_depth_tooltip": "Pozwala kompozycji OIT zapisywać głębię dla siatek z flagą Zapisz głębię.\nWymaga rozwiązania przez shader pikseli.\nDotyczy wszystkich materiałów shadera Lighting z wyjątkiem shaderów Effect.",
-    "feature.oit.ssr_alpha_scale": "Skala alfa SSR",
-    "feature.oit.ssr_alpha_scale_tooltip": "Skaluje wartość alfa używaną do odbić w przestrzeni ekranu (SSR).\nDostosowanie tego może wpływać na widoczność i intensywność odbić.\nUżyj Ctrl+Klik, aby wprowadzić wartość powyżej 1.0"
+    "feature.oit.wboit_min_pre_alpha_weight": "Minimalna waga przed alfą"
 }

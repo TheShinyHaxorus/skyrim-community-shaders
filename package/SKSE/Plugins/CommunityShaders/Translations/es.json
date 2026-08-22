@@ -151,18 +151,18 @@
     "feature.oit.performance": "Rendimiento",
     "feature.oit.pixel_buffer_size": "Tamaño del búfer de píxeles",
     "feature.oit.pixel_buffer_size_tooltip": "Multiplicador del tamaño del búfer trasero reservado para capas transparentes.\nEl desbordamiento del búfer puede causar parpadeos.\nAjústalo al rendimiento y la memoria disponibles en tu sistema.",
+    "feature.oit.ssr_alpha_scale": "Escala alfa SSR",
+    "feature.oit.ssr_alpha_scale_tooltip": "Escala el valor alfa utilizado para las reflexiones en el espacio de la pantalla (SSR).\nAjustar esto puede afectar la visibilidad y la intensidad de las reflexiones.\nUsa Ctrl+Click para ingresar un valor superior a 1.0",
     "feature.oit.wboit_additive_alpha_scale": "Escala alfa aditiva",
     "feature.oit.wboit_additive_alpha_scale_tooltip": "Ajusta este valor si los efectos aditivos de Lighting o Particle tienen bordes visiblemente definidos.",
     "feature.oit.wboit_advanced_tuning": "Para ajustes avanzados, edita WBOITWeight.hlsli directamente.",
     "feature.oit.wboit_final_weight_tooltip": "Controla el rango final de pesos de WBOIT.\nUn rango más amplio mejora la precisión de las capas cercanas y favorece la ropa.\nUn rango más estrecho reduce las capas lejanas sobreiluminadas y favorece la niebla.",
     "feature.oit.wboit_max_final_weight": "Peso final máximo",
     "feature.oit.wboit_min_final_weight": "Peso final mínimo",
-    "feature.oit.wboit_min_pre_alpha_weight": "Peso mínimo previo al alfa",
     "feature.oit.wboit_min_projected_distance": "Distancia proyectada mínima",
     "feature.oit.wboit_min_projected_distance_tooltip": "Aumenta este valor si las partículas de lluvia o nieve se ven sobreiluminadas.",
     "feature.oit.wboit_parameters": "Ajuste",
     "feature.oit.write_depth": "Escribir profundidad",
     "feature.oit.write_depth_tooltip": "Permite que la composición de OIT escriba profundidad para mallas con la marca Escribir profundidad.\nRequiere resolución mediante sombreador de píxeles.\nSe aplica a todos los materiales del sombreador Lighting, excepto los sombreadores Effect.",
-    "feature.oit.ssr_alpha_scale": "Escala alfa SSR",
-    "feature.oit.ssr_alpha_scale_tooltip": "Escala el valor alfa utilizado para las reflexiones en el espacio de la pantalla (SSR).\nAjustar esto puede afectar la visibilidad y la intensidad de las reflexiones.\nUsa Ctrl+Click para ingresar un valor superior a 1.0"
+    "feature.oit.wboit_min_pre_alpha_weight": "Peso mínimo previo al alfa"
 }

@@ -167,18 +167,18 @@
     "feature.oit.performance": "Performances",
     "feature.oit.pixel_buffer_size": "Taille du tampon de pixels",
     "feature.oit.pixel_buffer_size_tooltip": "Multiplicateur de la taille du tampon arrière réservé aux couches transparentes.\nUn dépassement du tampon peut provoquer du scintillement.\nAjustez-le aux performances et à la mémoire disponibles de votre système.",
+    "feature.oit.ssr_alpha_scale": "Échelle alpha SSR",
+    "feature.oit.ssr_alpha_scale_tooltip": "Met à l'échelle la valeur alpha utilisée pour les réflexions en espace écran (SSR).\nAjuster cela peut affecter la visibilité et l'intensité des réflexions.\nUtilisez Ctrl+Click pour entrer une valeur supérieure à 1.0",
     "feature.oit.wboit_additive_alpha_scale": "Échelle alpha additive",
     "feature.oit.wboit_additive_alpha_scale_tooltip": "Ajustez cette valeur si les effets Lighting ou Particle additifs présentent des contours nettement visibles.",
     "feature.oit.wboit_advanced_tuning": "Pour un réglage avancé, modifiez directement WBOITWeight.hlsli.",
     "feature.oit.wboit_final_weight_tooltip": "Contrôle la plage finale des poids WBOIT.\nUne plage plus large améliore la précision des couches proches et favorise les vêtements.\nUne plage plus étroite réduit les couches lointaines surexposées et favorise le brouillard.",
     "feature.oit.wboit_max_final_weight": "Poids final maximal",
     "feature.oit.wboit_min_final_weight": "Poids final minimal",
-    "feature.oit.wboit_min_pre_alpha_weight": "Poids minimal avant alpha",
     "feature.oit.wboit_min_projected_distance": "Distance projetée minimale",
     "feature.oit.wboit_min_projected_distance_tooltip": "Augmentez cette valeur si les particules de pluie ou de neige paraissent surexposées.",
     "feature.oit.wboit_parameters": "Réglage",
     "feature.oit.write_depth": "Écrire la profondeur",
     "feature.oit.write_depth_tooltip": "Permet à la composition OIT d'écrire la profondeur pour les maillages avec l'indicateur Écrire la profondeur.\nNécessite une résolution par shader de pixels.\nS'applique à tous les matériaux du shader Lighting, à l'exception des shaders Effect.",
-    "feature.oit.ssr_alpha_scale": "Échelle alpha SSR",
-    "feature.oit.ssr_alpha_scale_tooltip": "Met à l'échelle la valeur alpha utilisée pour les réflexions en espace écran (SSR).\nAjuster cela peut affecter la visibilité et l'intensité des réflexions.\nUtilisez Ctrl+Click pour entrer une valeur supérieure à 1.0"
+    "feature.oit.wboit_min_pre_alpha_weight": "Poids minimal avant alpha"
 }

@@ -49,18 +49,18 @@
     "feature.oit.performance": "Prestaties",
     "feature.oit.pixel_buffer_size": "Pixelbuffergrootte",
     "feature.oit.pixel_buffer_size_tooltip": "Vermenigvuldiger van de grootte van de backbuffer die is gereserveerd voor transparante lagen.\nBufferoverschrijding kan flikkeren veroorzaken.\nPas dit aan op de beschikbare prestaties en het geheugen van je systeem.",
+    "feature.oit.ssr_alpha_scale": "SSR-alfaschaal",
+    "feature.oit.ssr_alpha_scale_tooltip": "Schaalt de alfawaarde die wordt gebruikt voor reflecties in schermruimte (SSR).\nHet aanpassen hiervan kan de zichtbaarheid en intensiteit van reflecties beïnvloeden.\nGebruik Ctrl+Klik om een waarde boven 1.0 in te voeren.",
     "feature.oit.wboit_additive_alpha_scale": "Additieve alfaschaal",
     "feature.oit.wboit_additive_alpha_scale_tooltip": "Pas dit aan wanneer additieve Lighting- of Particle-effecten scherpe zichtbare randen hebben.",
     "feature.oit.wboit_advanced_tuning": "Bewerk WBOITWeight.hlsli rechtstreeks voor geavanceerde afstemming.",
     "feature.oit.wboit_final_weight_tooltip": "Bepaalt het uiteindelijke WBOIT-gewichtsbereik.\nEen breder bereik verbetert de nauwkeurigheid van nabije lagen en is gunstiger voor kleding.\nEen smaller bereik vermindert overbelichte lagen op afstand en is gunstiger voor mist.",
     "feature.oit.wboit_max_final_weight": "Maximaal eindgewicht",
     "feature.oit.wboit_min_final_weight": "Minimaal eindgewicht",
-    "feature.oit.wboit_min_pre_alpha_weight": "Minimaal gewicht vóór alfa",
     "feature.oit.wboit_min_projected_distance": "Minimale geprojecteerde afstand",
     "feature.oit.wboit_min_projected_distance_tooltip": "Verhoog dit wanneer regen- of sneeuwdeeltjes overbelicht lijken.",
     "feature.oit.wboit_parameters": "Afstemming",
     "feature.oit.write_depth": "Diepte schrijven",
     "feature.oit.write_depth_tooltip": "Staat OIT-compositie toe diepte te schrijven voor meshes met de vlag Diepte schrijven.\nVereist oplossing met een pixelshader.\nGeldt voor alle Lighting-shadermaterialen, met uitzondering van Effect-shaders.",
-    "feature.oit.ssr_alpha_scale": "SSR-alfaschaal",
-    "feature.oit.ssr_alpha_scale_tooltip": "Schaalt de alfawaarde die wordt gebruikt voor reflecties in schermruimte (SSR).\nHet aanpassen hiervan kan de zichtbaarheid en intensiteit van reflecties beïnvloeden.\nGebruik Ctrl+Klik om een waarde boven 1.0 in te voeren."
+    "feature.oit.wboit_min_pre_alpha_weight": "Minimaal gewicht vóór alfa"
 }
