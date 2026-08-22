@@ -921,10 +921,8 @@ float GetSnowParameterY(float texProjTmp, float alpha)
 
 #	if defined(OIT)
 [earlydepthstencil]
+#	endif
 PS_OUTPUT main(PS_INPUT input, bool frontFace : SV_IsFrontFace)
-#else
-PS_OUTPUT main(PS_INPUT input, bool frontFace : SV_IsFrontFace)
-#endif
 {
 	PS_OUTPUT psout;
 
@@ -934,7 +932,7 @@ PS_OUTPUT main(PS_INPUT input, bool frontFace : SV_IsFrontFace)
 	float2 screenUV = FrameBuffer::ViewToUV(viewPosition);
 	float screenNoise = Random::InterleavedGradientNoise(input.Position.xy, SharedData::FrameCount);
 
-#if defined(DEFERRED)
+#	if defined(DEFERRED)
 	const bool inWorld = true;
 #	else
 	const bool inWorld = (Permutation::ExtraShaderDescriptor & Permutation::ExtraFlags::InWorld);

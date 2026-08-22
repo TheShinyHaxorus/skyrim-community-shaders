@@ -11,12 +11,12 @@
 #include "Features/Effects11.h"
 #include "Features/IBL.h"
 #include "Features/NRD.h"
+#include "Features/OrderIndependentTransparency.h"
 #include "Features/ScreenSpaceGI.h"
 #include "Features/ScreenSpaceReflections.h"
 #include "Features/Skylighting.h"
 #include "Features/SubsurfaceScattering.h"
 #include "Features/TerrainBlending.h"
-#include "Features/OrderIndependentTransparency.h"
 #include "Features/Upscaling.h"
 
 #include "Hooks.h"
