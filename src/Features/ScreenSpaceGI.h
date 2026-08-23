@@ -99,6 +99,8 @@ public:
 		// mix
 		float AOPower = 1.0f;
 		float GIStrength = 1.0f;
+		float MaxRadiance = 4.0f;
+		float ScreenEdgeFade = 0.1f;
 		bool EnableMultiBounce = false;
 		bool UseDynamicCubemapsAsFallback = true;
 		float DiffuseCubemapMult = 1.0f;
@@ -129,6 +131,10 @@ public:
 		float DiffuseCubemapMult;
 		uint UseDynamicCubemap;
 		uint MultiBounceMode;
+
+		float MaxRadiance;
+		float ScreenEdgeFade;
+		float pad0[2];
 	};
 	STATIC_ASSERT_ALIGNAS_16(SSGICB);
 	eastl::unique_ptr<ConstantBuffer> ssgiCB;

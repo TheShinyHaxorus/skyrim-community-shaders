@@ -120,6 +120,15 @@ float2 SpatioTemporalNoise(uint2 pixCoord, uint temporalIndex)  // without TAA, 
 	return srcNoise.Load(uint3(noiseCoord, 0));
 }
 
+float ScreenEdgeWeight(float2 screenPos)
+{
+	if (ScreenEdgeFade <= 0.0)
+		return 1.0;
+	float2 edge = saturate((0.5 - abs(screenPos - 0.5)) / ScreenEdgeFade);
+	edge = edge * edge * (3.0 - 2.0 * edge);
+	return edge.x * edge.y;
+}
+
 uint ComputeOccludedBitfield(float minHorizon, float maxHorizon, inout uint globalOccludedBitfield)
 {
 	uint startHorizonInt = min((uint)(saturate(minHorizon) * SSGI_MAX_RAY), SSGI_MAX_RAY);
@@ -356,6 +365,7 @@ void CalculateGI(
 					float3 sampleRadiance = max(
 						srcRadiance.SampleLevel(samplerPointClamp, sampleUV * OUT_FRAME_SCALE, mipLevel).rgb,
 						0);
+					sampleRadiance *= ScreenEdgeWeight(sampleScreenPos);
 					float sampleLuminance = _NRD_LinearToYCoCg(sampleRadiance).x;
 					if (scalarWeight > 0.0) {
 						float3 diffuseRadiance = sampleRadiance * scalarWeight * GIStrength;
