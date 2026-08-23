@@ -15,8 +15,8 @@ RWTexture2D<float4> RWTexHorizontal : register(u0);  // [20 x height] output
 // Constants
 cbuffer MotionBlurCB : register(b0)
 {
-	float4 g_VelocityParams;    // x: shutter fraction, yz: motion-vector source scale, w: max blur radius in px
-	float4 g_TargetResolution;  // xy: rendered area of the color target, in pixels
+	float4 g_VelocityParams;    // x: velocity multiplier, yz: motion-vector source/display scale
+	float4 g_TargetResolution;  // xy: output color resolution
 }
 
 // Fixed parameters
@@ -39,16 +39,14 @@ uint2 GetVelocitySamplePosition(uint2 targetPixel, uint2 velocityDimensions)
 
 	uint2 targetDimensions = uint2(max(g_TargetResolution.xy, float2(1.0f, 1.0f)) + 0.5f);
 
+	if (DTid.y >= targetDimensions.y)
+		return;
+
 	uint2 horizontalDimensions;
 	RWTexHorizontal.GetDimensions(horizontalDimensions.x, horizontalDimensions.y);
 
 	if (DTid.x >= horizontalDimensions.x || DTid.y >= horizontalDimensions.y)
 		return;
-
-	if (DTid.y >= targetDimensions.y) {
-		RWTexHorizontal[DTid.xy] = float4(0.0f, 0.0f, 0.0f, 1.0f);
-		return;
-	}
 
 	// Calculate horizontal range to process
 	uint xTileSize = (targetDimensions.x + GRID_SIZE - 1) / GRID_SIZE;
@@ -61,11 +59,14 @@ uint2 GetVelocitySamplePosition(uint2 targetPixel, uint2 velocityDimensions)
 
 	// Process horizontal strip
 	for (uint x = xStart; x < xEnd; x++) {
+		// Get velocity from motion vector buffer
 		uint2 velocityPixel = GetVelocitySamplePosition(uint2(x, DTid.y), velocityDimensions);
+		float2 velocity = TexVelocity[velocityPixel].xy;
 
-		float2 velocity = TexVelocity[velocityPixel].xy * g_TargetResolution.xy;
+		// Apply velocity scale
 		velocity *= g_VelocityParams.x;
 
+		// Keep largest velocity
 		float velocityMagnitude = length(velocity);
 		if (velocityMagnitude > maxVelocityMagnitude) {
 			maxVelocityMagnitude = velocityMagnitude;
@@ -73,5 +74,20 @@ uint2 GetVelocitySamplePosition(uint2 targetPixel, uint2 velocityDimensions)
 		}
 	}
 
-	RWTexHorizontal[DTid.xy] = float4(maxVelocity, maxVelocityMagnitude, 1.0f);
+	// Encode velocity for output
+	// R: normalized x direction mapped to 0..1
+	// G: normalized y direction mapped to 0..1
+	// B: velocity magnitude scaled to 0..1
+	float2 normalizedDir = maxVelocityMagnitude > 0.001f ? normalize(maxVelocity) : float2(0.0f, 0.0f);
+	float encodedMagnitude = saturate(maxVelocityMagnitude * 0.05f);
+
+	// Create output color
+	float4 outputColor = float4(
+		normalizedDir.x * 0.5f + 0.5f,
+		normalizedDir.y * 0.5f + 0.5f,
+		encodedMagnitude,
+		1.0f);
+
+	// Write to horizontal pass texture
+	RWTexHorizontal[uint2(DTid.x, DTid.y)] = outputColor;
 }

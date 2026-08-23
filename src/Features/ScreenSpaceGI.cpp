@@ -280,7 +280,6 @@ void ScreenSpaceGI::LoadSettings(json& o_json)
 	settings.DiffuseCubemapMult = SanitizeRange(settings.DiffuseCubemapMult, 0.f, 5.f, defaults.DiffuseCubemapMult);
 	settings.HitDistA = SanitizeRange(settings.HitDistA, 1.f, 1000.f, defaults.HitDistA);
 	settings.HitDistB = SanitizeRange(settings.HitDistB, 0.f, 1.f, defaults.HitDistB);
-	settings.Reblur.DiffusePrepassBlurRadius = SanitizeRange(settings.Reblur.DiffusePrepassBlurRadius, 0.f, 75.f, defaults.Reblur.DiffusePrepassBlurRadius);
 
 	if (settings.QuarterRes)
 		settings.HalfRes = false;

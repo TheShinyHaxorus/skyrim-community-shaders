@@ -259,7 +259,7 @@ void NRD::ApplyReblurSettings(nrd::ReblurSettings& out, const REBLURSettings& in
 	out.historyFixBasePixelStride = std::max(in.HistoryFixBasePixelStride, 1u);
 	out.historyFixAlternatePixelStride = std::max(in.HistoryFixAlternatePixelStride, 1u);
 	out.fastHistoryClampingSigmaScale = std::clamp(in.FastHistoryClampingSigmaScale, 1.0f, 3.0f);
-	out.diffusePrepassBlurRadius = std::max(in.DiffusePrepassBlurRadius, 0.0f);
+	out.diffusePrepassBlurRadius = 0.0f;
 	out.minHitDistanceWeight = std::clamp(in.MinHitDistanceWeight, 0.0001f, 0.2f);
 	out.minBlurRadius = std::max(in.MinBlurRadius, 0.0f);
 	out.maxBlurRadius = std::max(in.MaxBlurRadius, out.minBlurRadius);
@@ -301,7 +301,6 @@ bool NRD::DrawReblurSettings(REBLURSettings& s, bool showAdvanced, const char* t
 
 		ImGui::SeparatorText("Spatial Filter");
 		{
-			changed |= ImGui::SliderFloat("Diffuse Pre-pass Radius", &s.DiffusePrepassBlurRadius, 0.0f, 75.0f, "%.1f px");
 			changed |= ImGui::SliderFloat("Min Blur Radius", &s.MinBlurRadius, 0.0f, 10.0f, "%.1f px");
 			changed |= ImGui::SliderFloat("Max Blur Radius", &s.MaxBlurRadius, 0.0f, 60.0f, "%.1f px");
 			changed |= ImGui::SliderFloat("Lobe Angle Fraction", &s.LobeAngleFraction, 0.0f, 1.0f, "%.2f");

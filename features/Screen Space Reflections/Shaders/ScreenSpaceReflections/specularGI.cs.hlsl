@@ -143,29 +143,8 @@ float3 SampleReflectionVector(float3 view_direction, float3 normal, float roughn
 	float2 u = SampleRandomVector2DBaked(dispatch_thread_id);
 	float3 sampled_normal_tbn = ImportanceSampleGGX(u, roughness * roughness * roughness * roughness);
 	float3 reflected_direction_tbn = reflect(-view_direction_tbn, sampled_normal_tbn);
-	reflected_direction_tbn.z = abs(reflected_direction_tbn.z);
 	float3x3 inv_tbn_transform = transpose(tbn_transform);
 	return mul(reflected_direction_tbn, inv_tbn_transform);
-}
-
-float3 SampleScreenRadiance(float2 hitUV)
-{
-	const float2 maxUV = float2(FrameBuffer::DynamicResolutionParams2.z, FrameBuffer::DynamicResolutionParams1.y);
-	const float2 texelSize = SharedData::BufferDim.zw * FrameBuffer::DynamicResolutionParams1.xy;
-
-	float3 radiance = Color::IrradianceToLinear(max(0, ScreenColorTexture.SampleLevel(LinearSampler, clamp(hitUV, 0, maxUV), 0).xyz));
-	float weightSum = rcp(1.0 + Color::RGBToLuminance(radiance));
-	float3 weightedSum = radiance * weightSum;
-
-	[unroll] for (uint i = 0; i < 4; i++) {
-		float2 offset = float2((i & 1) ? 1.0 : -1.0, (i & 2) ? 1.0 : -1.0) * texelSize;
-		float3 tap = Color::IrradianceToLinear(max(0, ScreenColorTexture.SampleLevel(LinearSampler, clamp(hitUV + offset, 0, maxUV), 0).xyz));
-		float weight = rcp(1.0 + Color::RGBToLuminance(tap));
-		weightedSum += tap * weight;
-		weightSum += weight;
-	}
-
-	return weightedSum / max(weightSum, NRD_EPS);
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -445,7 +424,7 @@ float SSRT_ValidateHit(float3 hit,
 	float screenConfidence = isBackfaceHit ? 1.0 : confidence;
 	float3 sampleColor = 0;
 	if (confidence > 0.0f) {
-		sampleColor = SampleScreenRadiance(hit.xy * FrameBuffer::DynamicResolutionParams1.xy);
+		sampleColor = Color::IrradianceToLinear(ScreenColorTexture.SampleLevel(LinearSampler, hit.xy * FrameBuffer::DynamicResolutionParams1.xy, 0).xyz);
 		sampleColor *= SharedData::ssrSettings.SpecularMult;
 	}
 
