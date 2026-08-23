@@ -44,9 +44,6 @@ cbuffer SSGICB : register(b1)
 	float DiffuseCubemapMult;
 	uint UseDynamicCubemap;
 	uint MultiBounceMode;
-
-	float MaxRadiance;
-	float ScreenEdgeFade;
 };
 
 SamplerState samplerPointClamp : register(s0);

@@ -40,12 +40,6 @@ float3 RadianceMIPFilter(float3 radiance0, float3 radiance1, float3 radiance2, f
 	return (radiance0 + radiance1 + radiance2 + radiance3) * 0.25;
 }
 
-float3 ClampSourceRadiance(float3 radiance)
-{
-	float luminance = Color::RGBToLuminance(radiance);
-	return radiance * min(1.0, MaxRadiance / max(luminance, 1e-5));
-}
-
 #ifdef GI
 float3 LoadSsgiMultiBounce(uint2 pixCoord)
 {
@@ -118,11 +112,6 @@ groupshared float3 g_scratchRadiance[8][8];
 		radiance3 += LoadSsgiMultiBounce(pixCoord + uint2(1, 1));
 	}
 #endif
-
-	radiance0 = ClampSourceRadiance(radiance0);
-	radiance1 = ClampSourceRadiance(radiance1);
-	radiance2 = ClampSourceRadiance(radiance2);
-	radiance3 = ClampSourceRadiance(radiance3);
 
 	outRadiance0[pixCoord + uint2(0, 0)] = radiance0;
 	outRadiance0[pixCoord + uint2(1, 0)] = radiance1;

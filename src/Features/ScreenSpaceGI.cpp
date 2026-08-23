@@ -27,8 +27,6 @@ NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(
 	Thickness,
 	AOPower,
 	GIStrength,
-	MaxRadiance,
-	ScreenEdgeFade,
 	EnableMultiBounce,
 	UseDynamicCubemapsAsFallback,
 	DiffuseCubemapMult,
@@ -208,22 +206,6 @@ void ScreenSpaceGI::DrawSettings()
 				resetReblurHistory = true;
 				hasMultiBounceHistory = false;
 			}
-
-			if (ImGui::SliderFloat(T(TKEY("max_radiance"), "Max Source Radiance"), &settings.MaxRadiance, 0.5f, 50.f, "%.2f")) {
-				resetReblurHistory = true;
-				hasMultiBounceHistory = false;
-			}
-			if (auto _tt = Util::HoverTooltipWrapper()) {
-				ImGui::Text("%s", T(TKEY("max_radiance_tooltip"), "Caps the brightness of a single source pixel feeding the indirect gather, preserving hue. Small intense emitters (glowing flora, lanterns, fire) otherwise produce fireflies that flicker as the trace pattern rotates. Lower this if indirect lighting sparkles in caves and dungeons; raise it for stronger bounce from bright sources."));
-			}
-
-			if (ImGui::SliderFloat(T(TKEY("screen_edge_fade"), "Screen Edge Fade"), &settings.ScreenEdgeFade, 0.f, 0.5f, "%.3f")) {
-				resetReblurHistory = true;
-				hasMultiBounceHistory = false;
-			}
-			if (auto _tt = Util::HoverTooltipWrapper()) {
-				ImGui::Text("%s", T(TKEY("screen_edge_fade_tooltip"), "Fraction of the screen over which indirect radiance ramps out towards the border. Without it a light source popping off screen removes its bounce in a single frame. 0 disables the fade."));
-			}
 		}
 	}
 
@@ -295,8 +277,6 @@ void ScreenSpaceGI::LoadSettings(json& o_json)
 	settings.Thickness = SanitizeRange(settings.Thickness, 0.f, 0.2f, defaults.Thickness);
 	settings.AOPower = SanitizeRange(settings.AOPower, 0.f, 6.f, defaults.AOPower);
 	settings.GIStrength = SanitizeRange(settings.GIStrength, 0.f, 6.f, defaults.GIStrength);
-	settings.MaxRadiance = SanitizeRange(settings.MaxRadiance, 0.5f, 50.f, defaults.MaxRadiance);
-	settings.ScreenEdgeFade = SanitizeRange(settings.ScreenEdgeFade, 0.f, 0.5f, defaults.ScreenEdgeFade);
 	settings.DiffuseCubemapMult = SanitizeRange(settings.DiffuseCubemapMult, 0.f, 5.f, defaults.DiffuseCubemapMult);
 	settings.HitDistA = SanitizeRange(settings.HitDistA, 1.f, 1000.f, defaults.HitDistA);
 	settings.HitDistB = SanitizeRange(settings.HitDistB, 0.f, 1.f, defaults.HitDistB);
@@ -682,10 +662,6 @@ void ScreenSpaceGI::UpdateSB()
 		data.Thickness = settings.Thickness;
 		data.AOPower = settings.AOPower;
 		data.GIStrength = settings.GIStrength;
-		data.MaxRadiance = settings.MaxRadiance;
-		data.ScreenEdgeFade = settings.ScreenEdgeFade;
-		data.pad0[0] = 0.0f;
-		data.pad0[1] = 0.0f;
 		data.DiffuseCubemapMult = settings.DiffuseCubemapMult;
 		data.UseDynamicCubemap = (settings.UseDynamicCubemapsAsFallback && globals::features::dynamicCubemaps.loaded) ? 1u : 0u;
 		const bool hasContinuousHistory = hasMultiBounceHistory &&
