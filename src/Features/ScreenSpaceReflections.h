@@ -80,12 +80,12 @@ struct ScreenSpaceReflections : Feature
 		bool EnableREBLUR = true;
 		NRD::REBLURSettings Reblur = {
 			.MaxAccumulatedFrameNum = 20,
-			.MaxFastAccumulatedFrameNum = 4,
-			.MaxStabilizedFrameNum = 20,
+			.MaxFastAccumulatedFrameNum = 1,
+			.MaxStabilizedFrameNum = 0,
 			.FastHistoryClampingSigmaScale = 1.5f,
 		};
 		float SpecularPrepassBlurRadius = 50.0f;
-		bool UsePrepassOnlyForSpecularMotionEstimation = false;
+		bool UsePrepassOnlyForSpecularMotionEstimation = true;
 	} settings;
 
 	struct alignas(16) SSRCB
