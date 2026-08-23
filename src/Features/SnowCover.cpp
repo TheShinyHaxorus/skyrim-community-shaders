@@ -1,29 +1,21 @@
 #include "SnowCover.h"
 
-#include "ShaderCache.h"
 #include "Util.h"
 #include "Utils/FileSystem.h"
 #include <DDSTextureLoader.h>
 #include <algorithm>
 #include <array>
-#include <cctype>
 #include <cmath>
 #include <cstdlib>
 #include <cstring>
-#include <ranges>
 #include <string.h>
-#include <string_view>
 
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(
 	SnowCover::UserSettings,
 	EnableExpensiveFoliage,
 	AffectHavok,
 	AffectFloraTint,
-	SnowHeightOffset,
-	EnableFireMelt,
-	FireRadiusScale,
-	FireInnerScale,
-	FireMaxDistance)
+	SnowHeightOffset)
 
 void copyString(const std::string& input, char* dst, size_t dst_size)
 {
@@ -36,27 +28,6 @@ void SnowCover::DrawSettings()
 	ImGui::Checkbox("Enable Nicer Foliage", (bool*)&settings.EnableExpensiveFoliage);
 	if (auto _tt = Util::HoverTooltipWrapper()) {
 		ImGui::Text("Uses one more texture sample to put snow on edges of tree lods and grass.");
-	}
-	ImGui::Checkbox("Melt Snow Near Fire", (bool*)&settings.EnableFireMelt);
-	if (auto _tt = Util::HoverTooltipWrapper()) {
-		ImGui::Text(
-			"Clears snow around campfires, torches and braziers.\n"
-			"Fires are recognised as additive flame draws using fire-themed textures.");
-	}
-	if (settings.EnableFireMelt) {
-		ImGui::SliderFloat("Fire Melt Radius", &settings.FireRadiusScale, 0.5f, 8.0f, "%.1fx");
-		if (auto _tt = Util::HoverTooltipWrapper()) {
-			ImGui::Text("Melt radius as a multiple of the flame's bounding radius.");
-		}
-		ImGui::SliderFloat("Fire Melt Softness", &settings.FireInnerScale, 0.0f, 0.9f, "%.2f");
-		if (auto _tt = Util::HoverTooltipWrapper()) {
-			ImGui::Text("Fraction of the radius that is fully clear. Lower values give a softer edge.");
-		}
-		ImGui::SliderFloat("Fire Melt Max Distance", &settings.FireMaxDistance, 1024.0f, 40000.0f, "%.0f");
-		if (auto _tt = Util::HoverTooltipWrapper()) {
-			ImGui::Text("Fires beyond this camera distance are ignored. At most 16 fires are tracked.");
-		}
-		ImGui::Text("Tracked fires: %u", perFrame.FireCount);
 	}
 	ImGui::Checkbox("Snow on Mobile Objects", (bool*)&settings.AffectHavok);
 	if (auto _tt = Util::HoverTooltipWrapper()) {
@@ -290,80 +261,6 @@ void SnowCover::DrawSettings()
 	ImGui::Spacing();
 }
 
-void SnowCover::CheckFireSource(RE::BSRenderPass* a_pass, uint32_t a_descriptor)
-{
-	if (!settings.EnableFireMelt || !wsettings.EnableSnowCover)
-		return;
-	if (!a_pass || !a_pass->geometry || !a_pass->shaderProperty)
-		return;
-	if (a_pass->shaderProperty->GetRTTI() != globals::rtti::BSEffectShaderPropertyRTTI.get())
-		return;
-
-	if (!globals::game::shadowState)
-		return;
-
-	using EffectFlags = SIE::ShaderCache::EffectShaderFlags;
-	const bool addBlend = a_descriptor & static_cast<uint32_t>(EffectFlags::AddBlend);
-	const bool soft = a_descriptor & static_cast<uint32_t>(EffectFlags::Soft);
-	const bool grayscale = a_descriptor & static_cast<uint32_t>(EffectFlags::GrayscaleToColor);
-	if (!addBlend || (soft && !grayscale))
-		return;
-
-	const RE::NiPoint3 center = a_pass->geometry->worldBound.center;
-	const float boundRadius = a_pass->geometry->worldBound.radius;
-	if (!(boundRadius > 0.0f) || boundRadius > FIRE_MAX_BOUND_RADIUS)
-		return;
-
-	const float maxDistance = std::max(1.0f, settings.FireMaxDistance);
-	if (center.GetSquaredDistance(Util::GetEyePosition()) > maxDistance * maxDistance)
-		return;
-
-	// Impact effects (arrow hits, weapon strikes, blood, sparks) are additive too; only
-	// draws whose textures are actually fire-themed may melt snow.
-	const auto* material = static_cast<const RE::BSEffectShaderMaterial*>(a_pass->shaderProperty->material);
-	if (!material)
-		return;
-	static constexpr auto isFireTexture = [](const char* a_path) {
-		if (!a_path || !*a_path)
-			return false;
-		const std::string_view path{ a_path };
-		static constexpr std::array<std::string_view, 6> tokens{ "fire", "flame", "ember", "candle", "lava", "magma" };
-		for (const auto token : tokens) {
-			auto found = std::ranges::search(path, token, [](char a, char b) {
-				return std::tolower(static_cast<unsigned char>(a)) == b;
-			});
-			if (!found.empty())
-				return true;
-		}
-		return false;
-	};
-	if (!isFireTexture(material->sourceTexturePath.c_str()) && !isFireTexture(material->greyscaleTexturePath.c_str()))
-		return;
-
-	const float meltRadius = std::min(boundRadius * settings.FireRadiusScale, FIRE_MAX_MELT_RADIUS);
-
-	std::lock_guard lock{ fireSourcesMutex };
-	for (auto& source : fireSources) {
-		if (center.GetSquaredDistance(source.position) <= FIRE_MERGE_DISTANCE * FIRE_MERGE_DISTANCE) {
-			source.radius = std::max(source.radius, meltRadius);
-			source.lastSeenTick = fireTick;
-			return;
-		}
-	}
-	if (fireSources.size() < MAX_FIRE_SOURCES) {
-		fireSources.push_back({ center, meltRadius, 0.0f, fireTick });
-	} else {
-		// Slow refill keeps dead sources around for ~50s; evict the weakest fading one so live fires still melt.
-		auto victim = fireSources.end();
-		for (auto it = fireSources.begin(); it != fireSources.end(); ++it) {
-			if (fireTick - it->lastSeenTick > FIRE_SEEN_GRACE_TICKS && (victim == fireSources.end() || it->strength < victim->strength))
-				victim = it;
-		}
-		if (victim != fireSources.end())
-			*victim = { center, meltRadius, 0.0f, fireTick };
-	}
-}
-
 SnowCover::PerFrame SnowCover::GetCommonBufferData()
 {
 	Reload();
@@ -413,27 +310,6 @@ SnowCover::PerFrame SnowCover::GetCommonBufferData()
 	perFrame.SnowingDensity = snowingDensity;
 	perFrame.TimeSnowing = timeSnowing;
 	perFrame.SeasonalAltitude = GetSeasonalAltitude();
-
-	perFrame.FireCount = 0;
-	if (settings.EnableFireMelt && globals::game::shadowState) {
-		std::lock_guard lock{ fireSourcesMutex };
-		if (!fireSources.empty()) {
-			const auto eye = Util::GetEyePosition();
-			const float maxDistance = std::max(1.0f, settings.FireMaxDistance);
-			uint count = 0;
-			for (const auto& source : fireSources) {
-				if (count >= MAX_FIRE_SOURCES)
-					break;
-				const float effectiveRadius = source.radius * source.strength;
-				if (effectiveRadius < 1.0f)
-					continue;
-				if (source.position.GetSquaredDistance(eye) > maxDistance * maxDistance)
-					continue;
-				perFrame.FireSources[count++] = float4(source.position.x, source.position.y, source.position.z, effectiveRadius);
-			}
-			perFrame.FireCount = count;
-		}
-	}
 
 	perFrame.settings = settings;
 	perFrame.wsettings = wsettings;
@@ -678,23 +554,6 @@ void SnowCover::Prepass()
 	}
 }
 
-void SnowCover::Reset()
-{
-	// Frame-rate independent ease; clamp guards against loading-screen delta spikes snapping the melt.
-	const float dt = std::clamp(RE::GetSecondsSinceLastFrame(), 0.0f, 0.1f);
-	std::lock_guard lock{ fireSourcesMutex };
-	++fireTick;
-	for (auto& source : fireSources) {
-		const bool seen = fireTick - source.lastSeenTick <= FIRE_SEEN_GRACE_TICKS;
-		const float target = seen ? 1.0f : 0.0f;
-		const float step = (seen ? FIRE_FADE_IN_RATE : FIRE_FADE_OUT_RATE) * dt;
-		source.strength = source.strength < target ? std::min(target, source.strength + step) : std::max(target, source.strength - step);
-	}
-	std::erase_if(fireSources, [this](const FireSource& source) {
-		return source.strength <= 0.0f && fireTick - source.lastSeenTick > FIRE_SEEN_GRACE_TICKS;
-	});
-}
-
 void SnowCover::LoadSettings(json& o_json)
 {
 	settings = o_json;
@@ -715,12 +574,6 @@ void SnowCover::Hooks::BSLightingShader_SetupGeometry::thunk(RE::BSShader* This,
 	if (globals::features::snowCover.wsettings.EnableSnowCover) {
 		globals::features::snowCover.BSLightingShader_Setup(Pass);
 	}
-	func(This, Pass, RenderFlags);
-}
-
-void SnowCover::Hooks::BSEffectShader_SetupGeometry::thunk(RE::BSShader* This, RE::BSRenderPass* Pass, uint32_t RenderFlags)
-{
-	globals::features::snowCover.CheckFireSource(Pass, globals::state->currentPixelDescriptor);
 	func(This, Pass, RenderFlags);
 }
 
