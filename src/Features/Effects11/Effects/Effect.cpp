@@ -137,9 +137,12 @@ void Effect::Save()
 
 		std::string value;
 
+		const bool weatherBlended = !uiVar.separation.empty() && uiVar.separation != "None";
+		const float* vectorSource = weatherBlended ? uiVar.baseVectorValue : uiVar.vectorValue;
+
 		switch (uiVar.type) {
 		case UIVariableType::Float:
-			value = std::to_string(uiVar.floatValue);
+			value = std::to_string(weatherBlended ? uiVar.baseFloatValue : uiVar.floatValue);
 			break;
 		case UIVariableType::Int:
 			value = std::to_string(uiVar.intValue);
@@ -155,7 +158,7 @@ void Effect::Save()
 				int numComponents = (uiVar.type == UIVariableType::Float2) ? 2 : (uiVar.type == UIVariableType::Float3) ? 3 : 4;
 				for (int i = 0; i < numComponents; ++i) {
 					std::string compKey = iniKey + suffixes[i];
-					std::string compValue = std::to_string(uiVar.vectorValue[i]);
+					std::string compValue = std::to_string(vectorSource[i]);
 					BOOL compResult = WritePrivateProfileStringA(section.c_str(), compKey.c_str(), compValue.c_str(), iniPath.string().c_str());
 					if (!compResult)
 						logger::warn("[EFFECTS11] Failed to write key '{}' to ini file '{}'", compKey, iniPath.string());
@@ -165,9 +168,9 @@ void Effect::Save()
 				std::ostringstream oss;
 				int numComponents = (uiVar.type == UIVariableType::Float2) ? 2 : (uiVar.type == UIVariableType::Float3) ? 3 : 4;
 
-				std::copy(uiVar.vectorValue, uiVar.vectorValue + numComponents - 1,
+				std::copy(vectorSource, vectorSource + numComponents - 1,
 					std::ostream_iterator<float>(oss, ", "));
-				oss << uiVar.vectorValue[numComponents - 1];
+				oss << vectorSource[numComponents - 1];
 
 				value = oss.str();
 			}
@@ -217,6 +220,8 @@ bool Effect::Apply()
 		logger::error("[EFFECTS11] Failed to load settings for effect '{}'", GetName());
 		return false;
 	}
+
+	CaptureBaseValues();
 
 	CreateEffectTextures();
 
@@ -876,6 +881,28 @@ void Effect::LoadVariableFromString(UIVariable& uiVar, const std::string& value)
 	} catch (const std::exception& e) {
 		logger::warn("[EFFECTS11] Failed to parse value '{}' for variable '{}': {}", value, uiVar.name, e.what());
 	}
+}
+
+void Effect::CaptureBaseValue(UIVariable& uiVar)
+{
+	switch (uiVar.type) {
+	case UIVariableType::Float:
+		uiVar.baseFloatValue = uiVar.floatValue;
+		break;
+	case UIVariableType::Float2:
+	case UIVariableType::Float3:
+	case UIVariableType::Float4:
+		memcpy(uiVar.baseVectorValue, uiVar.vectorValue, sizeof(uiVar.baseVectorValue));
+		break;
+	default:
+		break;
+	}
+}
+
+void Effect::CaptureBaseValues()
+{
+	for (auto& uiVar : uiVariables)
+		CaptureBaseValue(uiVar);
 }
 
 void Effect::UpdateUIVariables()

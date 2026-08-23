@@ -228,10 +228,10 @@ void ExtendedEffect::ApplyWeatherBlending(float blendFactor, uint32_t currentWea
 		case UIVariableType::Float:
 			{
 				auto getVal = [&](const WeatherValues* vals) -> float {
-					if (!vals) return uiVar.floatValue;
+					if (!vals) return uiVar.baseFloatValue;
 					auto it = vals->find(iniKey);
-					if (it == vals->end()) return uiVar.floatValue;
-					return safeStof(it->second, uiVar.floatValue);
+					if (it == vals->end()) return uiVar.baseFloatValue;
+					return safeStof(it->second, uiVar.baseFloatValue);
 				};
 
 				float currentVal = getVal(currentIt != weatherData.end() ? &currentIt->second : nullptr);
@@ -250,24 +250,25 @@ void ExtendedEffect::ApplyWeatherBlending(float blendFactor, uint32_t currentWea
 
 				auto parseVec = [&](const WeatherValues* vals, float* out) {
 					if (!vals) {
-						memcpy(out, uiVar.vectorValue, sizeof(float) * comps);
+						memcpy(out, uiVar.baseVectorValue, sizeof(float) * comps);
 						return;
 					}
 					if (perComp) {
 						static const char* suffixes[] = { "X", "Y", "Z", "W" };
 						for (int c = 0; c < comps; ++c) {
 							auto it = vals->find(iniKey + suffixes[c]);
-							out[c] = (it != vals->end()) ? safeStof(it->second, uiVar.vectorValue[c]) : uiVar.vectorValue[c];
+							out[c] = (it != vals->end()) ? safeStof(it->second, uiVar.baseVectorValue[c]) : uiVar.baseVectorValue[c];
 						}
 					} else {
 						auto it = vals->find(iniKey);
 						if (it != vals->end()) {
+							memcpy(out, uiVar.baseVectorValue, sizeof(float) * comps);
 							std::stringstream ss(it->second);
 							std::string item;
 							for (int c = 0; c < comps && std::getline(ss, item, ','); ++c)
-								out[c] = safeStof(item, uiVar.vectorValue[c]);
+								out[c] = safeStof(item, uiVar.baseVectorValue[c]);
 						} else {
-							memcpy(out, uiVar.vectorValue, sizeof(float) * comps);
+							memcpy(out, uiVar.baseVectorValue, sizeof(float) * comps);
 						}
 					}
 				};
@@ -529,8 +530,10 @@ namespace
 			}
 			break;
 		}
-		if (changed)
+		if (changed) {
+			Effect::CaptureBaseValue(uiVar);
 			changedEffects.insert(effect);
+		}
 		if (readOnly)
 			ImGui::EndDisabled();
 

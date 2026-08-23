@@ -45,6 +45,7 @@ public:
 	virtual void RenderImGui();
 	void LoadUIVariables();
 	void UpdateUIVariables();
+	void CaptureBaseValues();
 
 	// Technique selection
 	std::string GetSelectedTechnique() const;
@@ -125,6 +126,9 @@ public:
 
 		float vectorValue[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
 
+		float baseFloatValue = 0.0f;
+		float baseVectorValue[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
+
 		// UI properties
 		float floatMin = 0.0f;
 		float floatMax = 1.0f;
@@ -152,6 +156,8 @@ public:
 	};
 
 	std::vector<UIVariable> uiVariables;
+
+	static void CaptureBaseValue(UIVariable& uiVar);
 
 	struct GroupMeta
 	{

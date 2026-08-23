@@ -100,8 +100,18 @@ public:
 		float timeOfDay2[4];
 		float eNightDayFactor;
 		float eInteriorFactor;
+		float fieldOfView;
+		float adaptiveQuality;
+		float tempF1[4];
+		float tempF2[4];
+		float tempF3[4];
+		float tempInfo1[4];
+		float tempInfo2[4];
+		float lightParameters[4];
 	} commonData;
 	uint32_t frameCount = 0;
+
+	float lastClickPos[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
 
 	void UpdateCommonData();
 

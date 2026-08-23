@@ -801,6 +801,80 @@ void EffectManager::UpdateCommonData()
 		commonData.timeOfDay2[static_cast<int>(TimeOfDay2Index::InteriorDay)] = commonData.eInteriorFactor * commonData.eNightDayFactor;
 		commonData.timeOfDay2[static_cast<int>(TimeOfDay2Index::InteriorNight)] = commonData.eInteriorFactor * (1.0f - commonData.eNightDayFactor);
 	}
+
+	{
+		static float& cameraFOVDeg = (*(float*)(REL::RelocationID(513786, 388785).address()));
+		commonData.fieldOfView = cameraFOVDeg;
+
+		commonData.adaptiveQuality = 0.0f;
+
+		for (int i = 0; i < 4; ++i) {
+			commonData.tempF1[i] = 1.0f;
+			commonData.tempF2[i] = 1.0f;
+			commonData.tempF3[i] = 1.0f;
+		}
+
+		float cursorX = 0.0f, cursorY = 0.0f;
+		float mouseButtons = 0.0f;
+		if (ImGui::GetCurrentContext()) {
+			const auto& io = ImGui::GetIO();
+			if (io.DisplaySize.x > 0.0f && io.DisplaySize.y > 0.0f && io.MousePos.x > -FLT_MAX) {
+				cursorX = std::clamp(io.MousePos.x / io.DisplaySize.x, 0.0f, 1.0f);
+				cursorY = std::clamp(io.MousePos.y / io.DisplaySize.y, 0.0f, 1.0f);
+			}
+			if (io.MouseDown[0])
+				mouseButtons += 1.0f;
+			if (io.MouseDown[1])
+				mouseButtons += 2.0f;
+			if (io.MouseDown[2])
+				mouseButtons += 4.0f;
+			if (io.MouseClicked[0]) {
+				lastClickPos[0] = cursorX;
+				lastClickPos[1] = cursorY;
+			}
+			if (io.MouseClicked[1]) {
+				lastClickPos[2] = cursorX;
+				lastClickPos[3] = cursorY;
+			}
+		}
+
+		commonData.tempInfo1[0] = cursorX;
+		commonData.tempInfo1[1] = cursorY;
+		commonData.tempInfo1[2] = 0.0f;
+		commonData.tempInfo1[3] = mouseButtons;
+		commonData.tempInfo2[0] = lastClickPos[0];
+		commonData.tempInfo2[1] = lastClickPos[1];
+		commonData.tempInfo2[2] = lastClickPos[2];
+		commonData.tempInfo2[3] = lastClickPos[3];
+
+		if (sky && !commonData.eInteriorFactor) {
+			if (auto sun = sky->sun; sun && sun->root && sky->root) {
+				const auto& sunPos = sun->root->world.translate;
+				const auto& skyPos = sky->root->world.translate;
+				float3 sunDirection = { sunPos.x - skyPos.x, sunPos.y - skyPos.y, sunPos.z - skyPos.z };
+				sunDirection.Normalize();
+
+				auto viewProj = globals::game::frameBufferCached.GetCameraViewProj().Transpose();
+				auto projected = float4::Transform(float4(sunDirection.x, sunDirection.y, sunDirection.z, 0.0f), viewProj);
+
+				if (projected.w > 0.0f) {
+					float ndcX = projected.x / projected.w;
+					float ndcY = projected.y / projected.w;
+					commonData.lightParameters[0] = ndcX * 0.5f + 0.5f;
+					commonData.lightParameters[1] = 0.5f - ndcY * 0.5f;
+
+					float visibility = 1.0f;
+					if (sun->sunBase) {
+						if (const auto prop = skyrim_cast<RE::BSSkyShaderProperty*>(sun->sunBase->GetGeometryRuntimeData().shaderProperty.get()))
+							visibility = std::clamp(prop->kBlendColor.alpha, 0.0f, 1.0f);
+					}
+					const bool onScreen = commonData.lightParameters[0] >= 0.0f && commonData.lightParameters[0] <= 1.0f &&
+					                      commonData.lightParameters[1] >= 0.0f && commonData.lightParameters[1] <= 1.0f;
+					commonData.lightParameters[3] = onScreen ? visibility : 0.0f;
+				}
+			}
+		}
+	}
 }
 
 void EffectManager::UpdateCommonVariablesForEffect(Effect& effect)
@@ -843,6 +917,34 @@ void EffectManager::UpdateCommonVariablesForEffect(Effect& effect)
 	effect.SetVectorVariable("TimeOfDay2", commonData.timeOfDay2, sizeof(commonData.timeOfDay2));
 	effect.SetVectorVariable("ENightDayFactor", &commonData.eNightDayFactor, sizeof(commonData.eNightDayFactor));
 	effect.SetVectorVariable("EInteriorFactor", &commonData.eInteriorFactor, sizeof(commonData.eInteriorFactor));
+	effect.SetVectorVariable("FieldOfView", &commonData.fieldOfView, sizeof(commonData.fieldOfView));
+	effect.SetVectorVariable("AdaptiveQuality", &commonData.adaptiveQuality, sizeof(commonData.adaptiveQuality));
+	effect.SetVectorVariable("tempF1", commonData.tempF1, sizeof(commonData.tempF1));
+	effect.SetVectorVariable("tempF2", commonData.tempF2, sizeof(commonData.tempF2));
+	effect.SetVectorVariable("tempF3", commonData.tempF3, sizeof(commonData.tempF3));
+	effect.SetVectorVariable("tempInfo1", commonData.tempInfo1, sizeof(commonData.tempInfo1));
+	effect.SetVectorVariable("tempInfo2", commonData.tempInfo2, sizeof(commonData.tempInfo2));
+	effect.SetVectorVariable("LightParameters", commonData.lightParameters, sizeof(commonData.lightParameters));
+}
+
+namespace
+{
+	float GetQuantizationStep(DXGI_FORMAT a_format)
+	{
+		switch (a_format) {
+		case DXGI_FORMAT_R8G8B8A8_UNORM:
+		case DXGI_FORMAT_R8G8B8A8_UNORM_SRGB:
+		case DXGI_FORMAT_B8G8R8A8_UNORM:
+		case DXGI_FORMAT_B8G8R8A8_UNORM_SRGB:
+			return 1.0f / 255.0f;
+		case DXGI_FORMAT_R10G10B10A2_UNORM:
+			return 1.0f / 1023.0f;
+		case DXGI_FORMAT_R16G16B16A16_UNORM:
+			return 1.0f / 65535.0f;
+		default:
+			return 0.0f;
+		}
+	}
 }
 
 void EffectManager::CopyTexture(ID3D11ShaderResourceView* a_source, ID3D11RenderTargetView* a_dest)
@@ -900,7 +1002,14 @@ void EffectManager::CopyTexture(ID3D11ShaderResourceView* a_source, ID3D11Render
 	if (ditherConstantBuffer) {
 		D3D11_MAPPED_SUBRESOURCE mapped;
 		if (SUCCEEDED(context->Map(ditherConstantBuffer.get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped))) {
-			*static_cast<uint32_t*>(mapped.pData) = frameCount;
+			struct DitherCB
+			{
+				uint32_t frameCount;
+				float ditherScale;
+			};
+			auto* cbData = static_cast<DitherCB*>(mapped.pData);
+			cbData->frameCount = frameCount;
+			cbData->ditherScale = GetQuantizationStep(texDesc.Format);
 			context->Unmap(ditherConstantBuffer.get(), 0);
 		}
 		ID3D11Buffer* cbs[] = { ditherConstantBuffer.get() };
