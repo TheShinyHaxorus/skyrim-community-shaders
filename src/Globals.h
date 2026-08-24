@@ -47,6 +47,7 @@ struct ScreenshotFeature;
 struct Skin;
 struct Effects11;
 struct PostProcessing;
+struct ProceduralGrass;
 
 class State;
 class Deferred;
@@ -146,6 +147,7 @@ namespace globals
 		extern Skin skin;
 		extern Effects11 effects11;
 		extern PostProcessing postProcessing;
+		extern ProceduralGrass proceduralGrass;
 
 	}
 

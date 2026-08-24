@@ -171,13 +171,13 @@ public:
 	}
 
 	/** @brief Creates and appends an unordered access view for this buffer. */
-	virtual void CreateUAV()
+	virtual void CreateUAV(bool append = false)
 	{
 		auto device = globals::d3d::device;
 		D3D11_UNORDERED_ACCESS_VIEW_DESC uav_desc{};
 		uav_desc.Format = DXGI_FORMAT_UNKNOWN;
 		uav_desc.ViewDimension = D3D11_UAV_DIMENSION_BUFFER;
-		uav_desc.Buffer.Flags = 0;
+		uav_desc.Buffer.Flags = append ? D3D11_BUFFER_UAV_FLAG_APPEND : 0;
 		uav_desc.Buffer.FirstElement = 0;
 		uav_desc.Buffer.NumElements = count;
 		winrt::com_ptr<ID3D11UnorderedAccessView> uav;
@@ -198,6 +198,21 @@ public:
 		ZeroMemory(&mapped_buffer, sizeof(D3D11_MAPPED_SUBRESOURCE));
 		DX::ThrowIfFailed(ctx->Map(resource.get(), 0u, D3D11_MAP_WRITE_DISCARD, 0u, &mapped_buffer));
 		memcpy(mapped_buffer.pData, src_data, desc.ByteWidth);
+		ctx->Unmap(resource.get(), 0);
+	}
+
+	/**
+	 * @brief Maps and uploads only the first @p data_size bytes via write-discard.
+	 * The remainder of the buffer is left undefined, so use this only when the shader reads a
+	 * bounded prefix (e.g. an active element count) and the per-frame upload should scale with
+	 * usage rather than the full capacity.
+	 */
+	void UpdatePartial(void const* src_data, size_t data_size)
+	{
+		auto ctx = globals::d3d::context;
+		D3D11_MAPPED_SUBRESOURCE mapped_buffer{};
+		DX::ThrowIfFailed(ctx->Map(resource.get(), 0u, D3D11_MAP_WRITE_DISCARD, 0u, &mapped_buffer));
+		memcpy(mapped_buffer.pData, src_data, data_size > desc.ByteWidth ? desc.ByteWidth : data_size);
 		ctx->Unmap(resource.get(), 0);
 	}
 

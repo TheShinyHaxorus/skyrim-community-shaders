@@ -24,6 +24,7 @@
 #include "Features/LinearLighting.h"
 #include "Features/NRD.h"
 #include "Features/PerformanceOverlay.h"
+#include "Features/ProceduralGrass.h"
 #include "Features/RemoteControl.h"
 #include "Features/RenderDoc.h"
 #include "Features/ScreenSpaceGI.h"
@@ -273,7 +274,8 @@ const std::vector<Feature*>& Feature::GetFeatureList()
 		&globals::features::hdrDisplay,
 		&globals::features::skin,
 		&globals::features::snowCover,
-		&globals::features::postProcessing
+		&globals::features::postProcessing,
+		&globals::features::proceduralGrass
 	};
 
 	return features;
