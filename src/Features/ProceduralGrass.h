@@ -14,6 +14,9 @@ public:
 	virtual inline std::string GetShortName() override { return "ProceduralGrass"; }
 	virtual std::string_view GetCategory() const override { return FeatureCategories::kGrass; }
 
+	/** @brief Opt-in only: loading this feature patches the game and replaces vanilla grass rendering. */
+	virtual bool IsDisabledByDefault() const override { return true; }
+
 	virtual std::pair<std::string, std::vector<std::string>> GetFeatureSummary() override
 	{
 		return { T("feature.procedural_grass.description", "Generates configurable, dynamically lit grass across loaded terrain and distant landscape."),
@@ -325,6 +328,11 @@ private:
 	void SaveTextureTypes() const;
 
 	static bool ConsoleFunc_ToggleGrass();
+
+	/** @brief Drives vanilla grass to @p enable, reading BGSGrassManager so repeated calls cannot desync the toggle. */
+	void SetVanillaGrassEnabled(bool enable);
+
+	bool vanillaGrassDisabled = false;
 
 	static std::vector<uint16_t> CreateVertexIndicesArray(uint16_t vertCount);
 

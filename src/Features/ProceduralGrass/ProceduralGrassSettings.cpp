@@ -159,231 +159,219 @@ void ProceduralGrass::DrawSettings()
 	//  Repack the type tables while the feature panel is active so edits remain live, otherwise use cached tables.
 	grassTypesDirty = true;
 
-	ImGui::Checkbox("Enabled", &settings.Enabled);
+	if (ImGui::Checkbox(T("feature.procedural_grass.enabled", "Enabled"), &settings.Enabled))
+		SetVanillaGrassEnabled(!settings.Enabled);
 	DrawSettingDescription(T("feature.procedural_grass.enabled_tooltip", "Enables procedural grass rendering."));
 
-	if (ImGui::Button("Toggle Vanilla Grass Rendering"))
+	if (ImGui::Button(T("feature.procedural_grass.toggle_vanilla_grass", "Toggle Vanilla Grass Rendering"))) {
 		ConsoleFunc_ToggleGrass();
+		vanillaGrassDisabled = !vanillaGrassDisabled;
+	}
+	DrawSettingDescription(T("feature.procedural_grass.toggle_vanilla_grass_tooltip", "Toggles the game's own grass rendering.\n\nProcedural Grass turns it off while enabled; use this if you need it back without disabling the feature."));
 
 	ImGui::Separator();
 
-	if (ImGui::Button("1. Press first")) {
-		if (auto player = RE::PlayerCharacter::GetSingleton()) {
-			player->SetPosition({ 40000.74f, 5069.26f, -4330.91f }, true);
-			player->SetAngle({ 0, 0, DirectX::XMConvertToRadians(90.0f) });
-		}
-	}
-
-	if (ImGui::Button("2. Move to benchmark location")) {
-		if (auto player = RE::PlayerCharacter::GetSingleton()) {
-			player->SetPosition({ 36087.74f, 5069.26f, -4330.91f }, true);
-			player->SetAngle({ 0, 0, DirectX::XMConvertToRadians(90.0f) });
-		}
-	}
-
-	ImGui::Separator();
-
-	ImGui::ColorEdit3("Base Color", reinterpret_cast<float*>(&settings.baseColor));
+	ImGui::ColorEdit3(T("feature.procedural_grass.base_color", "Base Color"), reinterpret_cast<float*>(&settings.baseColor));
 	DrawSettingDescription(T("feature.procedural_grass.base_color_tooltip", "Sets the color at the base of each blade before texture-specific overrides."));
-	ImGui::ColorEdit3("Tip Color", reinterpret_cast<float*>(&settings.tipColor));
+	ImGui::ColorEdit3(T("feature.procedural_grass.tip_color", "Tip Color"), reinterpret_cast<float*>(&settings.tipColor));
 	DrawSettingDescription(T("feature.procedural_grass.tip_color_tooltip", "Sets the color at the tip of each blade before texture-specific overrides."));
 
-	if (ImGui::CollapsingHeader("Colour Variation")) {
-		ImGui::SliderFloat("Hue Variation", &settings.grassColorHueVariation, 0.0f, 1.0f, "%.2f");
+	if (ImGui::CollapsingHeader(T("feature.procedural_grass.colour_variation", "Colour Variation"))) {
+		ImGui::SliderFloat(T("feature.procedural_grass.hue_variation", "Hue Variation"), &settings.grassColorHueVariation, 0.0f, 1.0f, "%.2f");
 		DrawSettingDescription(T("feature.procedural_grass.hue_variation_tooltip", "Randomly shifts blade hue to reduce uniform coloring."));
-		ImGui::SliderFloat("Brightness Variation", &settings.grassColorValueVariation, 0.0f, 1.0f, "%.2f");
+		ImGui::SliderFloat(T("feature.procedural_grass.brightness_variation", "Brightness Variation"), &settings.grassColorValueVariation, 0.0f, 1.0f, "%.2f");
 		DrawSettingDescription(T("feature.procedural_grass.brightness_variation_tooltip", "Randomly varies blade brightness."));
-		ImGui::SliderFloat("Tip Dry Strength", &settings.grassColorTipDryStrength, 0.0f, 1.0f, "%.2f");
+		ImGui::SliderFloat(T("feature.procedural_grass.tip_dry_strength", "Tip Dry Strength"), &settings.grassColorTipDryStrength, 0.0f, 1.0f, "%.2f");
 		DrawSettingDescription(T("feature.procedural_grass.tip_dry_strength_tooltip", "Controls how strongly the dried-tip tint affects blade tips."));
-		ImGui::SliderFloat("Mottle Strength", &settings.grassColorMottleStrength, 0.0f, 0.5f, "%.2f");
+		ImGui::SliderFloat(T("feature.procedural_grass.mottle_strength", "Mottle Strength"), &settings.grassColorMottleStrength, 0.0f, 0.5f, "%.2f");
 		DrawSettingDescription(T("feature.procedural_grass.mottle_strength_tooltip", "Adds broad color variation across each blade."));
 
-		ImGui::SliderFloat3("Cool/Green Tint", reinterpret_cast<float*>(&settings.grassColorCool), 0.0f, 2.0f, "%.2f");
+		ImGui::SliderFloat3(T("feature.procedural_grass.cool_green_tint", "Cool/Green Tint"), reinterpret_cast<float*>(&settings.grassColorCool), 0.0f, 2.0f, "%.2f");
 		DrawSettingDescription(T("feature.procedural_grass.cool_tint_tooltip", "Sets the tint used by cooler blade color variation."));
-		ImGui::SliderFloat3("Warm/Straw Tint", reinterpret_cast<float*>(&settings.grassColorWarm), 0.0f, 2.0f, "%.2f");
+		ImGui::SliderFloat3(T("feature.procedural_grass.warm_straw_tint", "Warm/Straw Tint"), reinterpret_cast<float*>(&settings.grassColorWarm), 0.0f, 2.0f, "%.2f");
 		DrawSettingDescription(T("feature.procedural_grass.warm_tint_tooltip", "Sets the tint used by warmer blade color variation."));
-		ImGui::SliderFloat3("Dried Tip Tint", reinterpret_cast<float*>(&settings.grassColorTipDry), 0.0f, 2.0f, "%.2f");
+		ImGui::SliderFloat3(T("feature.procedural_grass.dried_tip_tint", "Dried Tip Tint"), reinterpret_cast<float*>(&settings.grassColorTipDry), 0.0f, 2.0f, "%.2f");
 		DrawSettingDescription(T("feature.procedural_grass.dried_tip_tint_tooltip", "Sets the color applied to dried blade tips."));
-		ImGui::SliderFloat("Clump Colour Patches", &settings.grassClumpColorStrength, 0.0f, 1.0f, "%.2f");
+		ImGui::SliderFloat(T("feature.procedural_grass.clump_colour_patches", "Clump Colour Patches"), &settings.grassClumpColorStrength, 0.0f, 1.0f, "%.2f");
 		DrawSettingDescription(T("feature.procedural_grass.clump_color_tooltip", "Varies color between neighboring grass clumps."));
 	}
 
-	if (ImGui::CollapsingHeader("Blade Detail")) {
-		ImGui::SliderFloat("Canopy Base Shading", &settings.grassBaseAO, 0.0f, 1.0f, "%.2f");
+	if (ImGui::CollapsingHeader(T("feature.procedural_grass.blade_detail", "Blade Detail"))) {
+		ImGui::SliderFloat(T("feature.procedural_grass.canopy_base_shading", "Canopy Base Shading"), &settings.grassBaseAO, 0.0f, 1.0f, "%.2f");
 		DrawSettingDescription(T("feature.procedural_grass.canopy_base_shading_tooltip", "Darkens blade bases beneath the grass canopy."));
-		ImGui::SliderFloat("Micro Detail", &settings.grassMicroDetail, 0.0f, 1.0f, "%.2f");
+		ImGui::SliderFloat(T("feature.procedural_grass.micro_detail", "Micro Detail"), &settings.grassMicroDetail, 0.0f, 1.0f, "%.2f");
 		DrawSettingDescription(T("feature.procedural_grass.micro_detail_tooltip", "Controls fine surface detail on individual blades."));
 
 		// Surface texture. Grain fades out with distance so it cannot alias into shimmer on the far field.
-		ImGui::SliderFloat("Blotch Strength", &settings.grassBlotchStrength, 0.0f, 1.0f, "%.2f");
+		ImGui::SliderFloat(T("feature.procedural_grass.blotch_strength", "Blotch Strength"), &settings.grassBlotchStrength, 0.0f, 1.0f, "%.2f");
 		DrawSettingDescription(T("feature.procedural_grass.blotch_strength_tooltip", "Controls the intensity of broad surface blotches."));
-		ImGui::SliderFloat("Blotch Scale", &settings.grassBlotchScale, 0.25f, 4.0f, "%.2f");
+		ImGui::SliderFloat(T("feature.procedural_grass.blotch_scale", "Blotch Scale"), &settings.grassBlotchScale, 0.25f, 4.0f, "%.2f");
 		DrawSettingDescription(T("feature.procedural_grass.blotch_scale_tooltip", "Controls the size of broad surface blotches."));
-		ImGui::SliderFloat("Grain Strength", &settings.grassSpeckleStrength, 0.0f, 1.0f, "%.2f");
+		ImGui::SliderFloat(T("feature.procedural_grass.grain_strength", "Grain Strength"), &settings.grassSpeckleStrength, 0.0f, 1.0f, "%.2f");
 		DrawSettingDescription(T("feature.procedural_grass.grain_strength_tooltip", "Controls the intensity of fine blade grain."));
-		ImGui::SliderFloat("Grain Scale", &settings.grassSpeckleScale, 0.25f, 4.0f, "%.2f");
+		ImGui::SliderFloat(T("feature.procedural_grass.grain_scale", "Grain Scale"), &settings.grassSpeckleScale, 0.25f, 4.0f, "%.2f");
 		DrawSettingDescription(T("feature.procedural_grass.grain_scale_tooltip", "Controls the size of fine blade grain."));
 
-		ImGui::SeparatorText("Veins");
-		ImGui::SliderFloat3("Vein Tint", reinterpret_cast<float*>(&settings.grassVeinTint), 0.0f, 2.0f, "%.2f");
+		ImGui::SeparatorText(T("feature.procedural_grass.veins", "Veins"));
+		ImGui::SliderFloat3(T("feature.procedural_grass.vein_tint", "Vein Tint"), reinterpret_cast<float*>(&settings.grassVeinTint), 0.0f, 2.0f, "%.2f");
 		DrawSettingDescription(T("feature.procedural_grass.vein_tint_tooltip", "Sets the color of blade veins."));
-		ImGui::SliderFloat("Vein Tint Strength", &settings.grassVeinAlbedoStrength, 0.0f, 1.0f, "%.2f");
+		ImGui::SliderFloat(T("feature.procedural_grass.vein_tint_strength", "Vein Tint Strength"), &settings.grassVeinAlbedoStrength, 0.0f, 1.0f, "%.2f");
 		DrawSettingDescription(T("feature.procedural_grass.vein_tint_strength_tooltip", "Controls how strongly veins affect blade color."));
-		ImGui::SliderFloat("Vein Normal Strength", &settings.grassVeinNormalStrength, 0.0f, 1.0f, "%.2f");
+		ImGui::SliderFloat(T("feature.procedural_grass.vein_normal_strength", "Vein Normal Strength"), &settings.grassVeinNormalStrength, 0.0f, 1.0f, "%.2f");
 		DrawSettingDescription(T("feature.procedural_grass.vein_normal_strength_tooltip", "Controls how strongly veins affect blade normals."));
-		ImGui::SliderFloat("Vein Ripple Depth", &settings.grassVeinRippleDepth, 0.0f, 1.0f, "%.2f");
+		ImGui::SliderFloat(T("feature.procedural_grass.vein_ripple_depth", "Vein Ripple Depth"), &settings.grassVeinRippleDepth, 0.0f, 1.0f, "%.2f");
 		DrawSettingDescription(T("feature.procedural_grass.vein_ripple_depth_tooltip", "Controls the depth of the rippled vein profile."));
-		ImGui::SliderFloat("Vein Micro-Wiggle", &settings.grassVeinWiggleAmount, 0.0f, 0.25f, "%.3f");
+		ImGui::SliderFloat(T("feature.procedural_grass.vein_micro_wiggle", "Vein Micro-Wiggle"), &settings.grassVeinWiggleAmount, 0.0f, 0.25f, "%.3f");
 		DrawSettingDescription(T("feature.procedural_grass.vein_wiggle_tooltip", "Adds small irregular bends along blade veins."));
 	}
 
-	if (ImGui::CollapsingHeader("Blade Lighting")) {
+	if (ImGui::CollapsingHeader(T("feature.procedural_grass.blade_lighting", "Blade Lighting"))) {
 		// 0 uses each blade's own normal for ambient (noisy), 1 uses straight up (flat but coherent).
-		ImGui::SliderFloat("Ambient Normal Flatten", &settings.grassAmbientFlatten, 0.0f, 1.0f, "%.2f");
+		ImGui::SliderFloat(T("feature.procedural_grass.ambient_normal_flatten", "Ambient Normal Flatten"), &settings.grassAmbientFlatten, 0.0f, 1.0f, "%.2f");
 		DrawSettingDescription(T("feature.procedural_grass.ambient_normal_flatten_tooltip", "Blends blade normals toward vertical for smoother ambient lighting."));
-		ImGui::SliderFloat("Canopy Sky Occlusion", &settings.grassCanopySkyOcclusion, 0.0f, 1.0f, "%.2f");
+		ImGui::SliderFloat(T("feature.procedural_grass.canopy_sky_occlusion", "Canopy Sky Occlusion"), &settings.grassCanopySkyOcclusion, 0.0f, 1.0f, "%.2f");
 		DrawSettingDescription(T("feature.procedural_grass.canopy_sky_occlusion_tooltip", "Reduces skylight beneath dense grass canopies."));
-		ImGui::SliderFloat("Density Occlusion", &settings.grassDensityAO, 0.0f, 1.0f, "%.2f");
+		ImGui::SliderFloat(T("feature.procedural_grass.density_occlusion", "Density Occlusion"), &settings.grassDensityAO, 0.0f, 1.0f, "%.2f");
 		DrawSettingDescription(T("feature.procedural_grass.density_occlusion_tooltip", "Darkens areas containing more overlapping blades."));
-		ImGui::SliderFloat("Terminator Wrap", &settings.grassWrap, 0.0f, 1.0f, "%.2f");
+		ImGui::SliderFloat(T("feature.procedural_grass.terminator_wrap", "Terminator Wrap"), &settings.grassWrap, 0.0f, 1.0f, "%.2f");
 		DrawSettingDescription(T("feature.procedural_grass.terminator_wrap_tooltip", "Wraps direct light around blades to soften the light-shadow boundary."));
-		ImGui::SliderFloat("Anisotropic Specular", &settings.grassAniso, 0.0f, 2.0f, "%.2f");
+		ImGui::SliderFloat(T("feature.procedural_grass.anisotropic_specular", "Anisotropic Specular"), &settings.grassAniso, 0.0f, 2.0f, "%.2f");
 		DrawSettingDescription(T("feature.procedural_grass.anisotropic_specular_tooltip", "Controls elongated highlights along the blade direction."));
-		ImGui::SliderFloat("Ground Bounce", &settings.grassBounceStrength, 0.0f, 2.0f, "%.2f");
+		ImGui::SliderFloat(T("feature.procedural_grass.ground_bounce", "Ground Bounce"), &settings.grassBounceStrength, 0.0f, 2.0f, "%.2f");
 		DrawSettingDescription(T("feature.procedural_grass.ground_bounce_tooltip", "Controls indirect light reflected from the ground onto blades."));
-		ImGui::SliderFloat3("Ground Bounce Tint", reinterpret_cast<float*>(&settings.grassBounceColor), 0.0f, 2.0f, "%.2f");
+		ImGui::SliderFloat3(T("feature.procedural_grass.ground_bounce_tint", "Ground Bounce Tint"), reinterpret_cast<float*>(&settings.grassBounceColor), 0.0f, 2.0f, "%.2f");
 		DrawSettingDescription(T("feature.procedural_grass.ground_bounce_tint_tooltip", "Tints indirect light reflected from the ground."));
-		ImGui::SliderFloat("Sun Self-Shadow", &settings.grassSunSelfShadow, 0.0f, 2.0f, "%.2f");
+		ImGui::SliderFloat(T("feature.procedural_grass.sun_self_shadow", "Sun Self-Shadow"), &settings.grassSunSelfShadow, 0.0f, 2.0f, "%.2f");
 		DrawSettingDescription(T("feature.procedural_grass.sun_self_shadow_tooltip", "Controls direct-light shadowing within the grass canopy."));
-		ImGui::SliderFloat("Specular Occlusion", &settings.grassSpecOcclusion, 0.0f, 1.0f, "%.2f");
+		ImGui::SliderFloat(T("feature.procedural_grass.specular_occlusion", "Specular Occlusion"), &settings.grassSpecOcclusion, 0.0f, 1.0f, "%.2f");
 		DrawSettingDescription(T("feature.procedural_grass.specular_occlusion_tooltip", "Suppresses highlights in occluded parts of the canopy."));
-		ImGui::SliderFloat("Ambient Desaturation", &settings.grassAmbientDesat, 0.0f, 1.0f, "%.2f");
+		ImGui::SliderFloat(T("feature.procedural_grass.ambient_desaturation", "Ambient Desaturation"), &settings.grassAmbientDesat, 0.0f, 1.0f, "%.2f");
 		DrawSettingDescription(T("feature.procedural_grass.ambient_desaturation_tooltip", "Removes color from ambient light on grass."));
 	}
 
-	if (ImGui::CollapsingHeader("Terrain Blend")) {
+	if (ImGui::CollapsingHeader(T("feature.procedural_grass.terrain_blend", "Terrain Blend"))) {
 		// Blade bases dither-dissolve into the real terrain in the GBuffer, softening the hard base edge.
-		ImGui::SliderFloat("Base Dissolve", &settings.grassTerrainBlendStrength, 0.0f, 1.0f, "%.2f");
+		ImGui::SliderFloat(T("feature.procedural_grass.base_dissolve", "Base Dissolve"), &settings.grassTerrainBlendStrength, 0.0f, 1.0f, "%.2f");
 		DrawSettingDescription(T("feature.procedural_grass.base_dissolve_tooltip", "Dissolves blade bases into the terrain to hide their intersection."));
-		ImGui::SliderFloat("Dissolve Height (units)", &settings.grassTerrainBlendHeight, 0.0f, 60.0f, "%.1f");
+		ImGui::SliderFloat(T("feature.procedural_grass.dissolve_height_units", "Dissolve Height (units)"), &settings.grassTerrainBlendHeight, 0.0f, 60.0f, "%.1f");
 		DrawSettingDescription(T("feature.procedural_grass.dissolve_height_tooltip", "Sets how far the terrain blend extends up each blade."));
-		ImGui::SliderFloat("Base Normal Flatten", &settings.grassTerrainBlendNormal, 0.0f, 1.0f, "%.2f");
+		ImGui::SliderFloat(T("feature.procedural_grass.base_normal_flatten", "Base Normal Flatten"), &settings.grassTerrainBlendNormal, 0.0f, 1.0f, "%.2f");
 		DrawSettingDescription(T("feature.procedural_grass.base_normal_flatten_tooltip", "Blends blade-base normals toward the terrain normal."));
-		ImGui::SliderFloat("Base Roughness", &settings.grassTerrainBlendRough, 0.0f, 1.0f, "%.2f");
+		ImGui::SliderFloat(T("feature.procedural_grass.base_roughness", "Base Roughness"), &settings.grassTerrainBlendRough, 0.0f, 1.0f, "%.2f");
 		DrawSettingDescription(T("feature.procedural_grass.base_roughness_tooltip", "Sets blade roughness near the terrain intersection."));
 	}
 
 	ImGui::Separator();
 
-	ImGui::SliderFloat("Height", &settings.grassHeight, 0.0f, 150.0f, "%.1f");
+	ImGui::SliderFloat(T("feature.procedural_grass.height", "Height"), &settings.grassHeight, 0.0f, 150.0f, "%.1f");
 	DrawSettingDescription(T("feature.procedural_grass.height_tooltip", "Sets the default blade height in world units."));
-	ImGui::SliderFloat("Width", &settings.grassWidth, 0.0f, 10.0f, "%.1f");
+	ImGui::SliderFloat(T("feature.procedural_grass.width", "Width"), &settings.grassWidth, 0.0f, 10.0f, "%.1f");
 	DrawSettingDescription(T("feature.procedural_grass.width_tooltip", "Sets the default blade width."));
-	ImGui::SliderFloat("View Thicken", &settings.grassViewThicken, 0.0f, 2.0f, "%.2f");
+	ImGui::SliderFloat(T("feature.procedural_grass.view_thicken", "View Thicken"), &settings.grassViewThicken, 0.0f, 2.0f, "%.2f");
 	DrawSettingDescription(T("feature.procedural_grass.view_thicken_tooltip", "Widens blades viewed edge-on to keep them visible."));
-	ImGui::SliderFloat("K1", &settings.stiffness, -10.0f, 10.0f, "%.2f");
+	ImGui::SliderFloat(T("feature.procedural_grass.k1", "K1"), &settings.stiffness, -10.0f, 10.0f, "%.2f");
 	DrawSettingDescription(T("feature.procedural_grass.k1_tooltip", "Controls random sideways curvature through the middle of each blade."));
-	ImGui::SliderFloat("K2", &settings.tipWeight, -10.0f, 10.0f, "%.2f");
+	ImGui::SliderFloat(T("feature.procedural_grass.k2", "K2"), &settings.tipWeight, -10.0f, 10.0f, "%.2f");
 	DrawSettingDescription(T("feature.procedural_grass.k2_tooltip", "Controls the random tilt applied to blade tips."));
-	ImGui::SliderFloat("Mid", &settings.mid, 0.0f, 1.0f, "%.2f");
+	ImGui::SliderFloat(T("feature.procedural_grass.mid", "Mid"), &settings.mid, 0.0f, 1.0f, "%.2f");
 	DrawSettingDescription(T("feature.procedural_grass.mid_tooltip", "Positions the middle control point along the blade to shape its curve."));
-	ImGui::SliderFloat("Rotational Stiffness", &settings.rotationalStiffness, 0.0f, 10.0f, "%.2f");
+	ImGui::SliderFloat(T("feature.procedural_grass.rotational_stiffness", "Rotational Stiffness"), &settings.rotationalStiffness, 0.0f, 10.0f, "%.2f");
 	DrawSettingDescription(T("feature.procedural_grass.rotational_stiffness_tooltip", "Controls how strongly blades resist rotating to face the wind."));
 
 	ImGui::Separator();
 
-	ImGui::SliderFloat("Baked Min AO", &settings.ao, 0.0f, 1.0f, "%.2f");
+	ImGui::SliderFloat(T("feature.procedural_grass.baked_min_ao", "Baked Min AO"), &settings.ao, 0.0f, 1.0f, "%.2f");
 	DrawSettingDescription(T("feature.procedural_grass.baked_min_ao_tooltip", "Sets the minimum ambient occlusion baked into each blade."));
-	ImGui::SliderFloat2("Subsurface Opacity (Base>Tip)", reinterpret_cast<float*>(&settings.subsurfaceOpacity), 0.0f, 1.0f, "%.2f");
+	ImGui::SliderFloat2(T("feature.procedural_grass.subsurface_opacity_base_tip", "Subsurface Opacity (Base>Tip)"), reinterpret_cast<float*>(&settings.subsurfaceOpacity), 0.0f, 1.0f, "%.2f");
 	DrawSettingDescription(T("feature.procedural_grass.subsurface_opacity_tooltip", "Sets blade opacity at the base and tip. Higher values transmit less light."));
-	ImGui::SliderFloat3("Subsurface Color", reinterpret_cast<float*>(&settings.grassSubsurfaceTint), 0.0f, 2.0f, "%.2f");
+	ImGui::SliderFloat3(T("feature.procedural_grass.subsurface_color", "Subsurface Color"), reinterpret_cast<float*>(&settings.grassSubsurfaceTint), 0.0f, 2.0f, "%.2f");
 	DrawSettingDescription(T("feature.procedural_grass.subsurface_color_tooltip", "Tints light transmitted through blades."));
-	ImGui::SliderFloat("Specular", &settings.specular, 0.0f, 1.0f, "%.2f");
+	ImGui::SliderFloat(T("feature.procedural_grass.specular", "Specular"), &settings.specular, 0.0f, 1.0f, "%.2f");
 	DrawSettingDescription(T("feature.procedural_grass.specular_tooltip", "Controls the strength of blade highlights."));
-	ImGui::SliderFloat3("Roughness (Base>Min>Tip)", reinterpret_cast<float*>(&settings.baseMinTipRoughness), 0.0f, 1.0f, "%.2f");
+	ImGui::SliderFloat3(T("feature.procedural_grass.roughness_base_min_tip", "Roughness (Base>Min>Tip)"), reinterpret_cast<float*>(&settings.baseMinTipRoughness), 0.0f, 1.0f, "%.2f");
 	DrawSettingDescription(T("feature.procedural_grass.roughness_tooltip", "Sets roughness at the blade base, minimum point, and tip."));
 	// Kept off 0 and 1 so neither smoothstep in the vertex shader collapses to a zero-width range.
-	ImGui::SliderFloat("Roughness Tip Start", &settings.tipRoughnessStart, 0.05f, 0.95f, "%.2f");
+	ImGui::SliderFloat(T("feature.procedural_grass.roughness_tip_start", "Roughness Tip Start"), &settings.tipRoughnessStart, 0.05f, 0.95f, "%.2f");
 	DrawSettingDescription(T("feature.procedural_grass.roughness_tip_start_tooltip", "Sets where roughness begins transitioning toward the tip value."));
-	ImGui::SliderFloat("Clump AO Strength", &settings.clumpAOStrength, 0.0f, 1.0f, "%.2f");
+	ImGui::SliderFloat(T("feature.procedural_grass.clump_ao_strength", "Clump AO Strength"), &settings.clumpAOStrength, 0.0f, 1.0f, "%.2f");
 	DrawSettingDescription(T("feature.procedural_grass.clump_ao_tooltip", "Controls ambient occlusion between blades in a clump."));
 
 	ImGui::Separator();
 
-	ImGui::SliderFloat("Terrain Shadow Strength", &settings.grassAOStrength, 0.0f, 2.0f, "%.2f");
+	ImGui::SliderFloat(T("feature.procedural_grass.terrain_shadow_strength", "Terrain Shadow Strength"), &settings.grassAOStrength, 0.0f, 2.0f, "%.2f");
 	DrawSettingDescription(T("feature.procedural_grass.terrain_shadow_strength_tooltip", "Controls how strongly grass darkens the terrain beneath it."));
-	ImGui::SliderFloat("Terrain Shadow Density", &settings.grassAODensity, 1.0f, 64.0f, "%.0f");
+	ImGui::SliderFloat(T("feature.procedural_grass.terrain_shadow_density", "Terrain Shadow Density"), &settings.grassAODensity, 1.0f, 64.0f, "%.0f");
 	DrawSettingDescription(T("feature.procedural_grass.terrain_shadow_density_tooltip", "Controls how quickly terrain darkening builds with grass density."));
 
 	ImGui::Separator();
 
-	ImGui::SliderInt("Clump Grid Size", &settings.voronoiGridSize, 1, 4096);
+	ImGui::SliderInt(T("feature.procedural_grass.clump_grid_size", "Clump Grid Size"), &settings.voronoiGridSize, 1, 4096);
 	DrawSettingDescription(T("feature.procedural_grass.clump_grid_size_tooltip", "Sets the average spacing between generated grass clumps."));
-	ImGui::SliderFloat("Clump Distance Factor", &settings.clumpDistanceFactor, 0.0f, 1.0f, "%.2f");
+	ImGui::SliderFloat(T("feature.procedural_grass.clump_distance_factor", "Clump Distance Factor"), &settings.clumpDistanceFactor, 0.0f, 1.0f, "%.2f");
 	DrawSettingDescription(T("feature.procedural_grass.clump_distance_tooltip", "Pulls blades toward their clump center."));
-	ImGui::SliderFloat("Clump Facing Factor", &settings.clumpFacingFactor, 0.0f, 1.0f, "%.2f");
+	ImGui::SliderFloat(T("feature.procedural_grass.clump_facing_factor", "Clump Facing Factor"), &settings.clumpFacingFactor, 0.0f, 1.0f, "%.2f");
 	DrawSettingDescription(T("feature.procedural_grass.clump_facing_tooltip", "Turns blades toward their clump center."));
-	ImGui::SliderFloat("Clump Height Factor", &settings.clumpHeightFactor, 0.0f, 2.0f, "%.2f");
+	ImGui::SliderFloat(T("feature.procedural_grass.clump_height_factor", "Clump Height Factor"), &settings.clumpHeightFactor, 0.0f, 2.0f, "%.2f");
 	DrawSettingDescription(T("feature.procedural_grass.clump_height_tooltip", "Varies blade height between grass clumps."));
 
 	ImGui::Separator();
 
 	// Cull is disabled at 90 degrees, lower trims grass off cliffs first.
-	ImGui::SliderFloat("Max Slope (deg)", &settings.grassMaxSlope, 0.0f, 90.0f, "%.0f");
+	ImGui::SliderFloat(T("feature.procedural_grass.max_slope_deg", "Max Slope (deg)"), &settings.grassMaxSlope, 0.0f, 90.0f, "%.0f");
 	DrawSettingDescription(T("feature.procedural_grass.max_slope_tooltip", "Stops normal grass from growing on slopes above this angle. 90 disables the limit."));
-	ImGui::SliderFloat("Min Slope (deg)", &settings.grassMinSlope, 0.0f, 90.0f, "%.0f");
+	ImGui::SliderFloat(T("feature.procedural_grass.min_slope_deg", "Min Slope (deg)"), &settings.grassMinSlope, 0.0f, 90.0f, "%.0f");
 	DrawSettingDescription(T("feature.procedural_grass.min_slope_tooltip", "Stops grass from growing on slopes below this angle."));
-	ImGui::SliderFloat("Slope Facing", &settings.grassSlopeFacing, 0.0f, 1.0f, "%.2f");
+	ImGui::SliderFloat(T("feature.procedural_grass.slope_facing", "Slope Facing"), &settings.grassSlopeFacing, 0.0f, 1.0f, "%.2f");
 	DrawSettingDescription(T("feature.procedural_grass.slope_facing_tooltip", "Leans blades downhill based on terrain steepness."));
 
 	ImGui::Separator();
 
-	ImGui::SeparatorText("Wind and Occlusion");
-	if (ImGui::SliderAngle("Wind Direction", &settings.windAngle)) {
+	ImGui::SeparatorText(T("feature.procedural_grass.wind_and_occlusion", "Wind and Occlusion"));
+	if (ImGui::SliderAngle(T("feature.procedural_grass.wind_direction", "Wind Direction"), &settings.windAngle)) {
 		windDirection = float2(cos(settings.windAngle), sin(settings.windAngle));
 	}
 	DrawSettingDescription(T("feature.procedural_grass.wind_direction_tooltip", "Sets the horizontal direction of grass movement."));
 
-	ImGui::SliderFloat("Wind Speed", &settings.windSpeed, 0.0f, 1.0f);
+	ImGui::SliderFloat(T("feature.procedural_grass.wind_speed", "Wind Speed"), &settings.windSpeed, 0.0f, 1.0f);
 	DrawSettingDescription(T("feature.procedural_grass.wind_speed_tooltip", "Controls how quickly wind waves move through the grass."));
 
-	ImGui::SliderFloat("Phase Offset", &settings.phaseOffset, 0.0f, 10.0f);
+	ImGui::SliderFloat(T("feature.procedural_grass.phase_offset", "Phase Offset"), &settings.phaseOffset, 0.0f, 10.0f);
 	DrawSettingDescription(T("feature.procedural_grass.phase_offset_tooltip", "Legacy wind control retained for configuration compatibility; currently unused."));
-	ImGui::SliderFloat("Phase Lag", &settings.phaseLag, 0.0f, 1.0f);
+	ImGui::SliderFloat(T("feature.procedural_grass.phase_lag", "Phase Lag"), &settings.phaseLag, 0.0f, 1.0f);
 	DrawSettingDescription(T("feature.procedural_grass.phase_lag_tooltip", "Legacy wind control retained for configuration compatibility; currently unused."));
-	ImGui::SliderFloat("Spatial Freq", &settings.spatialFreq, 0.0f, 100.0f);
+	ImGui::SliderFloat(T("feature.procedural_grass.spatial_freq", "Spatial Freq"), &settings.spatialFreq, 0.0f, 100.0f);
 	DrawSettingDescription(T("feature.procedural_grass.spatial_frequency_tooltip", "Legacy wind control retained for configuration compatibility; currently unused."));
 	ImGui::Separator();
 
-	ImGui::SliderFloat("Occluder Padding (units)", &settings.occlusionPadding, 0.0f, 128.0f, "%.0f");
+	ImGui::SliderFloat(T("feature.procedural_grass.occluder_padding_units", "Occluder Padding (units)"), &settings.occlusionPadding, 0.0f, 128.0f, "%.0f");
 	DrawSettingDescription(T("feature.procedural_grass.occluder_padding_tooltip", "Expands occluder footprints to remove grass around object edges."));
-	ImGui::SliderFloat("Occluder Height Bias (units)", &settings.occlusionBias, 0.0f, 64.0f, "%.1f");
+	ImGui::SliderFloat(T("feature.procedural_grass.occluder_height_bias_units", "Occluder Height Bias (units)"), &settings.occlusionBias, 0.0f, 64.0f, "%.1f");
 	DrawSettingDescription(T("feature.procedural_grass.occluder_bias_tooltip", "Sets how far an occluder must extend above a blade position before suppressing grass."));
 	// Cull grass only where an occluder's underside is within this height of the ground.
-	ImGui::SliderFloat("Occlusion Clearance (units)", &settings.occlusionClearance, 0.0f, 512.0f, "%.0f");
+	ImGui::SliderFloat(T("feature.procedural_grass.occlusion_clearance_units", "Occlusion Clearance (units)"), &settings.occlusionClearance, 0.0f, 512.0f, "%.0f");
 	DrawSettingDescription(T("feature.procedural_grass.occlusion_clearance_tooltip", "Sets the maximum gap between terrain and an object that can suppress grass."));
 	ImGui::Separator();
 
-	ImGui::SeparatorText("LOD Density");
-	if (ImGui::SliderInt("Density (High LOD)", &settings.Quality, 0, static_cast<uint8_t>(Quality::Count) - 1, QualityNames[settings.Quality], ImGuiSliderFlags_AlwaysClamp | ImGuiSliderFlags_NoInput))
+	ImGui::SeparatorText(T("feature.procedural_grass.lod_density", "LOD Density"));
+	if (ImGui::SliderInt(T("feature.procedural_grass.density_high_lod", "Density (High LOD)"), &settings.Quality, 0, static_cast<uint8_t>(Quality::Count) - 1, QualityNames[settings.Quality], ImGuiSliderFlags_AlwaysClamp | ImGuiSliderFlags_NoInput))
 		grassRendererHighLOD->SetDensity(QualityDensities[settings.Quality]);
 	DrawSettingDescription(T("feature.procedural_grass.high_density_tooltip", "Sets blade density in the closest, highest-detail grass tier."));
-	if (ImGui::SliderInt("Density (Mid LOD)", &settings.midGrassDensity, 8, 320, "%d", ImGuiSliderFlags_AlwaysClamp))
+	if (ImGui::SliderInt(T("feature.procedural_grass.density_mid_lod", "Density (Mid LOD)"), &settings.midGrassDensity, 8, 320, "%d", ImGuiSliderFlags_AlwaysClamp))
 		grassRendererMidLOD->SetDensity(static_cast<uint32_t>(settings.midGrassDensity));
 	DrawSettingDescription(T("feature.procedural_grass.mid_density_tooltip", "Sets blade density in the middle-distance grass tier."));
-	if (ImGui::SliderInt("Density (Low LOD)", &settings.lowGrassDensity, 8, 320, "%d", ImGuiSliderFlags_AlwaysClamp)) {
+	if (ImGui::SliderInt(T("feature.procedural_grass.density_low_lod", "Density (Low LOD)"), &settings.lowGrassDensity, 8, 320, "%d", ImGuiSliderFlags_AlwaysClamp)) {
 		grassRendererLowLOD->SetDensity(static_cast<uint32_t>(settings.lowGrassDensity));
 		grassRendererFarLOD->SetDensity(FarPatchDensity());
 	}
 	DrawSettingDescription(T("feature.procedural_grass.low_density_tooltip", "Sets blade density in the low-detail grass tier and scales far-tier density."));
 
-	if (ImGui::SliderInt("Far Grass Radius (cells)", &settings.grassCellRadius, 0, 15, "%d", ImGuiSliderFlags_AlwaysClamp))
+	if (ImGui::SliderInt(T("feature.procedural_grass.far_grass_radius_cells", "Far Grass Radius (cells)"), &settings.grassCellRadius, 0, 15, "%d", ImGuiSliderFlags_AlwaysClamp))
 		grassRendererFarLOD->SetBladeQuadrantCapacity(FarBladeQuadrantCapacity());
 	DrawSettingDescription(T("feature.procedural_grass.far_radius_tooltip", "Sets how many exterior cells beyond loaded grass receive the far grass tier."));
-	if (ImGui::SliderInt("Far Grass Density", &settings.farGrassDensity, 8, 160, "%d", ImGuiSliderFlags_AlwaysClamp))
+	if (ImGui::SliderInt(T("feature.procedural_grass.far_grass_density", "Far Grass Density"), &settings.farGrassDensity, 8, 160, "%d", ImGuiSliderFlags_AlwaysClamp))
 		grassRendererFarLOD->SetDensity(FarPatchDensity());
 	DrawSettingDescription(T("feature.procedural_grass.far_density_tooltip", "Sets blade density in the far grass tier."));
-	ImGui::SliderFloat("Far Edge Density", &settings.farDensityFalloff, 0.0f, 1.0f, "%.2f");
+	ImGui::SliderFloat(T("feature.procedural_grass.far_edge_density", "Far Edge Density"), &settings.farDensityFalloff, 0.0f, 1.0f, "%.2f");
 	DrawSettingDescription(T("feature.procedural_grass.far_edge_density_tooltip", "Sets the remaining grass density at the outer edge of the far tier."));
 
 	ImGui::Separator();
@@ -392,15 +380,15 @@ void ProceduralGrass::DrawSettings()
 
 	ImGui::Separator();
 
-	if (ImGui::CollapsingHeader("Debug")) {
+	if (ImGui::CollapsingHeader(T("feature.procedural_grass.debug", "Debug"))) {
 		bool invalidate = false;
-		invalidate |= ImGui::Checkbox("Ignore grass map (LTEX)", &settings.debugIgnoreGrassMap);
+		invalidate |= ImGui::Checkbox(T("feature.procedural_grass.ignore_grass_map_ltex", "Ignore grass map (LTEX)"), &settings.debugIgnoreGrassMap);
 		DrawSettingDescription(T("feature.procedural_grass.debug_ignore_grass_map_tooltip", "Generates grass without consulting landscape texture grass assignments."));
-		ImGui::Checkbox("Ignore object occlusion", &settings.debugIgnoreObjectOcclusion);
+		ImGui::Checkbox(T("feature.procedural_grass.ignore_object_occlusion", "Ignore object occlusion"), &settings.debugIgnoreObjectOcclusion);
 		DrawSettingDescription(T("feature.procedural_grass.debug_ignore_occlusion_tooltip", "Disables removal of grass beneath or inside occluding objects."));
-		ImGui::SliderFloat("Grass map edge noise (units)", &settings.grassMapEdgeNoise, 0.0f, 256.0f, "%.0f");
+		ImGui::SliderFloat(T("feature.procedural_grass.grass_map_edge_noise_units", "Grass map edge noise (units)"), &settings.grassMapEdgeNoise, 0.0f, 256.0f, "%.0f");
 		DrawSettingDescription(T("feature.procedural_grass.debug_edge_noise_tooltip", "Jitters grass-map sampling near texture boundaries to soften distribution edges."));
-		if (ImGui::SliderFloat("Occlusion half extent", &settings.occlusionHalfExtent, 1024.0f, 16384.0f, "%.0f"))
+		if (ImGui::SliderFloat(T("feature.procedural_grass.occlusion_half_extent", "Occlusion half extent"), &settings.occlusionHalfExtent, 1024.0f, 16384.0f, "%.0f"))
 			TopDownOcclusion::GetSingleton()->SetHalfExtent(settings.occlusionHalfExtent);
 		DrawSettingDescription(T("feature.procedural_grass.debug_occlusion_extent_tooltip", "Sets the half-width of the world-space object-occlusion window."));
 		{
@@ -411,9 +399,9 @@ void ProceduralGrass::DrawSettings()
 				centre.x, centre.y, td->GetHalfExtent(), td->GetHalfExtent() * 2.0f / td->GetMapDim());
 			ImGui::Text("Occluders drawn: %u", td->GetDrawCount());
 		}
-		ImGui::Checkbox("Disable ALL generator culls", &settings.debugDisableAllCulls);
+		ImGui::Checkbox(T("feature.procedural_grass.disable_all_generator_culls", "Disable ALL generator culls"), &settings.debugDisableAllCulls);
 		DrawSettingDescription(T("feature.procedural_grass.debug_disable_culls_tooltip", "Disables generator rejection tests for debugging."));
-		ImGui::Checkbox("Ignore preprocessed-node check", &settings.debugIgnorePreProcessedFlag);
+		ImGui::Checkbox(T("feature.procedural_grass.ignore_preprocessed_node_check", "Ignore preprocessed-node check"), &settings.debugIgnorePreProcessedFlag);
 		DrawSettingDescription(T("feature.procedural_grass.debug_ignore_preprocessed_tooltip", "Includes LAND meshes that are not marked as preprocessed."));
 		if (invalidate) {
 			grassMapCache.clear();
@@ -469,7 +457,7 @@ void ProceduralGrass::DrawSettings()
 
 void ProceduralGrass::DrawGrassTypeEditor()
 {
-	if (!ImGui::CollapsingHeader("Grass Types"))
+	if (!ImGui::CollapsingHeader(T("feature.procedural_grass.grass_types", "Grass Types")))
 		return;
 
 	ImGui::TextWrapped(
@@ -537,7 +525,7 @@ void ProceduralGrass::DrawGrassTypeEditor()
 	};
 
 	const auto renderOverrides = [&](nlohmann::json& ov) {
-		ImGui::SeparatorText("Shape");
+		ImGui::SeparatorText(T("feature.procedural_grass.shape", "Shape"));
 		fFloat(ov, "Height", "Height", s.grassHeight, 0.0f, 150.0f, "%.1f");
 		fFloat(ov, "Width", "Width", s.grassWidth, 0.0f, 10.0f, "%.1f");
 		fFloat(ov, "Stiffness", "K1", s.stiffness, -10.0f, 10.0f);
@@ -545,18 +533,18 @@ void ProceduralGrass::DrawGrassTypeEditor()
 		fFloat(ov, "Mid", "Mid", s.mid, 0.0f, 1.0f);
 		fFloat(ov, "RotationalStiffness", "Rotational Stiffness", s.rotationalStiffness, 0.0f, 10.0f);
 
-		ImGui::SeparatorText("Slope");
+		ImGui::SeparatorText(T("feature.procedural_grass.slope", "Slope"));
 		fFloat(ov, "MinSlope", "Min Slope (deg)", s.grassMinSlope, 0.0f, 90.0f, "%.0f");
 		fFloat(ov, "MaxSlope", "Max Slope (deg)", s.grassMaxSlope, 0.0f, 90.0f, "%.0f");
 
-		ImGui::SeparatorText("Clump");
+		ImGui::SeparatorText(T("feature.procedural_grass.clump", "Clump"));
 		fFloat(ov, "ClumpDistanceFactor", "Clump Distance", s.clumpDistanceFactor, 0.0f, 1.0f);
 		fFloat(ov, "ClumpFacingFactor", "Clump Facing", s.clumpFacingFactor, 0.0f, 1.0f);
 		fFloat(ov, "ClumpHeightFactor", "Clump Height", s.clumpHeightFactor, 0.0f, 2.0f);
 		fFloat(ov, "ClumpAOStrength", "Clump AO", s.clumpAOStrength, 0.0f, 1.0f);
 		fFloat(ov, "ClumpColorStrength", "Clump Colour", s.grassClumpColorStrength, 0.0f, 1.0f);
 
-		ImGui::SeparatorText("Colour");
+		ImGui::SeparatorText(T("feature.procedural_grass.colour", "Colour"));
 		fFloat3(ov, "BaseColor", "Base Color", s.baseColor, 0.0f, 1.0f, true);
 		fFloat3(ov, "TipColor", "Tip Color", s.tipColor, 0.0f, 1.0f, true);
 		fFloat3(ov, "ColorTipDry", "Dried Tip Tint", s.grassColorTipDry, 0.0f, 2.0f, false);
@@ -567,7 +555,7 @@ void ProceduralGrass::DrawGrassTypeEditor()
 		fFloat(ov, "TipDryStrength", "Tip Dry Strength", s.grassColorTipDryStrength, 0.0f, 1.0f);
 		fFloat(ov, "MottleStrength", "Mottle Strength", s.grassColorMottleStrength, 0.0f, 0.5f);
 
-		ImGui::SeparatorText("Lighting");
+		ImGui::SeparatorText(T("feature.procedural_grass.lighting", "Lighting"));
 		fFloat(ov, "MinAO", "Baked Min AO", s.ao, 0.0f, 1.0f);
 		fFloat(ov, "Specular", "Specular", s.specular, 0.0f, 1.0f);
 		fFloat2(ov, "SubsurfaceOpacity", "Subsurface (Base>Tip)", s.subsurfaceOpacity, 0.0f, 1.0f);
@@ -583,7 +571,7 @@ void ProceduralGrass::DrawGrassTypeEditor()
 		fFloat(ov, "SpecOcclusion", "Specular Occlusion", s.grassSpecOcclusion, 0.0f, 1.0f);
 		fFloat(ov, "AmbientDesat", "Ambient Desaturation", s.grassAmbientDesat, 0.0f, 1.0f);
 
-		ImGui::SeparatorText("Surface & Wind");
+		ImGui::SeparatorText(T("feature.procedural_grass.surface_wind", "Surface & Wind"));
 		fFloat(ov, "BlotchStrength", "Blotch Strength", s.grassBlotchStrength, 0.0f, 1.0f);
 		fFloat(ov, "BlotchScale", "Blotch Scale", s.grassBlotchScale, 0.25f, 4.0f);
 		fFloat(ov, "SpeckleStrength", "Grain Strength", s.grassSpeckleStrength, 0.0f, 1.0f);
@@ -592,7 +580,7 @@ void ProceduralGrass::DrawGrassTypeEditor()
 		fFloat(ov, "PhaseOffset", "Phase Offset", s.phaseOffset, 0.0f, 10.0f);
 		fFloat(ov, "PhaseLag", "Phase Lag", s.phaseLag, 0.0f, 1.0f);
 
-		ImGui::SeparatorText("Veins");
+		ImGui::SeparatorText(T("feature.procedural_grass.veins", "Veins"));
 		fFloat3(ov, "VeinTint", "Vein Tint", s.grassVeinTint, 0.0f, 2.0f, false);
 		fFloat(ov, "VeinAlbedoStrength", "Vein Tint Strength", s.grassVeinAlbedoStrength, 0.0f, 1.0f);
 		fFloat(ov, "VeinNormalStrength", "Vein Normal Strength", s.grassVeinNormalStrength, 0.0f, 1.0f);
@@ -600,19 +588,19 @@ void ProceduralGrass::DrawGrassTypeEditor()
 		fFloat(ov, "VeinWiggleAmount", "Vein Micro-Wiggle", s.grassVeinWiggleAmount, 0.0f, 0.25f);
 
 		ImGui::Spacing();
-		if (ImGui::Button("Clear all overrides"))
+		if (ImGui::Button(T("feature.procedural_grass.clear_all_overrides", "Clear all overrides")))
 			ov = nlohmann::json::object();
 	};
 
 	static char filter[128] = "";
-	ImGui::InputTextWithHint("Filter", "editor id / plugin", filter, sizeof(filter));
+	ImGui::InputTextWithHint(T("feature.procedural_grass.filter", "Filter"), T("feature.procedural_grass.filter_hint", "editor id / plugin"), filter, sizeof(filter));
 	static bool onlyGrass = true;
 	ImGui::SameLine();
-	ImGui::Checkbox("Only grass-growing", &onlyGrass);
+	ImGui::Checkbox(T("feature.procedural_grass.only_grass_growing", "Only grass-growing"), &onlyGrass);
 
 	auto* dataHandler = RE::TESDataHandler::GetSingleton();
 	if (!dataHandler) {
-		ImGui::TextDisabled("Data handler unavailable (not in a loaded game).");
+		ImGui::TextDisabled("%s", T("feature.procedural_grass.data_handler_unavailable", "Data handler unavailable (not in a loaded game)."));
 		return;
 	}
 
@@ -641,7 +629,7 @@ void ProceduralGrass::DrawGrassTypeEditor()
 			if (!matchesFilter(name, filter) && !matchesFilter(key, filter))
 				continue;
 
-			if (!ImGui::TreeNode(key.c_str(), "%s   %s[%zu type%s]", name.c_str(), growsVanillaGrass ? "" : "(no vanilla grass) ", count, count == 1 ? "" : "s"))
+			if (!ImGui::TreeNode(key.c_str(), "%s   %s[%zu type%s]", name.c_str(), growsVanillaGrass ? "" : T("feature.procedural_grass.no_vanilla_grass_marker", "(no vanilla grass) "), count, count == 1 ? "" : "s"))
 				continue;
 
 			ImGui::TextDisabled("%s", key.c_str());
@@ -661,21 +649,21 @@ void ProceduralGrass::DrawGrassTypeEditor()
 				ImGui::Text("Variant %u", i + 1);
 				ImGui::SameLine();
 				ImGui::PushItemWidth(90.0f);
-				if (ImGui::DragFloat("Weight", &def.weight, 0.1f, 0.0f, 100.0f, "%.1f"))
+				if (ImGui::DragFloat(T("feature.procedural_grass.weight", "Weight"), &def.weight, 0.1f, 0.0f, 100.0f, "%.1f"))
 					typesChanged = true;
 				ImGui::PopItemWidth();
 				ImGui::SameLine();
 				ImGui::TextDisabled("(%.0f%%)", pct);
 				ImGui::SameLine();
-				if (ImGui::SmallButton("Remove"))
+				if (ImGui::SmallButton(T("feature.procedural_grass.remove", "Remove")))
 					removeIndex = static_cast<int>(i);
 
-				if (ImGui::Checkbox("No Grass", &def.noGrass))
+				if (ImGui::Checkbox(T("feature.procedural_grass.no_grass", "No Grass"), &def.noGrass))
 					typesChanged = true;
 				DrawSettingDescription(T("feature.procedural_grass.no_grass_tooltip", "Makes this weighted variant produce bare terrain instead of grass."));
 
 				ImGui::BeginDisabled(def.noGrass);
-				if (ImGui::TreeNode("Overrides", "Overrides (%zu set)", def.overrides.is_object() ? def.overrides.size() : 0)) {
+				if (ImGui::TreeNode("Overrides", T("feature.procedural_grass.overrides_count", "Overrides (%zu set)"), def.overrides.is_object() ? def.overrides.size() : 0)) {
 					renderOverrides(def.overrides);
 					ImGui::TreePop();
 				}
@@ -691,12 +679,12 @@ void ProceduralGrass::DrawGrassTypeEditor()
 			}
 
 			if (typeAllocation.size() + 2 < PGrassCommon::MaxGrassTypes) {
-				if (ImGui::SmallButton("Add variant")) {
+				if (ImGui::SmallButton(T("feature.procedural_grass.add_variant", "Add variant"))) {
 					defs.push_back({});
 					typesChanged = true;
 				}
 			} else {
-				ImGui::TextDisabled("Type pool full (%u).", PGrassCommon::MaxGrassTypes - 2);
+				ImGui::TextDisabled(T("feature.procedural_grass.type_pool_full", "Type pool full (%u)."), PGrassCommon::MaxGrassTypes - 2);
 			}
 
 			if (defs.empty())

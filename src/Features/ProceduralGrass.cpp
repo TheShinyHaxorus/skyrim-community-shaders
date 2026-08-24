@@ -29,7 +29,22 @@ void ProceduralGrass::PostPostLoad()
 
 void ProceduralGrass::DataLoaded()
 {
+	SetVanillaGrassEnabled(!settings.Enabled);
+}
+
+void ProceduralGrass::SetVanillaGrassEnabled(bool enable)
+{
+	if (auto* manager = RE::BGSGrassManager::GetSingleton()) {
+		if (manager->enableGrass == enable) {
+			vanillaGrassDisabled = !enable;
+			return;
+		}
+	} else if (vanillaGrassDisabled == !enable) {
+		return;
+	}
+
 	ConsoleFunc_ToggleGrass();
+	vanillaGrassDisabled = !enable;
 }
 
 void ProceduralGrass::ClearShaderCache()
