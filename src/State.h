@@ -261,6 +261,12 @@ public:
 	uint lastExtraDescriptor = 0;
 	uint lastExtraFeatureDescriptor = 0;
 
+	/**
+	 * Updates Lighting shader permutation state from the current render pass.
+	 * @param a_pass The Lighting render pass whose blend state should be inspected.
+	 */
+	void UpdateLightingShaderPermutation(RE::BSRenderPass* a_pass);
+
 	/** @brief Bitflags describing extra shader-specific properties. */
 	enum class ExtraShaderDescriptors : uint32_t
 	{
@@ -272,7 +278,8 @@ public:
 		SuppressExternalEmittance = 1 << 5,
 		IsEye = 1 << 6,
 		NoSnow = 1 << 7,
-		NoFoliageTint = 1 << 8
+		NoFoliageTint = 1 << 8,
+		AdditiveLighting = 1 << 9
 	};
 
 	/** @brief Bitflags describing extra feature-specific properties related to terrain displacement and material models. */
