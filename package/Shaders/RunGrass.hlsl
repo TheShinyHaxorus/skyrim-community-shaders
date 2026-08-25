@@ -807,9 +807,6 @@ PS_OUTPUT main(PS_INPUT input, bool frontFace : SV_IsFrontFace)
 
 	directionalAmbientColor *= vertexAO;
 
-	if (SharedData::ssgiSettings.EnableIL != 0)
-		directionalAmbientColor = 0;
-
 	diffuseColor += directionalAmbientColor;
 	diffuseColor += subsurfaceColor * albedo;
 	diffuseColor *= albedo;

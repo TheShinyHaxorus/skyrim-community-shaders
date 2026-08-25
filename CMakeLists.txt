@@ -105,17 +105,6 @@ if(DEVBENCH_BRIDGE)
 endif()
 add_subdirectory(${CMAKE_SOURCE_DIR}/cmake/Streamline)
 
-# NRD — NVIDIA Real-time Denoisers (DX11 via embedded DXBC shaders, no NRI)
-set(NRD_STATIC_LIBRARY ON CACHE BOOL "" FORCE)
-set(NRD_NRI OFF CACHE BOOL "" FORCE)
-set(NRD_EMBEDS_SPIRV_SHADERS OFF CACHE BOOL "" FORCE)
-set(NRD_EMBEDS_DXIL_SHADERS OFF CACHE BOOL "" FORCE)
-set(NRD_EMBEDS_DXBC_SHADERS ON CACHE BOOL "" FORCE)
-set(NRD_NORMAL_ENCODING "2" CACHE STRING "" FORCE)
-set(NRD_ROUGHNESS_ENCODING "1" CACHE STRING "" FORCE)
-set(REBLUR_PERFORMANCE_MODE ON CACHE BOOL "" FORCE)
-add_subdirectory(${CMAKE_SOURCE_DIR}/extern/NRD EXCLUDE_FROM_ALL)
-
 find_path(DETOURS_INCLUDE_DIRS "detours/detours.h")
 find_library(DETOURS_LIBRARY detours REQUIRED)
 include(FidelityFX-SDK)
@@ -147,7 +136,6 @@ target_include_directories(
         "${CMAKE_SOURCE_DIR}/package/Shaders"
         "${CMAKE_SOURCE_DIR}/extern/sk_hdr_png/include"
         ${DETOURS_INCLUDE_DIRS}
-        "${CMAKE_SOURCE_DIR}/extern/NRD/Include"
 )
 
 target_compile_definitions(${PROJECT_NAME} PRIVATE SK_HDR_PNG_COMMUNITY_SHADERS)
@@ -168,7 +156,6 @@ target_link_libraries(
         efsw::efsw
         Tracy::TracyClient
         Streamline
-        NRD
         d3d12.lib
         Microsoft::DirectX-Headers
         ${DETOURS_LIBRARY}

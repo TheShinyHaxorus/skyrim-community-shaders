@@ -337,22 +337,6 @@ namespace SharedData
 		uint3 _padding;
 	};
 
-	struct SSGISettings
-	{
-		uint Enabled;
-		uint EnableIL;
-		uint DebugMode;
-		float AOPower;
-	};
-
-	struct SSRSettings
-	{
-		uint Enabled;
-		float SpecularMult;
-		float SpecCubemapMult;
-		uint pad0;
-	};
-
 	struct PostProcessingSettings
 	{
 		uint DisableVanillaTonemapping;
@@ -531,8 +515,6 @@ namespace SharedData
 		SnowCoverSettings snowCoverSettings;
 		UnifiedWaterSettings unifiedWaterSettings;
 		SpecularAASettings specularAASettings;
-		SSGISettings ssgiSettings;
-		SSRSettings ssrSettings;
 		PostProcessingSettings postProcessingSettings;
 		SkyGradientSettings skyGradientSettings;
 	};
