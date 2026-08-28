@@ -80,13 +80,7 @@ struct VS_OUTPUT
 };
 #endif
 
-cbuffer PerGeometry : register(
-#ifdef VSHADER
-						  b2
-#else
-						  b3
-#endif
-					  )
+cbuffer PerGeometry : register(b2)
 {
 	row_major float4x4 WorldViewProj : packoffset(c0);
 	row_major float4x4 WorldView : packoffset(c4);
@@ -669,6 +663,7 @@ PS_OUTPUT main(PS_INPUT input, bool frontFace : SV_IsFrontFace)
 
 	if (!SharedData::InInterior)
 		dirDetailedShadow *= shadowColor.x;
+	dirDetailedShadow += ShadowClampValue * (1.0 - dirDetailedShadow);
 
 #			if defined(SCREEN_SPACE_SHADOWS)
 	if (!SharedData::InInterior && dirLightAngle >= 0.0 && !isFar)
@@ -833,10 +828,10 @@ PS_OUTPUT main(PS_INPUT input, bool frontFace : SV_IsFrontFace)
 			diffuseColor.xyz = Color::TurboColormap((float)lightCount / MAX_CLUSTER_LIGHTS);
 		}
 	} else {
-		psout.Diffuse = float4(diffuseColor, 1);
+		psout.Diffuse = float4(FogNearColor.w * diffuseColor, 1);
 	}
 #			else
-	psout.Diffuse = float4(diffuseColor, 1);
+	psout.Diffuse = float4(FogNearColor.w * diffuseColor, 1);
 #			endif
 
 	float3 outputNormal = normal;
@@ -904,6 +899,7 @@ PS_OUTPUT main(PS_INPUT input)
 
 	if (!SharedData::InInterior)
 		dirDetailedShadow = shadowColor.x;
+	dirDetailedShadow += ShadowClampValue * (1.0 - dirDetailedShadow);
 
 #			if defined(SCREEN_SPACE_SHADOWS)
 #				ifdef GRASS_OPTIMIZATIONS
@@ -1006,7 +1002,7 @@ PS_OUTPUT main(PS_INPUT input)
 	Skylighting::ApplySkylighting(diffuseColor, directionalAmbientColor, albedo, skylightingDiffuse);
 #			endif
 
-	psout.Diffuse.xyz = diffuseColor;
+	psout.Diffuse.xyz = FogNearColor.w * diffuseColor;
 
 	psout.Diffuse.w = 1;
 
