@@ -10,7 +10,6 @@
 #include "Features/DynamicCubemaps.h"
 #include "Features/Effects11.h"
 #include "Features/IBL.h"
-#include "Features/ProceduralGrass.h"
 #include "Features/ScreenSpaceGI.h"
 #include "Features/Skylighting.h"
 #include "Features/SubsurfaceScattering.h"
@@ -275,16 +274,9 @@ void Deferred::StartDeferred()
 		MASKS2
 	};
 
-	const auto& proceduralGrass = globals::features::proceduralGrass;
-	const bool proceduralGrassEnabled = proceduralGrass.loaded && proceduralGrass.settings.Enabled && !globals::state->isMapMenuOpen;
-	if (!proceduralGrassEnabled) {
-		for (uint i = 2; i < 8; i++) {
-			renderTargets[i] = targets[i];                                             // We must use unused targets to be indexable
-			setRenderTargetMode[i] = RE::BSGraphics::SetRenderTargetMode::SRTM_CLEAR;  // Dirty from last frame, this calls ClearRenderTargetView once
-		}
-	} else {
-		renderTargets[7] = targets[7];
-		setRenderTargetMode[7] = RE::BSGraphics::SetRenderTargetMode::SRTM_CLEAR;
+	for (uint i = 2; i < 8; i++) {
+		renderTargets[i] = targets[i];                                             // We must use unused targets to be indexable
+		setRenderTargetMode[i] = RE::BSGraphics::SetRenderTargetMode::SRTM_CLEAR;  // Dirty from last frame, this calls ClearRenderTargetView once
 	}
 
 	stateUpdateFlags.set(RE::BSGraphics::ShaderFlags::DIRTY_RENDERTARGET);  // Run OMSetRenderTargets again
@@ -301,10 +293,6 @@ void Deferred::StartDeferred()
 	PrepassPasses();
 
 	OverrideBlendStates();
-
-	if (proceduralGrassEnabled) {
-		proceduralGrass.DeferredRendering();
-	}
 }
 
 void Deferred::DeferredPasses()
@@ -380,10 +368,6 @@ void Deferred::DeferredPasses()
 
 		if (dynamicCubemaps.loaded)
 			context->CSSetSamplers(0, 1, &linearSampler);
-
-		// Terrain albedo is only complete now, so darken it under grass just before the composite reads it.
-		if (globals::features::proceduralGrass.loaded)
-			globals::features::proceduralGrass.DarkenTerrainUnderGrass();
 
 		context->CSSetShaderResources(0, ARRAYSIZE(srvs), srvs);
 
