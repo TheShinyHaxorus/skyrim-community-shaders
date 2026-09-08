@@ -12,6 +12,7 @@ struct FoliageLighting;
 struct GrassOptimizations;
 struct HairSpecular;
 struct HorizonFix;
+struct StaticInstancing;
 struct IBL;
 struct LightLimitFix;
 struct LinearLighting;
@@ -106,6 +107,7 @@ namespace globals
 		extern GrassOptimizations grassOptimizations;
 		extern HairSpecular hairSpecular;
 		extern HorizonFix horizonFix;
+		extern StaticInstancing staticInstancing;
 		extern IBL ibl;
 		extern LightLimitFix lightLimitFix;
 		extern LinearLighting linearLighting;

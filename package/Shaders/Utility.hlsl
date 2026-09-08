@@ -7,6 +7,11 @@
 #if defined(RENDER_SHADOWMASK) || defined(RENDER_SHADOWMASKSPOT) || defined(RENDER_SHADOWMASKPB) || defined(RENDER_SHADOWMASKDPB)
 #	define RENDER_SHADOWMASK_ANY
 #endif
+// Static Instancing (feature): non-skinned permutations can read their world matrix from a
+// per-instance buffer instead of PerGeometry.World when the b13 marker is set.
+#if defined(STATIC_INSTANCING) && !defined(SKINNED)
+#	define STATIC_INSTANCING_VS
+#endif
 
 struct VS_INPUT
 {
@@ -26,6 +31,9 @@ struct VS_INPUT
 #if defined(SKINNED)
 	float4 BoneWeights: BLENDWEIGHT0;
 	float4 BoneIndices: BLENDINDICES0;
+#endif
+#if defined(STATIC_INSTANCING_VS)
+	uint InstanceID: SV_InstanceID;
 #endif
 };
 
@@ -91,6 +99,28 @@ cbuffer PerGeometry : register(b2)
 	float4 TreeParams : packoffset(c7);
 };
 
+#	if defined(STATIC_INSTANCING_VS)
+struct StaticInstanceRecord
+{
+	float4 Row0;
+	float4 Row1;
+	float4 Row2;
+};
+
+// Bound by the StaticInstancing feature around each instanced draw; a zeroed buffer is bound
+// afterwards so vanilla draws take the PerGeometry path. Unbound reads also return zero.
+cbuffer StaticInstancingCB : register(b13)
+{
+	uint StaticInstanceBase;
+	uint StaticInstanceEnabled;
+	uint2 StaticInstancePad;
+};
+
+StructuredBuffer<StaticInstanceRecord> StaticInstanceWorlds : register(t9);
+
+static const uint kStaticInstancingMagic = 0x5A17C0DE;  // must match StaticInstancing.cpp
+#	endif
+
 float2 SmoothSaturate(float2 value)
 {
 	return value * value * (3 - 2 * value);
@@ -139,8 +169,20 @@ VS_OUTPUT main(VS_INPUT input)
 
 	positionCS = mul(FrameBuffer::CameraViewProj, positionWS);
 #		else
+#			if defined(STATIC_INSTANCING_VS)
+	if (StaticInstanceEnabled == kStaticInstancingMagic) {
+		StaticInstanceRecord instanceRecord = StaticInstanceWorlds[StaticInstanceBase + input.InstanceID];
+		float3x4 instanceWorld = float3x4(instanceRecord.Row0, instanceRecord.Row1, instanceRecord.Row2);
+		// Rows are [R*s | t] in world units; make it camera-relative the way the skinned path does.
+		precise float3 positionWS = mul(instanceWorld, positionMS) - FrameBuffer::CameraPosAdjust.xyz;
+		positionCS = mul(FrameBuffer::CameraViewProj, float4(positionWS, 1.0));
+	} else {
+#			endif
 	precise float4x4 modelViewProj = mul(FrameBuffer::CameraViewProj, World);
 	positionCS = mul(modelViewProj, positionMS);
+#			if defined(STATIC_INSTANCING_VS)
+	}
+#			endif
 #		endif
 
 #		if defined(RENDER_SHADOWMAP) && defined(RENDER_SHADOWMAP_CLAMPED)

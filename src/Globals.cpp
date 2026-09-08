@@ -15,6 +15,7 @@
 #include "Features/HDRDisplay.h"
 #include "Features/HairSpecular.h"
 #include "Features/HorizonFix.h"
+#include "Features/StaticInstancing.h"
 #include "Features/IBL.h"
 #include "Features/InteriorSun.h"
 #include "Features/InverseSquareLighting.h"
@@ -77,6 +78,7 @@ namespace globals
 		LODBlending lodBlending{};
 		HairSpecular hairSpecular{};
 		HorizonFix horizonFix{};
+		StaticInstancing staticInstancing{};
 		InteriorSun interiorSun{};
 		InverseSquareLighting inverseSquareLighting{};
 		ScreenSpaceGI screenSpaceGI{};

@@ -16,6 +16,7 @@
 #include "Features/HDRDisplay.h"
 #include "Features/HairSpecular.h"
 #include "Features/HorizonFix.h"
+#include "Features/StaticInstancing.h"
 #include "Features/IBL.h"
 #include "Features/InteriorSun.h"
 #include "Features/InverseSquareLighting.h"
@@ -263,6 +264,7 @@ const std::vector<Feature*>& Feature::GetFeatureList()
 		&globals::features::effects11,
 		&globals::features::unifiedWater,
 		&globals::features::horizonFix,
+		&globals::features::staticInstancing,
 		&globals::features::exponentialHeightFog,
 		&globals::features::hdrDisplay,
 		&globals::features::postProcessing,

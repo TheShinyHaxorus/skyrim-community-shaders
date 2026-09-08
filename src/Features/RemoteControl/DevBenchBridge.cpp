@@ -16,6 +16,7 @@
 #	include "Feature.h"
 #	include "Features/RenderDoc.h"
 #	include "Features/ScreenshotFeature.h"
+#	include "Features/StaticInstancing.h"
 #	include "Globals.h"
 #	include "Profiler.h"
 #	include "ShaderCache.h"
@@ -379,6 +380,16 @@ namespace
 				};
 			});
 		}
+		if (kind == "instancing") {
+			// Static Instancing counters for the last completed frame (collapse ratio, draws removed).
+			return RunOnMainThread([]() -> json {
+				auto& feature = globals::features::staticInstancing;
+				json result = feature.GetStatsJson();
+				result["loaded"] = feature.loaded;
+				result["frame_count"] = EnqueuedFrame();
+				return result;
+			});
+		}
 		if (kind == "shadercache") {
 			// Built from thread-safe ShaderCache accessors. Poll completedTasks against a
 			// pre-deploy snapshot to know a hot-reloaded shader finished; a rising
@@ -395,7 +406,7 @@ namespace
 				{ "frame_count", EnqueuedFrame() },
 			};
 		}
-		return json{ { "error", "unknown kind" }, { "kind", kind }, { "supported", json::array({ "state", "shadercache", "profiler" }) } };
+		return json{ { "error", "unknown kind" }, { "kind", kind }, { "supported", json::array({ "state", "shadercache", "profiler", "instancing" }) } };
 	}
 
 	/**
@@ -641,7 +652,7 @@ namespace DevBenchBridge
 		dvb->RegisterTool("communityshaders.feature", featureDesc, &FeatureToolHandler, nullptr);
 
 		static constexpr const char* inspectDesc =
-			R"({"description":"Read non-feature Community Shaders engine state. Kind-dispatched; response is a JSON object. kind=state -> {plugin,frame_count}. kind=shadercache -> {compiling,completedTasks,totalTasks,failedTasks,currentFailedCount,frame_count}. kind=profiler -> {totalGpuMs,totalCpuMs,frame_count,passes:[{name,gpuMs,gpuAvgMs,gpuP95Ms,gpuP99Ms,cpuMs,cpuAvgMs,gpuHistory:[...]}]}; optional filter param to match pass names.","readOnly":true,"inputSchema":{"type":"object","properties":{"kind":{"type":"string","enum":["state","shadercache","profiler"]},"filter":{"type":"string"}},"required":["kind"]}})";
+			R"({"description":"Read non-feature Community Shaders engine state. Kind-dispatched; response is a JSON object. kind=state -> {plugin,frame_count}. kind=instancing -> Static Instancing counters for the last frame {eligible,uniqueKeys,collapsible,collapsed,instancedDraws,...}. kind=shadercache -> {compiling,completedTasks,totalTasks,failedTasks,currentFailedCount,frame_count}. kind=profiler -> {totalGpuMs,totalCpuMs,frame_count,passes:[{name,gpuMs,gpuAvgMs,gpuP95Ms,gpuP99Ms,cpuMs,cpuAvgMs,gpuHistory:[...]}]}; optional filter param to match pass names.","readOnly":true,"inputSchema":{"type":"object","properties":{"kind":{"type":"string","enum":["state","shadercache","profiler","instancing"]},"filter":{"type":"string"}},"required":["kind"]}})";
 		dvb->RegisterTool("communityshaders.inspect", inspectDesc, &InspectToolHandler, nullptr);
 
 		static constexpr const char* shadercacheDesc =
