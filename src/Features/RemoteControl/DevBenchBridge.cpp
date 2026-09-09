@@ -15,6 +15,8 @@
 
 #	include "Feature.h"
 #	include "Features/PerformanceOverlay.h"
+#	include "Features/Upscaling.h"
+#	include "Utils/FrameCosts.h"
 #	include "Features/RenderDoc.h"
 #	include "Features/ScreenshotFeature.h"
 #	include "Features/StaticInstancing.h"
@@ -382,18 +384,27 @@ namespace
 				};
 			});
 		}
-		if (kind == "drawcalls") {
-			// The performance overlay's per-shader-type breakdown. The per-draw counters only run while
-			// the overlay is visible, so overlayVisible tells the caller whether the numbers are live.
+		if (kind == "drawcalls" || kind == "frametime") {
+			// The performance overlay's per-shader-type breakdown and the frame-cost counters, so a
+			// remote session can A/B features without reading the overlay off a screenshot.
 			return RunOnMainThread([]() -> json {
 				auto* state = globals::state;
 				if (!state)
 					return json{ { "error", "state unavailable" } };
 				const auto& overlay = globals::features::performanceOverlay;
 				const bool overlayVisible = globals::menu && globals::menu->overlayVisible && overlay.loaded && overlay.IsOverlayVisible();
+				const float frameMs = overlay.state.smoothFrameTimeMs;
 				json types = json::array();
 				float measuredMs = 0.0f;
 				State::ForEachShaderTypeWithMetrics([&](auto type, int typeIndex, float drawCalls, float frameTime, float percent, float costPerCall) {
+					std::string hooking;
+					for (auto* feature : Feature::GetFeatureList()) {
+						if (!feature->loaded || !feature->HasShaderDefine(type))
+							continue;
+						if (!hooking.empty())
+							hooking += ", ";
+						hooking += feature->GetShortName();
+					}
 					measuredMs += frameTime;
 					types.push_back(json{
 						{ "type", std::string(magic_enum::enum_name(type)) },
@@ -402,9 +413,10 @@ namespace
 						{ "ms", frameTime },
 						{ "percentOfMeasured", percent },
 						{ "costPerCallUs", costPerCall * 1000.0f },
+						{ "featuresInjecting", hooking },
 					});
 				});
-				const float frameMs = overlay.state.smoothFrameTimeMs;
+				auto* profiler = globals::profiler;
 				return json{
 					{ "frame_count", EnqueuedFrame() },
 					{ "overlayVisible", overlayVisible },
@@ -412,6 +424,18 @@ namespace
 					{ "fps", frameMs > 0.0f ? 1000.0f / frameMs : 0.0f },
 					{ "postFGFrameMs", overlay.state.postFGSmoothFrameTimeMs },
 					{ "measuredShaderMs", measuredMs },
+					{ "csPassesGpuMs", profiler ? profiler->GetTotalTimeMs() : 0.0f },
+					{ "presentMs", FrameCosts::presentMs.Last() },
+					{ "frameLimiterMs", FrameCosts::frameLimiterMs.Last() },
+					{ "reflexSleepMs", FrameCosts::reflexSleepMs.Last() },
+					{ "frameGenSetupMs", FrameCosts::frameGenSetupMs.Last() },
+					{ "dlssBridgeCpuMs", FrameCosts::dlssBridgeCpuMs.Last() },
+					{ "dlssEvalGpuMs", FrameCosts::dlssEvalGpuMs.Last() },
+					{ "dlssBridgeGpuMs", FrameCosts::dlssBridgeGpuMs.Last() },
+					{ "drawHookMs", FrameCosts::drawHookMs.Last() },
+					{ "uiDrawMs", FrameCosts::uiDrawMs.Last() },
+					{ "frameGenerationActive", globals::features::upscaling.IsFrameGenerationActive() },
+					{ "frameGenerationMultiplier", globals::features::upscaling.GetFrameGenerationMultiplier() },
 					{ "shaderTypes", types },
 				};
 			});
@@ -442,7 +466,7 @@ namespace
 				{ "frame_count", EnqueuedFrame() },
 			};
 		}
-		return json{ { "error", "unknown kind" }, { "kind", kind }, { "supported", json::array({ "state", "shadercache", "profiler", "instancing", "drawcalls" }) } };
+		return json{ { "error", "unknown kind" }, { "kind", kind }, { "supported", json::array({ "state", "shadercache", "profiler", "instancing", "drawcalls", "frametime" }) } };
 	}
 
 	/**
@@ -688,7 +712,7 @@ namespace DevBenchBridge
 		dvb->RegisterTool("communityshaders.feature", featureDesc, &FeatureToolHandler, nullptr);
 
 		static constexpr const char* inspectDesc =
-			R"({"description":"Read non-feature Community Shaders engine state. Kind-dispatched; response is a JSON object. kind=state -> {plugin,frame_count}. kind=instancing -> Static Instancing counters for the last frame {eligible,uniqueKeys,collapsible,collapsed,instancedDraws,...}. kind=shadercache -> {compiling,completedTasks,totalTasks,failedTasks,currentFailedCount,frame_count}. kind=profiler -> {totalGpuMs,totalCpuMs,frame_count,passes:[{name,gpuMs,gpuAvgMs,gpuP95Ms,gpuP99Ms,cpuMs,cpuAvgMs,gpuHistory:[...]}]}; optional filter param to match pass names.","readOnly":true,"inputSchema":{"type":"object","properties":{"kind":{"type":"string","enum":["state","shadercache","profiler","instancing","drawcalls"]},"filter":{"type":"string"}},"required":["kind"]}})";
+			R"({"description":"Read non-feature Community Shaders engine state. Kind-dispatched; response is a JSON object. kind=state -> {plugin,frame_count}. kind=shadercache -> {compiling,completedTasks,totalTasks,failedTasks,currentFailedCount,frame_count}. kind=profiler -> {totalGpuMs,totalCpuMs,frame_count,passes:[{name,gpuMs,gpuAvgMs,gpuP95Ms,gpuP99Ms,cpuMs,cpuAvgMs,gpuHistory:[...]}]}; optional filter param to match pass names. kind=drawcalls -> the performance overlay's breakdown: {frameMs,fps,measuredShaderMs,csPassesGpuMs,presentMs,frameLimiterMs,reflexSleepMs,frameGenSetupMs,dlssBridgeCpuMs,uiDrawMs,frameGenerationActive,frameGenerationMultiplier,shaderTypes:[{type,enabled,drawCalls,ms,percentOfMeasured,costPerCallUs,featuresInjecting}]} where ms is the smoothed per-shader-type time and featuresInjecting lists loaded features whose shader defines apply to that type.","readOnly":true,"inputSchema":{"type":"object","properties":{"kind":{"type":"string","enum":["state","shadercache","profiler","drawcalls"]},"filter":{"type":"string"}},"required":["kind"]}})";
 		dvb->RegisterTool("communityshaders.inspect", inspectDesc, &InspectToolHandler, nullptr);
 
 		static constexpr const char* shadercacheDesc =

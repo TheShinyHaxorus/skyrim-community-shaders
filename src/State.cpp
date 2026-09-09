@@ -1,5 +1,7 @@
 #include "State.h"
 
+#include "Utils/FrameCosts.h"
+
 #include <codecvt>
 
 #include <pystring/pystring.h>
@@ -267,6 +269,7 @@ bool State::HandlePostProcessing(RE::RENDER_TARGET a_input, RE::RENDER_TARGET a_
 void State::Reset()
 {
 	globals::profiler->EndFrame();
+	FrameCosts::BeginFrame();
 
 	Feature::ForEachLoadedFeature("Reset", [](Feature* feature) { feature->Reset(); });
 
