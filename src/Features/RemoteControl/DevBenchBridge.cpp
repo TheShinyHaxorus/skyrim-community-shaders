@@ -14,10 +14,12 @@
 #ifdef DEVBENCH_BRIDGE_ENABLED
 
 #	include "Feature.h"
+#	include "Features/PerformanceOverlay.h"
 #	include "Features/RenderDoc.h"
 #	include "Features/ScreenshotFeature.h"
 #	include "Features/StaticInstancing.h"
 #	include "Globals.h"
+#	include "Menu.h"
 #	include "Profiler.h"
 #	include "ShaderCache.h"
 #	include "State.h"
@@ -380,6 +382,40 @@ namespace
 				};
 			});
 		}
+		if (kind == "drawcalls") {
+			// The performance overlay's per-shader-type breakdown. The per-draw counters only run while
+			// the overlay is visible, so overlayVisible tells the caller whether the numbers are live.
+			return RunOnMainThread([]() -> json {
+				auto* state = globals::state;
+				if (!state)
+					return json{ { "error", "state unavailable" } };
+				const auto& overlay = globals::features::performanceOverlay;
+				const bool overlayVisible = globals::menu && globals::menu->overlayVisible && overlay.loaded && overlay.IsOverlayVisible();
+				json types = json::array();
+				float measuredMs = 0.0f;
+				State::ForEachShaderTypeWithMetrics([&](auto type, int typeIndex, float drawCalls, float frameTime, float percent, float costPerCall) {
+					measuredMs += frameTime;
+					types.push_back(json{
+						{ "type", std::string(magic_enum::enum_name(type)) },
+						{ "enabled", state->enabledClasses[typeIndex - 1] },
+						{ "drawCalls", static_cast<int>(drawCalls) },
+						{ "ms", frameTime },
+						{ "percentOfMeasured", percent },
+						{ "costPerCallUs", costPerCall * 1000.0f },
+					});
+				});
+				const float frameMs = overlay.state.smoothFrameTimeMs;
+				return json{
+					{ "frame_count", EnqueuedFrame() },
+					{ "overlayVisible", overlayVisible },
+					{ "frameMs", frameMs },
+					{ "fps", frameMs > 0.0f ? 1000.0f / frameMs : 0.0f },
+					{ "postFGFrameMs", overlay.state.postFGSmoothFrameTimeMs },
+					{ "measuredShaderMs", measuredMs },
+					{ "shaderTypes", types },
+				};
+			});
+		}
 		if (kind == "instancing") {
 			// Static Instancing counters for the last completed frame (collapse ratio, draws removed).
 			return RunOnMainThread([]() -> json {
@@ -406,7 +442,7 @@ namespace
 				{ "frame_count", EnqueuedFrame() },
 			};
 		}
-		return json{ { "error", "unknown kind" }, { "kind", kind }, { "supported", json::array({ "state", "shadercache", "profiler", "instancing" }) } };
+		return json{ { "error", "unknown kind" }, { "kind", kind }, { "supported", json::array({ "state", "shadercache", "profiler", "instancing", "drawcalls" }) } };
 	}
 
 	/**
@@ -652,7 +688,7 @@ namespace DevBenchBridge
 		dvb->RegisterTool("communityshaders.feature", featureDesc, &FeatureToolHandler, nullptr);
 
 		static constexpr const char* inspectDesc =
-			R"({"description":"Read non-feature Community Shaders engine state. Kind-dispatched; response is a JSON object. kind=state -> {plugin,frame_count}. kind=instancing -> Static Instancing counters for the last frame {eligible,uniqueKeys,collapsible,collapsed,instancedDraws,...}. kind=shadercache -> {compiling,completedTasks,totalTasks,failedTasks,currentFailedCount,frame_count}. kind=profiler -> {totalGpuMs,totalCpuMs,frame_count,passes:[{name,gpuMs,gpuAvgMs,gpuP95Ms,gpuP99Ms,cpuMs,cpuAvgMs,gpuHistory:[...]}]}; optional filter param to match pass names.","readOnly":true,"inputSchema":{"type":"object","properties":{"kind":{"type":"string","enum":["state","shadercache","profiler","instancing"]},"filter":{"type":"string"}},"required":["kind"]}})";
+			R"({"description":"Read non-feature Community Shaders engine state. Kind-dispatched; response is a JSON object. kind=state -> {plugin,frame_count}. kind=instancing -> Static Instancing counters for the last frame {eligible,uniqueKeys,collapsible,collapsed,instancedDraws,...}. kind=shadercache -> {compiling,completedTasks,totalTasks,failedTasks,currentFailedCount,frame_count}. kind=profiler -> {totalGpuMs,totalCpuMs,frame_count,passes:[{name,gpuMs,gpuAvgMs,gpuP95Ms,gpuP99Ms,cpuMs,cpuAvgMs,gpuHistory:[...]}]}; optional filter param to match pass names.","readOnly":true,"inputSchema":{"type":"object","properties":{"kind":{"type":"string","enum":["state","shadercache","profiler","instancing","drawcalls"]},"filter":{"type":"string"}},"required":["kind"]}})";
 		dvb->RegisterTool("communityshaders.inspect", inspectDesc, &InspectToolHandler, nullptr);
 
 		static constexpr const char* shadercacheDesc =

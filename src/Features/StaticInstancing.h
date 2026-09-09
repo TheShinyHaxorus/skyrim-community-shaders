@@ -194,6 +194,7 @@ private:
 	uint32_t batchDepth = 0;  // >0 while inside BSBatchRenderer::RenderBatches
 	bool flushing = false;
 	bool hooksInstalled = false;
+	uint32_t lastDescriptor = 0;  // raw Utility descriptor of the last classified pass, for the stats readout
 
 	ID3D11Buffer* instanceBuffer = nullptr;
 	ID3D11ShaderResourceView* instanceSRV = nullptr;

@@ -112,6 +112,11 @@ def main() -> int:
         reply = bench.call("communityshaders.feature", {"action": "set", "shortName": "StaticInstancing", "settings": {key: parsed}})
         print("set", key, "=", parsed, "->", json.dumps(reply)[:200])
 
+    first = bench.call("communityshaders.inspect", {"kind": "drawcalls"})
+    if "error" in first:
+        print("drawcalls kind unavailable:", first.get("error"))
+    elif not first.get("overlayVisible", True):
+        print("NOTE: the performance overlay is closed; per-type draw counts and costs are stale until it is opened")
     print("sample  frameMs   fps  utilDraws  utilUs/draw  eligible  unique  collapsible  collapsed  instanced  ratio%")
     for i in range(args.samples):
         inst = bench.call("communityshaders.inspect", {"kind": "instancing"})

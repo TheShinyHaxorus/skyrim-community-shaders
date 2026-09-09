@@ -25,6 +25,7 @@ namespace
 	constexpr uint32_t kInstanceStride = 48;  // three float4 rows
 	constexpr uint32_t kBatchCBSlot = 13;  // b13: unused by the game and by every other feature (b8 is Light Limit Fix)
 	constexpr uint32_t kInstanceSRVSlot = 9;
+	constexpr uint32_t kUtilityTechniqueBase = 0x2B;
 
 	using UF = SIE::ShaderCache::UtilityShaderFlags;
 
@@ -221,6 +222,7 @@ json StaticInstancing::GetStatsJson() const
 		{ "excludedSkinned", c.excludedSkinned },
 		{ "excludedProperty", c.excludedProperty },
 		{ "excludedAlpha", c.excludedAlpha },
+		{ "lastDescriptor", lastDescriptor },
 	};
 }
 
@@ -306,7 +308,11 @@ StaticInstancing::Verdict StaticInstancing::Classify(RE::BSRenderPass* a_pass, u
 	if (!a_pass || !a_pass->shader || a_pass->shader->shaderType.get() != RE::BSShader::Type::Utility)
 		return Verdict::kNotUtility;
 
-	if ((a_technique & kRequiredBits) != kRequiredBits || (a_technique & kExcludedBits) != 0)
+	// BSUtilityShader::SetupTechnique derives the raw descriptor as technique - 0x2B (verified in the
+	// 1.6.1170 decompile), so the UtilityShaderFlags bits live on that value, not on the technique id.
+	const uint32_t descriptor = a_technique - kUtilityTechniqueBase;
+	lastDescriptor = descriptor;
+	if ((descriptor & kRequiredBits) != kRequiredBits || (descriptor & kExcludedBits) != 0)
 		return Verdict::kTechnique;
 
 	auto* geometry = a_pass->geometry;
@@ -336,7 +342,7 @@ StaticInstancing::Verdict StaticInstancing::Classify(RE::BSRenderPass* a_pass, u
 	o_key.technique = a_technique;
 	o_key.renderFlags = a_renderFlags;
 
-	const bool alphaTested = a_alphaTest || (a_technique & static_cast<uint32_t>(UF::AlphaTest)) != 0;
+	const bool alphaTested = a_alphaTest || (descriptor & static_cast<uint32_t>(UF::AlphaTest)) != 0;
 	if (alphaTested) {
 		// The pixel shader samples the material's diffuse texture and the vertex shader applies
 		// its texcoord offset, so only exact material clones may share a batch.
