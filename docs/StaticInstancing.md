@@ -333,7 +333,10 @@ Thread 54168 (render), 50.5k samples. By module: SkyrimSE.exe 27%, ntdll 19%, Co
 Where the ntdll time goes: RtlQueryPerformanceCounter is 13.5% of the thread, and the stacks put
 92% of it inside amd_fidelityfx_framegeneration_dx12.dll under DX12SwapChain::Present, called
 from HDRDisplay::RunPresentChainWithHDR. That is FSR frame generation pacing its interpolated
-frame by spinning; about 1.9 ms of every frame on this thread is that wait, not submission.
+frame by spinning; about 1.9 ms of every frame on this thread is that wait, not submission. This
+applies to this branch's build only: it carries no DLSS-G, so Upscaling falls back to FSR frame
+generation. The main-tree build runs DLSS-G with Reflex pacing and measures 1 to 2 ms of wait at
+the same Present without a spin (per the rebuild chat).
 
 Community Shaders items on the thread, and what build 22 does about them:
 
