@@ -9,6 +9,8 @@
 #include <RE/N/NiSkinPartition.h>
 #include <imgui.h>
 
+#include <chrono>
+
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(
 	StaticInstancing::Settings,
 	Enabled,
@@ -374,6 +376,12 @@ json StaticInstancing::GetStatsJson() const
 		{ "singlesReplayed", c.singlesReplayed },
 		{ "ringOverflow", c.ringOverflow },
 		{ "pendingDropped", c.pendingDropped },
+		{ "depthToggles", c.depthToggles },
+		{ "flushes", c.flushes },
+		{ "maps", c.maps },
+		{ "flushUs", c.flushUs },
+		{ "writeUs", c.writeUs },
+		{ "drawUs", c.drawUs },
 		{ "excludedTechnique", c.excludedTechnique },
 		{ "excludedGeometry", c.excludedGeometry },
 		{ "excludedSkinned", c.excludedSkinned },
@@ -509,6 +517,10 @@ void StaticInstancing::DrawSettings()
 		row("Pre-pass instanced draws", c.prepassInstancedDraws);
 		row("Pre-pass shader misses", c.prepassShaderMisses);
 		row("Forced depth write", c.forcedDepthWrite);
+		row("Depth mode toggles", c.depthToggles);
+		row("Flushes / maps", c.flushes);
+		row("Maps", c.maps);
+		ImGui::Text("Flush %.0f us, write %.0f us, draw %.0f us", c.flushUs, c.writeUs, c.drawUs);
 		ImGui::EndTable();
 	}
 	if (c.eligible > 0) {
@@ -634,20 +646,41 @@ void StaticInstancing::ComputeTreeParams(const RE::BSRenderPass* a_pass, float* 
 void StaticInstancing::CallWithForcedDepthWrite(RE::BSRenderPass* a_pass, uint32_t a_technique, bool a_alphaTest, uint32_t a_renderFlags)
 {
 	using Fn = Hooks::BSBatchRenderer_RenderPassImmediately;
+	if (forcedDepthActive) {
+		// A Lighting flush already forced the mode for every pass it replays.
+		frame.forcedDepthWrite++;
+		Fn::func(a_pass, a_technique, a_alphaTest, a_renderFlags);
+		return;
+	}
 	const bool force = settings.IncludeLighting && !prepassSkippedThisFrame.empty() && a_pass->shader &&
 	                   a_pass->shader->shaderType.get() == RE::BSShader::Type::Lighting && prepassSkippedThisFrame.contains(a_pass->geometry);
 	if (!force) {
 		Fn::func(a_pass, a_technique, a_alphaTest, a_renderFlags);
 		return;
 	}
+	frame.forcedDepthWrite++;
+	BeginForcedDepthWrite();
+	Fn::func(a_pass, a_technique, a_alphaTest, a_renderFlags);
+	EndForcedDepthWrite();
+}
+
+void StaticInstancing::BeginForcedDepthWrite()
+{
 	auto& shadowState = globals::game::shadowState->GetRuntimeData();
-	const auto saved = shadowState.depthStencilDepthMode;
+	forcedDepthSaved = shadowState.depthStencilDepthMode;
 	shadowState.depthStencilDepthMode = RE::BSGraphics::DepthStencilDepthMode::kTestWrite;
 	globals::game::stateUpdateFlags->set(RE::BSGraphics::ShaderFlags::DIRTY_DEPTH_MODE);
-	frame.forcedDepthWrite++;
-	Fn::func(a_pass, a_technique, a_alphaTest, a_renderFlags);
-	shadowState.depthStencilDepthMode = saved;
+	forcedDepthActive = true;
+	frame.depthToggles++;
+}
+
+void StaticInstancing::EndForcedDepthWrite()
+{
+	auto& shadowState = globals::game::shadowState->GetRuntimeData();
+	shadowState.depthStencilDepthMode = forcedDepthSaved;
 	globals::game::stateUpdateFlags->set(RE::BSGraphics::ShaderFlags::DIRTY_DEPTH_MODE);
+	forcedDepthActive = false;
+	frame.depthToggles++;
 }
 
 bool StaticInstancing::IsPrepassInstanceCandidate(RE::BSRenderPass* a_pass, uint32_t a_technique, bool a_alphaTest, uint32_t a_renderFlags, BatchKey& o_key)
@@ -975,9 +1008,11 @@ bool StaticInstancing::WriteInstances(uint32_t a_totalInstances)
 		ringUsed = 0;
 	}
 
+	const auto writeStart = std::chrono::steady_clock::now();
 	D3D11_MAPPED_SUBRESOURCE mapped{};
 	if (FAILED(context->Map(instanceBuffer, 0, mapType, 0, &mapped)))
 		return false;
+	frame.maps++;
 
 	// Same construction as BSShaderUtil::GetXMFromNiPosAdjust followed by TransposeStoreMatrix3x4:
 	// rows are [R*s | t - posAdjust], so the shader can repeat the vanilla mul sequence exactly.
@@ -1043,6 +1078,7 @@ bool StaticInstancing::WriteInstances(uint32_t a_totalInstances)
 	}
 	context->Unmap(instanceBuffer, 0);
 	ringDiscardPending = false;
+	frame.writeUs += std::chrono::duration<float, std::micro>(std::chrono::steady_clock::now() - writeStart).count();
 	return true;
 }
 
@@ -1053,6 +1089,13 @@ void StaticInstancing::Flush()
 
 	using Fn = Hooks::BSBatchRenderer_RenderPassImmediately;
 	flushing = true;
+	const auto flushStart = std::chrono::steady_clock::now();
+	frame.flushes++;
+	// Every deferred Lighting pass belongs to an object with instanced pre-pass depth, so the whole
+	// replay runs test-and-write under one depth-mode change instead of two per draw.
+	const bool lightingFlush = deferred.front().lighting;
+	if (lightingFlush)
+		BeginForcedDepthWrite();
 
 	// Pass 1: decide which buckets are instanced and how much ring space they need.
 	uint32_t totalInstances = 0;
@@ -1141,10 +1184,13 @@ void StaticInstancing::Flush()
 				instancedThisFrame.insert(deferred[passIndex].pass->geometry);
 	}
 
+	if (lightingFlush)
+		EndForcedDepthWrite();
 	deferred.clear();
 	buckets.clear();
 	bucketLookup.clear();
 	flushing = false;
+	frame.flushUs += std::chrono::duration<float, std::micro>(std::chrono::steady_clock::now() - flushStart).count();
 }
 
 void StaticInstancing::DrawInstanced(RE::BSGraphics::TriShape* a_triShape, uint32_t a_startIndex, uint32_t a_count, uint32_t a_instanceCount, uint32_t a_block)
@@ -1264,6 +1310,13 @@ void StaticInstancing::Hooks::Renderer_DrawTriShape::thunk(RE::BSGraphics::Rende
 	const bool lighting = self.pending.lighting;
 	const bool prepass = self.pending.prepass;
 	self.pending.active = false;
+	const auto drawStart = std::chrono::steady_clock::now();
+	struct DrawTimer
+	{
+		StaticInstancing& self;
+		std::chrono::steady_clock::time_point start;
+		~DrawTimer() { self.frame.drawUs += std::chrono::duration<float, std::micro>(std::chrono::steady_clock::now() - start).count(); }
+	} drawTimer{ self, drawStart };
 	if (lighting || prepass) {
 		if (lighting)
 			self.DrawInstancedLighting(a_triShape, a_startIndex, a_count, instanceCount, block);

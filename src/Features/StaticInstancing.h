@@ -138,6 +138,12 @@ struct StaticInstancing : Feature
 		uint32_t prepassInstancedDraws = 0;   // instanced pre-pass draws issued
 		uint32_t prepassShaderMisses = 0;     // pre-pass permutation not compiled yet (members drawn vanilla)
 		uint32_t forcedDepthWrite = 0;
+		uint32_t depthToggles = 0;       // depth-mode changes issued for forced writes (2 per toggle)
+		uint32_t flushes = 0;            // Flush calls that had deferred passes
+		uint32_t maps = 0;               // instance buffer Map calls
+		float flushUs = 0.0f;            // wall time inside Flush (includes the engine's replayed draws)
+		float writeUs = 0.0f;            // wall time inside WriteInstances
+		float drawUs = 0.0f;             // wall time inside the instanced draw path (state, binds, draw)
 	};
 
 	virtual void SetupResources() override;
@@ -247,6 +253,8 @@ private:
 	Verdict ClassifyLighting(RE::BSRenderPass* a_pass, uint32_t a_technique, bool a_alphaTest, uint32_t a_renderFlags, BatchKey& o_key);
 	bool IsPrepassInstanceCandidate(RE::BSRenderPass* a_pass, uint32_t a_technique, bool a_alphaTest, uint32_t a_renderFlags, BatchKey& o_key);
 	void CallWithForcedDepthWrite(RE::BSRenderPass* a_pass, uint32_t a_technique, bool a_alphaTest, uint32_t a_renderFlags);
+	void BeginForcedDepthWrite();
+	void EndForcedDepthWrite();
 	void DrawInstancedLighting(RE::BSGraphics::TriShape* a_triShape, uint32_t a_startIndex, uint32_t a_count, uint32_t a_instanceCount, uint32_t a_block);
 	void DrawInstancedPrepass(RE::BSGraphics::TriShape* a_triShape, uint32_t a_startIndex, uint32_t a_count, uint32_t a_instanceCount, uint32_t a_block);
 	void AuditLightingPass(RE::BSRenderPass* a_pass, uint32_t a_technique, uint32_t a_renderFlags);
@@ -280,6 +288,8 @@ private:
 	PendingBatch pending;
 	uint32_t batchDepth = 0;  // >0 while inside BSBatchRenderer::RenderBatches
 	bool flushing = false;
+	bool forcedDepthActive = false;  // depth mode already forced to test-and-write for a whole flush
+	RE::BSGraphics::DepthStencilDepthMode forcedDepthSaved{};
 	bool hooksInstalled = false;
 	bool prepassActive = false;  // IncludeDepthPrepass as it was when shaders and states were set up
 	std::vector<std::pair<ID3D11DepthStencilState**, ID3D11DepthStencilState*>> swappedDepthStates;  // (engine slot, original)
