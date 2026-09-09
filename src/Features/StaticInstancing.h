@@ -58,6 +58,8 @@ struct StaticInstancing : Feature
 		/** Also coalesce the main view's depth pre-pass (RenderDepth technique). Batches never cross a
 		 *  terrain/non-terrain boundary so Terrain Blending's depth sequencing stays intact. */
 		bool IncludeDepthPrepass = false;
+		/** Also coalesce BSMeshLODTriShape geometry (statics with built-in LOD levels). */
+		bool IncludeMeshLOD = true;
 		/** Debug: route every eligible draw through the instanced path with one instance. Validates the
 		 *  matrix path independently of batching; costs a little more than vanilla. */
 		bool InstanceSingles = false;
@@ -96,6 +98,15 @@ struct StaticInstancing : Feature
 		uint32_t descSkinned = 0;
 		uint32_t descLodLandscape = 0;
 		uint32_t descAlphaTest = 0;
+		// Geometry types (BSGeometry::Type) of Utility passes that failed the geometry test
+		uint32_t excludedGeometryByType[16] = {};
+		// Lighting pass audit: how many main-pass draws would instancing be able to collapse
+		uint32_t lightingPasses = 0;
+		uint32_t lightingStatic = 0;       // BSTriShape, not skinned, lighting property
+		uint32_t lightingUniqueKeys = 0;   // distinct (renderer data, material, technique, flags)
+		uint32_t lightingCollapsible = 0;  // lightingStatic minus lightingUniqueKeys
+		uint32_t lightingSkinned = 0;
+		uint32_t lightingOtherType = 0;
 	};
 
 	virtual void SetupResources() override;
@@ -193,6 +204,7 @@ private:
 	void BeginFrameIfNeeded();
 	static bool IsTerrainPass(const RE::BSRenderPass* a_pass);
 	Verdict Classify(RE::BSRenderPass* a_pass, uint32_t a_technique, bool a_alphaTest, uint32_t a_renderFlags, BatchKey& o_key);
+	void AuditLightingPass(RE::BSRenderPass* a_pass, uint32_t a_technique, uint32_t a_renderFlags);
 	void OnRenderPass(RE::BSRenderPass* a_pass, uint32_t a_technique, bool a_alphaTest, uint32_t a_renderFlags);
 	void Flush();
 	bool WriteInstances(uint32_t a_totalInstances);
@@ -207,6 +219,7 @@ private:
 	std::vector<Bucket> buckets;
 	std::unordered_map<BatchKey, uint32_t, BatchKeyHash> bucketLookup;
 	std::unordered_map<BatchKey, uint32_t, BatchKeyHash> measure;  // every eligible pass, for the counters
+	std::unordered_map<BatchKey, uint32_t, BatchKeyHash> lightingMeasure;  // Lighting pass audit
 
 	PendingBatch pending;
 	uint32_t batchDepth = 0;  // >0 while inside BSBatchRenderer::RenderBatches

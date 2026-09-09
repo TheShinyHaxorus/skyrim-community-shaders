@@ -144,7 +144,9 @@ VS_OUTPUT main(VS_INPUT input)
 #	else
 
 	precise float4 positionMS = float4(input.PositionMS.xyz, 1.0);
-	float4 positionCS = float4(0, 0, 0, 0);
+	// precise: the depth pre-pass must produce the exact bits the main pass produces (it depth-tests
+	// for equality), including when Static Instancing feeds the matrix from a buffer.
+	precise float4 positionCS = float4(0, 0, 0, 0);
 
 	float3 normalMS = float3(1, 1, 1);
 #		if defined(NORMALS)
@@ -170,20 +172,20 @@ VS_OUTPUT main(VS_INPUT input)
 	positionCS = mul(FrameBuffer::CameraViewProj, positionWS);
 #		else
 #			if defined(STATIC_INSTANCING_VS)
+	// The instanced path only swaps the matrix source. The arithmetic below is shared with the
+	// vanilla path so the compiler emits one instruction sequence for both, and the pre-pass depth
+	// of an instanced mesh stays bit-identical to the main pass, which depth-tests for equality.
+	row_major float4x4 worldMatrix = World;
 	if (StaticInstanceEnabled == kStaticInstancingMagic) {
 		StaticInstanceRecord instanceRecord = StaticInstanceWorlds[StaticInstanceBase + input.InstanceID];
-		// Rows are [R*s | t - posAdjust], the same values the engine writes into PerGeometry.World, and
-		// the multiply order below is the vanilla one so depths match the non-instanced passes exactly.
-		row_major float4x4 instanceWorld = float4x4(instanceRecord.Row0, instanceRecord.Row1, instanceRecord.Row2, float4(0, 0, 0, 1));
-		precise float4x4 instanceModelViewProj = mul(FrameBuffer::CameraViewProj, instanceWorld);
-		positionCS = mul(instanceModelViewProj, positionMS);
-	} else {
-#			endif
-	precise float4x4 modelViewProj = mul(FrameBuffer::CameraViewProj, World);
-	positionCS = mul(modelViewProj, positionMS);
-#			if defined(STATIC_INSTANCING_VS)
+		// Rows are [R*s | t - posAdjust], exactly what the engine stores into PerGeometry.World.
+		worldMatrix = float4x4(instanceRecord.Row0, instanceRecord.Row1, instanceRecord.Row2, float4(0, 0, 0, 1));
 	}
+	precise float4x4 modelViewProj = mul(FrameBuffer::CameraViewProj, worldMatrix);
+#			else
+	precise float4x4 modelViewProj = mul(FrameBuffer::CameraViewProj, World);
 #			endif
+	positionCS = mul(modelViewProj, positionMS);
 #		endif
 
 #		if defined(RENDER_SHADOWMAP) && defined(RENDER_SHADOWMAP_CLAMPED)

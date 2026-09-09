@@ -187,7 +187,8 @@ VS_OUTPUT main(VS_INPUT input)
 	precise float4 worldPosition = float4(mul(World, inputPosition), 1);
 	precise float4x4 world4x4 = float4x4(World[0], World[1], World[2], float4(0, 0, 0, 1));
 	precise float4x4 modelView = mul(ViewProj, world4x4);
-	float4 viewPos = mul(modelView, inputPosition);
+	// precise: must match the depth pre-pass bit for bit (see Utility.hlsl, Static Instancing)
+	precise float4 viewPos = mul(modelView, inputPosition);
 #	endif  // SKINNED
 
 	vsout.Position = viewPos;

@@ -14,6 +14,7 @@ NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(
 	Enabled,
 	IncludeAlphaTested,
 	IncludeDepthPrepass,
+	IncludeMeshLOD,
 	InstanceSingles,
 	MinBatchSize,
 	MaxInstancesPerFrame)
@@ -247,6 +248,14 @@ json StaticInstancing::GetStatsJson() const
 		{ "descLodLandscape", c.descLodLandscape },
 		{ "descAlphaTest", c.descAlphaTest },
 		{ "includeDepthPrepass", settings.IncludeDepthPrepass },
+		{ "includeMeshLOD", settings.IncludeMeshLOD },
+		{ "excludedGeometryByType", std::vector<uint32_t>(std::begin(c.excludedGeometryByType), std::end(c.excludedGeometryByType)) },
+		{ "lightingPasses", c.lightingPasses },
+		{ "lightingStatic", c.lightingStatic },
+		{ "lightingUniqueKeys", c.lightingUniqueKeys },
+		{ "lightingCollapsible", c.lightingCollapsible },
+		{ "lightingSkinned", c.lightingSkinned },
+		{ "lightingOtherType", c.lightingOtherType },
 		{ "lastDescriptor", lastDescriptor },
 	};
 }
@@ -266,6 +275,10 @@ void StaticInstancing::DrawSettings()
 	ImGui::Checkbox("Include depth pre-pass", &settings.IncludeDepthPrepass);
 	if (auto tooltip = Util::HoverTooltipWrapper()) {
 		ImGui::Text("Also coalesce the main view's depth pre-pass. The instanced path repeats the vanilla matrix arithmetic so depths match the main pass exactly.");
+	}
+	ImGui::Checkbox("Include mesh-LOD shapes", &settings.IncludeMeshLOD);
+	if (auto tooltip = Util::HoverTooltipWrapper()) {
+		ImGui::Text("BSMeshLODTriShape geometry (statics with built-in LOD levels). Instances share the LOD level through the batch key.");
 	}
 	ImGui::Checkbox("Instance singles (debug)", &settings.InstanceSingles);
 	if (auto tooltip = Util::HoverTooltipWrapper()) {
@@ -310,6 +323,10 @@ void StaticInstancing::DrawSettings()
 		row("Passes with Skinned", c.descSkinned);
 		row("Passes with LodLandscape", c.descLodLandscape);
 		row("Passes with AlphaTest", c.descAlphaTest);
+		row("Lighting passes", c.lightingPasses);
+		row("Lighting static TriShapes", c.lightingStatic);
+		row("Lighting unique keys", c.lightingUniqueKeys);
+		row("Lighting collapsible", c.lightingCollapsible);
 		ImGui::EndTable();
 	}
 	if (c.eligible > 0) {
@@ -325,8 +342,10 @@ void StaticInstancing::BeginFrameIfNeeded()
 
 	last = frame;
 	last.uniqueKeys = frame.uniqueKeys + static_cast<uint32_t>(measure.size());
+	last.lightingUniqueKeys = static_cast<uint32_t>(lightingMeasure.size());
 	frame = {};
 	measure.clear();
+	lightingMeasure.clear();
 
 	ringUsed = 0;
 	ringDiscardPending = true;
@@ -338,6 +357,36 @@ void StaticInstancing::BeginFrameIfNeeded()
 		bucketLookup.clear();
 	}
 	pending = {};
+}
+
+void StaticInstancing::AuditLightingPass(RE::BSRenderPass* a_pass, uint32_t a_technique, uint32_t a_renderFlags)
+{
+	frame.lightingPasses++;
+	auto* geometry = a_pass->geometry;
+	if (!geometry || geometry->GetType().get() != RE::BSGeometry::Type::kTriShape) {
+		frame.lightingOtherType++;
+		return;
+	}
+	const auto& runtime = geometry->GetGeometryRuntimeData();
+	if (runtime.skinInstance) {
+		frame.lightingSkinned++;
+		return;
+	}
+	auto* property = a_pass->shaderProperty;
+	if (!property || !runtime.rendererData)
+		return;
+	frame.lightingStatic++;
+	BatchKey key{};
+	key.rendererData = runtime.rendererData;
+	key.material = property->GetBaseMaterial();
+	key.propertyFlags = static_cast<uint64_t>(property->flags.get());
+	key.technique = a_technique;
+	key.renderFlags = a_renderFlags;
+	key.passState = static_cast<uint32_t>(a_pass->accumulationHint) | (static_cast<uint32_t>(*reinterpret_cast<const std::uint8_t*>(&a_pass->LODMode)) << 8) | (static_cast<uint32_t>(a_pass->numLights) << 16) | (static_cast<uint32_t>(a_pass->numShadowLights) << 24);
+	auto& seen = lightingMeasure[key];
+	if (seen > 0)
+		frame.lightingCollapsible++;
+	seen++;
 }
 
 bool StaticInstancing::IsTerrainPass(const RE::BSRenderPass* a_pass)
@@ -375,8 +424,17 @@ StaticInstancing::Verdict StaticInstancing::Classify(RE::BSRenderPass* a_pass, u
 		return Verdict::kTechnique;
 
 	auto* geometry = a_pass->geometry;
-	if (!geometry || geometry->GetType().get() != RE::BSGeometry::Type::kTriShape)
+	if (!geometry)
 		return Verdict::kGeometry;
+	// kTriShape draws its whole index range. kMeshLODTriShape draws the sub-range the engine picks
+	// from the pass LOD mode it writes into the geometry (batch draw dispatch, case 5); the LOD mode
+	// is part of the key and the representative's draw supplies start and count, so it batches too.
+	const auto geometryType = static_cast<uint32_t>(geometry->GetType().get());
+	if (geometryType != static_cast<uint32_t>(RE::BSGeometry::Type::kTriShape) &&
+		(geometryType != static_cast<uint32_t>(RE::BSGeometry::Type::kMeshLODTriShape) || !settings.IncludeMeshLOD)) {
+		frame.excludedGeometryByType[geometryType & 15]++;
+		return Verdict::kGeometry;
+	}
 
 	const auto& runtime = geometry->GetGeometryRuntimeData();
 	if (!runtime.rendererData || !runtime.rendererData->vertexBuffer || !runtime.rendererData->indexBuffer)
@@ -434,6 +492,9 @@ void StaticInstancing::OnRenderPass(RE::BSRenderPass* a_pass, uint32_t a_techniq
 	}
 
 	BeginFrameIfNeeded();
+
+	if (a_pass->shader && a_pass->shader->shaderType.get() == RE::BSShader::Type::Lighting)
+		AuditLightingPass(a_pass, a_technique, a_renderFlags);
 
 	BatchKey key;
 	const Verdict verdict = Classify(a_pass, a_technique, a_alphaTest, a_renderFlags, key);
