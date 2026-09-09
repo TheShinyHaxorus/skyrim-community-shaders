@@ -326,7 +326,7 @@ void StaticInstancing::Reset()
 	// Nothing survives a frame anyway; drop whatever a partially rendered frame left behind.
 	deferred.clear();
 	buckets.clear();
-	bucketLookup.clear();
+	flushGeneration++;
 	pending = {};
 	batchDepth = 0;
 	flushing = false;
@@ -529,25 +529,41 @@ void StaticInstancing::DrawSettings()
 	}
 }
 
+void StaticInstancing::PruneStamps()
+{
+	const uint32_t oldest = frameStamp - 2;
+	std::erase_if(geometryStamps, [&](const auto& kv) { return kv.second.candidate < oldest && kv.second.skipped < oldest && kv.second.instanced < oldest; });
+	std::erase_if(lightingCandidateKeys, [&](const auto& kv) { return kv.second < oldest; });
+	std::erase_if(measure, [&](const auto& kv) { return kv.second.stamp < oldest; });
+	std::erase_if(lightingMeasure, [&](const auto& kv) { return kv.second.stamp < oldest; });
+	std::erase_if(bucketLookup, [&](const auto& kv) { return kv.second.generation + 2 < flushGeneration; });
+}
+
 void StaticInstancing::BeginFrameIfNeeded()
 {
 	if (!frameChecker.IsNewFrame())
 		return;
 
 	last = frame;
-	last.uniqueKeys = frame.uniqueKeys + static_cast<uint32_t>(measure.size());
-	last.lightingUniqueKeys = static_cast<uint32_t>(lightingMeasure.size());
+	last.uniqueKeys = frame.uniqueKeys + measureTouched;
+	last.lightingUniqueKeys = lightingMeasureTouched;
 	frame = {};
-	measure.clear();
-	lightingMeasure.clear();
-	prepassSkipCandidates.swap(instancedThisFrame);
-	instancedThisFrame.clear();
-	prepassSkippedThisFrame.clear();
-	for (auto& [geometry, key] : lightingKeyByGeometry)
-		if (lightingCandidateKeys.contains(key))
-			prepassSkipCandidates.insert(geometry);
+	measureTouched = 0;
+	lightingMeasureTouched = 0;
+	// New stamp: last frame's instanced geometries are this frame's pre-pass candidates by stamp
+	// arithmetic, plus the Lighting keys that reached MinBatchSize last frame.
+	frameStamp++;
+	candidateCount = instancedGeometryCount;
+	instancedGeometryCount = 0;
+	skippedCount = 0;
+	for (auto& [geometry, key] : lightingKeyByGeometry) {
+		auto it = lightingCandidateKeys.find(key);
+		if (it != lightingCandidateKeys.end() && it->second + 1 == frameStamp)
+			MarkCandidate(geometry);
+	}
 	lightingKeyByGeometry.clear();
-	lightingCandidateKeys.clear();
+	if ((frameStamp & 1023) == 0)
+		PruneStamps();
 
 	ringUsed = 0;
 	ringDiscardPending = true;
@@ -556,7 +572,7 @@ void StaticInstancing::BeginFrameIfNeeded()
 		// A group never flushed (loop exited early). Drop it rather than replay into the wrong state.
 		deferred.clear();
 		buckets.clear();
-		bucketLookup.clear();
+		flushGeneration++;
 	}
 	pending = {};
 }
@@ -586,9 +602,14 @@ void StaticInstancing::AuditLightingPass(RE::BSRenderPass* a_pass, uint32_t a_te
 	key.renderFlags = a_renderFlags;
 	key.passState = static_cast<uint32_t>(a_pass->accumulationHint) | (static_cast<uint32_t>(*reinterpret_cast<const std::uint8_t*>(&a_pass->LODMode)) << 8) | (static_cast<uint32_t>(a_pass->numLights) << 16) | (static_cast<uint32_t>(a_pass->numShadowLights) << 24);
 	auto& seen = lightingMeasure[key];
-	if (seen > 0)
+	if (seen.stamp != frameStamp) {
+		seen.stamp = frameStamp;
+		seen.count = 0;
+		lightingMeasureTouched++;
+	}
+	if (seen.count > 0)
 		frame.lightingCollapsible++;
-	seen++;
+	seen.count++;
 }
 
 void StaticInstancing::ComputeTreeParams(const RE::BSRenderPass* a_pass, float* o_params)
@@ -652,8 +673,8 @@ void StaticInstancing::CallWithForcedDepthWrite(RE::BSRenderPass* a_pass, uint32
 		Fn::func(a_pass, a_technique, a_alphaTest, a_renderFlags);
 		return;
 	}
-	const bool force = settings.IncludeLighting && !prepassSkippedThisFrame.empty() && a_pass->shader &&
-	                   a_pass->shader->shaderType.get() == RE::BSShader::Type::Lighting && prepassSkippedThisFrame.contains(a_pass->geometry);
+	const bool force = settings.IncludeLighting && skippedCount > 0 && a_pass->shader &&
+	                   a_pass->shader->shaderType.get() == RE::BSShader::Type::Lighting && IsSkippedThisFrame(a_pass->geometry);
 	if (!force) {
 		Fn::func(a_pass, a_technique, a_alphaTest, a_renderFlags);
 		return;
@@ -693,7 +714,7 @@ bool StaticInstancing::IsPrepassInstanceCandidate(RE::BSRenderPass* a_pass, uint
 	                              static_cast<uint32_t>(UF::BinormalTangent) | static_cast<uint32_t>(UF::AlphaTest) | static_cast<uint32_t>(UF::RenderDepth);
 	if ((descriptor & static_cast<uint32_t>(UF::RenderDepth)) == 0 || (descriptor & ~kAllowed) != 0)
 		return false;
-	if (!prepassSkipCandidates.contains(a_pass->geometry))
+	if (!IsPrepassCandidate(a_pass->geometry))
 		return false;
 	const auto& runtime = a_pass->geometry->GetGeometryRuntimeData();
 	if (!runtime.rendererData || !runtime.rendererData->vertexBuffer || !runtime.rendererData->indexBuffer || runtime.skinInstance)
@@ -888,7 +909,7 @@ void StaticInstancing::OnRenderPass(RE::BSRenderPass* a_pass, uint32_t a_techniq
 	// consumers of the pre-pass depth (terrain blending, screen-space shadows) keep seeing them.
 	BatchKey key;
 	Verdict verdict;
-	if (settings.IncludeLighting && !prepassSkipCandidates.empty() && IsPrepassInstanceCandidate(a_pass, a_technique, a_alphaTest, a_renderFlags, key)) {
+	if (settings.IncludeLighting && candidateCount > 0 && IsPrepassInstanceCandidate(a_pass, a_technique, a_alphaTest, a_renderFlags, key)) {
 		verdict = Verdict::kPrepassEligible;
 	} else {
 		verdict = Classify(a_pass, a_technique, a_alphaTest, a_renderFlags, key);
@@ -912,13 +933,18 @@ void StaticInstancing::OnRenderPass(RE::BSRenderPass* a_pass, uint32_t a_techniq
 		frame.lightingEligible++;
 		// Only objects that were skipped in this frame's pre-pass can be instanced (their depth is
 		// not in the buffer, so test-and-write is correct for them); everything else stays vanilla.
-		deferThis = settings.Enabled && !instanceSRVs.empty() && prepassSkippedThisFrame.contains(a_pass->geometry);
+		deferThis = settings.Enabled && !instanceSRVs.empty() && IsSkippedThisFrame(a_pass->geometry);
 		if (settings.Enabled && !deferThis) {
-			// First sighting: count duplicates now so next frame's pre-pass can skip them.
+			// First sighting: count duplicates now so next frame's pre-pass can instance them.
 			auto& seen = lightingMeasure[key];
-			seen++;
-			if (seen >= settings.MinBatchSize)
-				lightingCandidateKeys.insert(key);
+			if (seen.stamp != frameStamp) {
+				seen.stamp = frameStamp;
+				seen.count = 0;
+				lightingMeasureTouched++;
+			}
+			seen.count++;
+			if (seen.count >= settings.MinBatchSize)
+				lightingCandidateKeys[key] = frameStamp;
 			lightingKeyByGeometry.emplace_back(a_pass->geometry, key);
 		}
 		break;
@@ -953,25 +979,36 @@ void StaticInstancing::OnRenderPass(RE::BSRenderPass* a_pass, uint32_t a_techniq
 			if (!deferThis) {
 				// Not batched, so count duplicates here; batched passes are counted at flush.
 				auto& seen = measure[key];
-				if (seen > 0)
+				if (seen.stamp != frameStamp) {
+					seen.stamp = frameStamp;
+					seen.count = 0;
+					measureTouched++;
+				}
+				if (seen.count > 0)
 					frame.collapsible++;
-				seen++;
+				seen.count++;
 			}
 		}
 		break;
 	}
 
 	if (deferThis) {
-		uint32_t bucketIndex;
-		if (auto it = bucketLookup.find(key); it != bucketLookup.end()) {
-			bucketIndex = it->second;
-		} else {
-			bucketIndex = static_cast<uint32_t>(buckets.size());
-			buckets.push_back(Bucket{ key, {}, false });
-			bucketLookup.emplace(key, bucketIndex);
+		auto& slot = bucketLookup[key];
+		if (slot.generation != flushGeneration) {
+			slot.generation = flushGeneration;
+			slot.index = static_cast<uint32_t>(buckets.size());
+			buckets.push_back(Bucket{ key });
 		}
-		buckets[bucketIndex].passes.push_back(static_cast<uint32_t>(deferred.size()));
-		deferred.push_back(DeferredPass{ a_pass, a_technique, a_renderFlags, a_alphaTest, verdict == Verdict::kLightingEligible, verdict == Verdict::kPrepassEligible, bucketIndex });
+		const uint32_t bucketIndex = slot.index;
+		const uint32_t passIndex = static_cast<uint32_t>(deferred.size());
+		Bucket& bucket = buckets[bucketIndex];
+		if (bucket.first == kNoPass)
+			bucket.first = passIndex;
+		else
+			deferred[bucket.last].nextInBucket = passIndex;
+		bucket.last = passIndex;
+		bucket.count++;
+		deferred.push_back(DeferredPass{ a_pass, a_technique, a_renderFlags, a_alphaTest, verdict == Verdict::kLightingEligible, verdict == Verdict::kPrepassEligible, bucketIndex, kNoPass });
 		frame.deferred++;
 		if (verdict == Verdict::kLightingEligible)
 			frame.lightingDeferred++;
@@ -1024,8 +1061,8 @@ bool StaticInstancing::WriteInstances(uint32_t a_totalInstances)
 			continue;
 		bucket.block = ringUsed / kBlockSize;
 		auto* out = reinterpret_cast<float*>(base + static_cast<size_t>(ringUsed) * kInstanceStride);
-		ringUsed += (static_cast<uint32_t>(bucket.passes.size()) + kBlockSize - 1) / kBlockSize * kBlockSize;
-	for (uint32_t passIndex : bucket.passes) {
+		ringUsed += (bucket.count + kBlockSize - 1) / kBlockSize * kBlockSize;
+	for (uint32_t passIndex = bucket.first; passIndex != kNoPass; passIndex = deferred[passIndex].nextInBucket) {
 		const RE::NiTransform& world = deferred[passIndex].pass->geometry->world;
 		const auto& r = world.rotate.entry;
 		const float s = world.scale;
@@ -1101,7 +1138,7 @@ void StaticInstancing::Flush()
 	uint32_t totalInstances = 0;
 	frame.uniqueKeys += static_cast<uint32_t>(buckets.size());
 	for (Bucket& bucket : buckets) {
-		const uint32_t count = static_cast<uint32_t>(bucket.passes.size());
+		const uint32_t count = bucket.count;
 		frame.collapsible += count - 1;
 		bucket.instanced = count >= settings.MinBatchSize || settings.InstanceSingles;
 		if (bucket.instanced)
@@ -1115,7 +1152,7 @@ void StaticInstancing::Flush()
 	for (size_t i = 0; i < deferred.size(); ++i) {
 		const DeferredPass& d = deferred[i];
 		Bucket& bucket = buckets[d.bucket];
-		const uint32_t count = static_cast<uint32_t>(bucket.passes.size());
+		const uint32_t count = bucket.count;
 
 		if (!bucket.instanced || !written) {
 			CallWithForcedDepthWrite(d.pass, d.technique, d.alphaTest, d.renderFlags);
@@ -1155,7 +1192,7 @@ void StaticInstancing::Flush()
 				frame.prepassShaderMisses++;
 			else
 				frame.lightingShaderMisses++;
-			for (uint32_t passIndex : bucket.passes) {
+			for (uint32_t passIndex = bucket.first; passIndex != kNoPass; passIndex = deferred[passIndex].nextInBucket) {
 				if (passIndex == i)
 					continue;
 				const DeferredPass& p = deferred[passIndex];
@@ -1173,22 +1210,22 @@ void StaticInstancing::Flush()
 				// A vanilla replay (miss, too small a bucket) leaves them out, and the main pass draws
 				// them vanilla against their exact pre-pass depth.
 				frame.prepassInstancedDraws++;
-				for (uint32_t passIndex : bucket.passes)
-					prepassSkippedThisFrame.insert(deferred[passIndex].pass->geometry);
+				for (uint32_t passIndex = bucket.first; passIndex != kNoPass; passIndex = deferred[passIndex].nextInBucket)
+					MarkSkipped(deferred[passIndex].pass->geometry);
 			}
 		}
 		// Members of an instanced main-pass batch, and eligible objects that batched this frame, are
 		// skipped in next frame's pre-pass so they can be instanced again.
 		if (d.lighting && !pending.fellBack)
-			for (uint32_t passIndex : bucket.passes)
-				instancedThisFrame.insert(deferred[passIndex].pass->geometry);
+			for (uint32_t passIndex = bucket.first; passIndex != kNoPass; passIndex = deferred[passIndex].nextInBucket)
+				MarkInstanced(deferred[passIndex].pass->geometry);
 	}
 
 	if (lightingFlush)
 		EndForcedDepthWrite();
 	deferred.clear();
 	buckets.clear();
-	bucketLookup.clear();
+	flushGeneration++;
 	flushing = false;
 	frame.flushUs += std::chrono::duration<float, std::micro>(std::chrono::steady_clock::now() - flushStart).count();
 }

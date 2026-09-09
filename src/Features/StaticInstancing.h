@@ -208,12 +208,17 @@ private:
 		bool lighting;
 		bool prepass;  // depth pre-pass draw of a main-pass instanced object
 		uint32_t bucket;
+		uint32_t nextInBucket;  // intrusive list, kNoPass ends it
 	};
+
+	static constexpr uint32_t kNoPass = UINT32_MAX;
 
 	struct Bucket
 	{
 		BatchKey key;
-		std::vector<uint32_t> passes;  // indices into `deferred`
+		uint32_t first = kNoPass;  // indices into `deferred`, chained through nextInBucket
+		uint32_t last = kNoPass;
+		uint32_t count = 0;
 		bool drawn = false;
 		bool instanced = false;
 		uint32_t block = 0;  // SRV block the bucket's matrices were written to
@@ -274,16 +279,73 @@ private:
 
 	std::vector<DeferredPass> deferred;
 	std::vector<Bucket> buckets;
-	std::unordered_map<BatchKey, uint32_t, BatchKeyHash> bucketLookup;
-	std::unordered_map<BatchKey, uint32_t, BatchKeyHash> measure;  // every eligible pass, for the counters
-	std::unordered_map<BatchKey, uint32_t, BatchKeyHash> lightingMeasure;  // Lighting pass audit
-	// Main-pass instancing bookkeeping: geometries instanced last frame are skipped in this frame's
-	// pre-pass; geometries skipped this frame must be drawn test-and-write in the main pass.
-	std::unordered_set<const RE::BSGeometry*> prepassSkipCandidates;
-	std::unordered_set<const RE::BSGeometry*> prepassSkippedThisFrame;
-	std::unordered_set<const RE::BSGeometry*> instancedThisFrame;
-	std::unordered_set<BatchKey, BatchKeyHash> lightingCandidateKeys;
+	// Per-frame and per-flush sets are stamped instead of cleared: the hash nodes persist, so the
+	// steady state allocates nothing. Stale entries are pruned every 1024 frames.
+	struct BucketSlot
+	{
+		uint32_t generation = 0;
+		uint32_t index = 0;
+	};
+	struct StampedCount
+	{
+		uint32_t stamp = 0;
+		uint32_t count = 0;
+	};
+	struct GeometryStamps
+	{
+		uint32_t candidate = 0;  // pre-pass instance candidate this frame (from last frame's Lighting keys)
+		uint32_t skipped = 0;    // drawn instanced in this frame's pre-pass: main pass must test-and-write
+		uint32_t instanced = 0;  // member of an instanced main-pass batch this frame
+	};
+	std::unordered_map<BatchKey, BucketSlot, BatchKeyHash> bucketLookup;
+	std::unordered_map<BatchKey, StampedCount, BatchKeyHash> measure;  // every eligible pass, for the counters
+	std::unordered_map<BatchKey, StampedCount, BatchKeyHash> lightingMeasure;  // Lighting pass audit
+	std::unordered_map<BatchKey, uint32_t, BatchKeyHash> lightingCandidateKeys;  // value: frame stamp
+	std::unordered_map<const RE::BSGeometry*, GeometryStamps> geometryStamps;
 	std::vector<std::pair<const RE::BSGeometry*, BatchKey>> lightingKeyByGeometry;
+	uint32_t frameStamp = 2;  // starts above 1 so `instanced + 1 == frameStamp` never matches a fresh entry
+	uint32_t flushGeneration = 1;
+	uint32_t measureTouched = 0;
+	uint32_t lightingMeasureTouched = 0;
+	uint32_t candidateCount = 0;
+	uint32_t skippedCount = 0;
+	uint32_t instancedGeometryCount = 0;
+
+	bool IsPrepassCandidate(const RE::BSGeometry* a_geometry) const
+	{
+		auto it = geometryStamps.find(a_geometry);
+		return it != geometryStamps.end() && (it->second.instanced + 1 == frameStamp || it->second.candidate == frameStamp);
+	}
+	bool IsSkippedThisFrame(const RE::BSGeometry* a_geometry) const
+	{
+		auto it = geometryStamps.find(a_geometry);
+		return it != geometryStamps.end() && it->second.skipped == frameStamp;
+	}
+	void MarkSkipped(const RE::BSGeometry* a_geometry)
+	{
+		auto& s = geometryStamps[a_geometry];
+		if (s.skipped != frameStamp) {
+			s.skipped = frameStamp;
+			skippedCount++;
+		}
+	}
+	void MarkInstanced(const RE::BSGeometry* a_geometry)
+	{
+		auto& s = geometryStamps[a_geometry];
+		if (s.instanced != frameStamp) {
+			s.instanced = frameStamp;
+			instancedGeometryCount++;
+		}
+	}
+	void MarkCandidate(const RE::BSGeometry* a_geometry)
+	{
+		auto& s = geometryStamps[a_geometry];
+		if (s.candidate != frameStamp) {
+			s.candidate = frameStamp;
+			candidateCount++;
+		}
+	}
+	void PruneStamps();
 
 	PendingBatch pending;
 	uint32_t batchDepth = 0;  // >0 while inside BSBatchRenderer::RenderBatches

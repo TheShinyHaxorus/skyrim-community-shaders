@@ -303,3 +303,53 @@ LOD fade, alpha). Design:
   as before: one instanced draw replaces the bucket.
 - Exclusions: skinned, projected UV, landscape, tree animation, fading, decals, additive or
   blended alpha, any pass with shadow lights.
+
+## Results, build 20/21 (main pass on), 2026-09-09 00:27 to 00:56
+
+Visual: every phase clean on build 20, including InstanceSingles with the main pass on (the
+configuration that exposed the build 19 hole). Counters per frame: 147 instanced main-pass draws
+replacing 400 Lighting draws, 150 instanced pre-pass draws replacing 456, no shader misses.
+
+Timing (overlay open, alternating configs, 15 samples each):
+
+| config            | frame ms      | Lighting type ms |
+|-------------------|---------------|------------------|
+| shadow maps only  | 18.14 / 17.89 / 15.46 | 4.61 / 4.54 / 3.50 |
+| plus main pass    | 18.22 / 17.73 / 15.60 | 4.73 / 4.64 / 3.66 |
+| feature off       | 14.99 (drifted) | 3.41 |
+
+The main pass removes about 850 draws a frame and buys nothing measurable; the per-type timer
+says the Lighting pass is 0.1 ms slower with it on. Build 21's counters explain why: my code is
+cheap (flush 0.55 ms including the engine's replayed draws, instance writes 0.04 ms, instanced
+draws 0.13 ms, 32 depth-mode changes), so the engine's own per-draw cost in these passes must be
+near 0.5 us, the same figure the shadow-map result implied. Draw elimination has hit its floor
+on this CPU. The main pass stays available (it is clean) but should not be sold as a win.
+
+## Render-thread profile, build 21, 2026-09-09 01:00 (WPR CPU sampling, 30 s, overlay open)
+
+Thread 54168 (render), 50.5k samples. By module: SkyrimSE.exe 27%, ntdll 19%, CommunityShaders
+14%, d3d11 11%, kernel 6%, NVIDIA driver 6%, third-party SKSE plugins about 5%.
+
+Where the ntdll time goes: RtlQueryPerformanceCounter is 13.5% of the thread, and the stacks put
+92% of it inside amd_fidelityfx_framegeneration_dx12.dll under DX12SwapChain::Present, called
+from HDRDisplay::RunPresentChainWithHDR. That is FSR frame generation pacing its interpolated
+frame by spinning; about 1.9 ms of every frame on this thread is that wait, not submission.
+
+Community Shaders items on the thread, and what build 22 does about them:
+
+- WeatherManager::UpdateFeatures 1.6%: State::Draw called it on every draw call whenever the
+  CS Editor feature is loaded. Now once per frame (State::weatherFrameChecker).
+- StaticInstancing 2.0% (OnRenderPass 1.3%, BatchKey hashing 0.5%, heap allocations from the
+  per-flush bucket vectors and per-frame unordered containers). The containers are now
+  stamped instead of cleared (nodes persist), and buckets chain their passes through the
+  deferred array instead of owning a vector.
+- SnowCover::BSLightingShader_Setup about 0.8%: NiAVObject::HasAnimation walks extra data with
+  _stricmp on every pass, plus a name hash. Now cached per geometry for 30 frames, keyed on the
+  reference as well.
+- State::Debug (overlay measurement) about 0.5% while the overlay is open: QPC plus a mutex per
+  draw. Only present while measuring; left alone.
+
+Third-party per-draw hooks on the same thread, for the modlist owner: NativeMeshLightFlickerFix
+1.9%, EngineFixes 1.6% (its SetupGeometry wrapper appears in every Lighting stack, plus
+GetCurrentThreadId per pass), UnderwaterNG and HorizonFix inside the water and lighting setup
+chains, FPWeaponAdjust and ImprovedCameraSE 0.5% each. About 0.6 ms a frame between them.
