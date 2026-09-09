@@ -320,6 +320,11 @@ StaticInstancing::Verdict StaticInstancing::Classify(RE::BSRenderPass* a_pass, u
 	if (runtime.skinInstance)
 		return Verdict::kSkinned;
 
+	// NiAVObject::flags02 & 8 routes the pass through the engine's custom-render path (verified in
+	// the 1.6.1170 decompile of RenderPassImmediately). Not the flat layout in VR, so skip the test there.
+	if (!REL::Module::IsVR() && (reinterpret_cast<const std::uint8_t*>(geometry)[0x109] & 0x8) != 0)
+		return Verdict::kGeometry;
+
 	auto* property = a_pass->shaderProperty;
 	if (!property || property->GetRTTI() != globals::rtti::BSLightingShaderPropertyRTTI.get())
 		return Verdict::kProperty;
