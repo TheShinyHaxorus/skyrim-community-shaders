@@ -71,6 +71,11 @@ namespace
 	}
 }
 
+bool StaticInstancing::batchCBReady() const
+{
+	return enabledCB != nullptr && disabledCB != nullptr && globals::d3d::context != nullptr;
+}
+
 size_t StaticInstancing::BatchKeyHash::operator()(const BatchKey& k) const noexcept
 {
 	size_t h = std::hash<const void*>{}(k.rendererData);
@@ -150,14 +155,13 @@ void StaticInstancing::SetupResources()
 		D3D11_BUFFER_DESC desc{};
 		desc.ByteWidth = 16;
 		desc.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
-		desc.Usage = D3D11_USAGE_IMMUTABLE;
-		desc.CPUAccessFlags = 0;
+		desc.Usage = D3D11_USAGE_DYNAMIC;
+		desc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
 
 		// Base is always 0: the bound SRV already starts at the batch's first instance. Pad.x carries
-		// the pre-pass depth bias (as float bits) in both buffers so every pre-pass draw is biased.
-		uint32_t biasBits = 0;
-		if (prepassActive)
-			std::memcpy(&biasBits, &kPrepassDepthBias, sizeof(biasBits));
+		// the pre-pass depth bias (as float bits); it stays zero until the main pass depth states have
+		// been swapped to less-or-equal (ArmPrepassBias), so a failed swap can never bias anything.
+		const uint32_t biasBits = 0;
 		const uint32_t enabled[4] = { 0, kMagic, biasBits, 0 };
 		D3D11_SUBRESOURCE_DATA init{};
 		init.pSysMem = enabled;
@@ -170,6 +174,8 @@ void StaticInstancing::SetupResources()
 
 		const uint32_t zeros[4] = { 0, 0, biasBits, 0 };
 		init.pSysMem = zeros;
+		desc.Usage = D3D11_USAGE_DYNAMIC;
+		desc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
 		if (FAILED(device->CreateBuffer(&desc, &init, &disabledCB))) {
 			logger::error("[Static Instancing] disabled constant buffer creation failed");
 			ReleaseResources();
@@ -180,21 +186,49 @@ void StaticInstancing::SetupResources()
 
 	ringUsed = 0;
 	ringDiscardPending = true;
+	biasArmed = false;
+	depthStatesSwapped = false;
+	swapAttempts = 0;
 	SwapMainPassDepthStates(prepassActive);
 	logger::info("[Static Instancing] resources ready: {} instances in {} blocks, NO_OVERWRITE on SRV buffers {}", ringCapacity, instanceSRVs.size(), noOverwriteSupported ? "supported" : "unsupported (discard per flush)");
 }
 
+void StaticInstancing::ArmPrepassBias(bool a_arm)
+{
+	if (biasArmed == a_arm || !batchCBReady())
+		return;
+	auto* context = globals::d3d::context;
+	uint32_t biasBits = 0;
+	if (a_arm)
+		std::memcpy(&biasBits, &kPrepassDepthBias, sizeof(biasBits));
+	D3D11_MAPPED_SUBRESOURCE mapped{};
+	if (SUCCEEDED(context->Map(enabledCB, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped))) {
+		const uint32_t enabled[4] = { 0, kMagic, biasBits, 0 };
+		std::memcpy(mapped.pData, enabled, sizeof(enabled));
+		context->Unmap(enabledCB, 0);
+	}
+	if (SUCCEEDED(context->Map(disabledCB, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped))) {
+		const uint32_t zeros[4] = { 0, 0, biasBits, 0 };
+		std::memcpy(mapped.pData, zeros, sizeof(zeros));
+		context->Unmap(disabledCB, 0);
+	}
+	biasArmed = a_arm;
+	logger::info("[Static Instancing] pre-pass depth bias {}", a_arm ? "armed" : "disarmed");
+}
+
 void StaticInstancing::SwapMainPassDepthStates(bool a_enable)
 {
-	// Restore first so the swap is idempotent across device re-inits.
-	for (auto& [slot, original] : swappedDepthStates)
-		*slot = original;
-	swappedDepthStates.clear();
-	for (auto*& state : lessEqualStates)
-		SafeRelease(state);
-	lessEqualStates.clear();
-	if (!a_enable)
+	if (!a_enable) {
+		for (auto& [slot, original] : swappedDepthStates)
+			*slot = original;
+		swappedDepthStates.clear();
+		for (auto*& state : lessEqualStates)
+			SafeRelease(state);
+		lessEqualStates.clear();
+		depthStatesSwapped = false;
+		ArmPrepassBias(false);
 		return;
+	}
 	if (!REL::Module::IsAE()) {
 		logger::warn("[Static Instancing] pre-pass mode needs the AE depth-stencil table id; not enabled on this runtime");
 		prepassActive = false;
@@ -202,16 +236,35 @@ void StaticInstancing::SwapMainPassDepthStates(bool a_enable)
 	}
 	auto* device = globals::d3d::device;
 	auto** table = reinterpret_cast<ID3D11DepthStencilState**>(REL::ID(kDepthStencilTableIdAE).address());
-	const uint32_t equalRow = static_cast<uint32_t>(RE::BSGraphics::DepthStencilDepthMode::kTestEqual) * kStencilModes;
-	for (uint32_t stencilMode = 0; stencilMode < kStencilModes; ++stencilMode) {
-		auto** slot = table + equalRow + stencilMode;
+	swapAttempts++;
+	// The engine fills this table lazily, so this runs again each frame from Prepass until an
+	// Equal state has been found. Every Equal state in the whole table is replaced, whichever row
+	// it sits in; row and column are logged the first time for verification.
+	uint32_t seen = 0;
+	uint32_t equalFound = 0;
+	uint32_t funcHistogram[8] = {};
+	for (uint32_t index = 0; index < 7 * kStencilModes; ++index) {
+		auto** slot = table + index;
 		auto* original = *slot;
 		if (!original)
 			continue;
+		seen++;
+		bool alreadySwapped = false;
+		for (auto& [s, o] : swappedDepthStates)
+			if (s == slot) {
+				alreadySwapped = true;
+				break;
+			}
+		if (alreadySwapped)
+			continue;
 		D3D11_DEPTH_STENCIL_DESC desc{};
 		original->GetDesc(&desc);
+		if (swapAttempts == 1 && seen <= 12)
+			logger::info("[Static Instancing] depth state [{}][{}]: enable {} write {} func {} stencil {}", index / kStencilModes, index % kStencilModes, desc.DepthEnable, static_cast<int>(desc.DepthWriteMask), static_cast<int>(desc.DepthFunc), desc.StencilEnable);
+		funcHistogram[static_cast<int>(desc.DepthFunc) & 7]++;
 		if (desc.DepthFunc != D3D11_COMPARISON_EQUAL)
 			continue;
+		equalFound++;
 		desc.DepthFunc = D3D11_COMPARISON_LESS_EQUAL;
 		ID3D11DepthStencilState* replacement = nullptr;
 		if (FAILED(device->CreateDepthStencilState(&desc, &replacement)) || !replacement)
@@ -221,7 +274,12 @@ void StaticInstancing::SwapMainPassDepthStates(bool a_enable)
 		swappedDepthStates.emplace_back(slot, original);
 		*slot = replacement;
 	}
-	logger::info("[Static Instancing] main pass depth test Equal -> LessEqual on {} states for pre-pass instancing", swappedDepthStates.size());
+	if (equalFound > 0 || swapAttempts == 1 || swapAttempts % 600 == 0)
+		logger::info("[Static Instancing] depth-state table: {} populated, {} Equal states replaced this pass, {} replaced in total (attempt {}); DepthFunc histogram never/less/equal/lessEq/greater/notEq/greaterEq/always = {} {} {} {} {} {} {} {}", seen, equalFound, swappedDepthStates.size(), swapAttempts, funcHistogram[1], funcHistogram[2], funcHistogram[3], funcHistogram[4], funcHistogram[5], funcHistogram[6], funcHistogram[7], funcHistogram[0]);
+	if (!swappedDepthStates.empty()) {
+		depthStatesSwapped = true;
+		ArmPrepassBias(true);
+	}
 }
 
 void StaticInstancing::ReleaseResources()
@@ -245,9 +303,14 @@ std::vector<std::pair<std::string_view, std::string_view>> StaticInstancing::Get
 
 void StaticInstancing::Prepass()
 {
+	if (!prepassActive || !disabledCB)
+		return;
+	// The engine creates depth-stencil states on first use; keep scanning until the Equal states
+	// exist and have been replaced (and a while after, in case more stencil variants appear).
+	if (!depthStatesSwapped || swapAttempts < 900)
+		SwapMainPassDepthStates(true);
 	// Keep b13 bound with the bias for every pre-pass draw; instanced draws rebind their own.
-	if (prepassActive && disabledCB)
-		globals::d3d::context->VSSetConstantBuffers(kBatchCBSlot, 1, &disabledCB);
+	globals::d3d::context->VSSetConstantBuffers(kBatchCBSlot, 1, &disabledCB);
 }
 
 void StaticInstancing::Reset()
@@ -325,6 +388,8 @@ json StaticInstancing::GetStatsJson() const
 		{ "includeDepthPrepass", settings.IncludeDepthPrepass },
 		{ "includeMeshLOD", settings.IncludeMeshLOD },
 		{ "prepassActive", prepassActive },
+		{ "prepassBiasArmed", biasArmed },
+		{ "depthStatesSwapped", swappedDepthStates.size() },
 		{ "includeTrees", settings.IncludeTrees },
 		{ "excludedGeometryByType", std::vector<uint32_t>(std::begin(c.excludedGeometryByType), std::end(c.excludedGeometryByType)) },
 		{ "lightingPasses", c.lightingPasses },
@@ -562,7 +627,7 @@ StaticInstancing::Verdict StaticInstancing::Classify(RE::BSRenderPass* a_pass, u
 	const bool isDepth = (descriptor & static_cast<uint32_t>(UF::RenderDepth)) != 0;
 	// Shadow maps, plus the depth pre-pass when it was enabled at load (biased pre-pass depth and a
 	// less-or-equal main pass test replace the bit-exact requirement).
-	if (!(isShadowmap || (isDepth && prepassActive)) || (descriptor & kExcludedBits) != 0)
+	if (!(isShadowmap || (isDepth && prepassActive && biasArmed)) || (descriptor & kExcludedBits) != 0)
 		return Verdict::kTechnique;
 	// Shadow-caster culling: drop static casters too small to matter for the shadow map. Skinned
 	// geometry (actors) is never culled. The pass is simply not submitted, so its full cost is saved.

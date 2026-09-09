@@ -228,6 +228,8 @@ private:
 	void DrawInstanced(RE::BSGraphics::TriShape* a_triShape, uint32_t a_startIndex, uint32_t a_count, uint32_t a_instanceCount, uint32_t a_block);
 	void ReleaseResources();
 	void SwapMainPassDepthStates(bool a_enable);
+	void ArmPrepassBias(bool a_arm);
+	bool batchCBReady() const;
 
 	Counters frame{};
 	Counters last{};
@@ -246,6 +248,9 @@ private:
 	bool prepassActive = false;  // IncludeDepthPrepass as it was when shaders and states were set up
 	std::vector<std::pair<ID3D11DepthStencilState**, ID3D11DepthStencilState*>> swappedDepthStates;  // (engine slot, original)
 	std::vector<ID3D11DepthStencilState*> lessEqualStates;
+	bool depthStatesSwapped = false;  // at least one Equal state replaced; the pre-pass bias is only armed after this
+	bool biasArmed = false;
+	uint32_t swapAttempts = 0;
 	uint32_t lastDescriptor = 0;  // raw Utility descriptor of the last classified pass, for the stats readout
 
 	ID3D11Buffer* instanceBuffer = nullptr;
