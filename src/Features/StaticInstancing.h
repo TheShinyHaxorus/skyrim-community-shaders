@@ -68,6 +68,11 @@ struct StaticInstancing : Feature
 		bool InstanceSingles = false;
 		/** Smallest bucket that is drawn instanced. */
 		uint32_t MinBatchSize = 2;
+		/** Shadow-caster culling: skip shadow-map draws of static geometry whose world bound radius is
+		 *  below this many units. 0 disables. Tiny casters cover under a texel of a 2048 map anyway. */
+		float MinCasterRadius = 0.0f;
+		/** Same threshold for focus lights (point and spot shadow maps), which have a far coarser texel footprint. */
+		float MinCasterRadiusFocus = 0.0f;
 		/** Capacity of the per-frame instance matrix ring (48 bytes each). */
 		uint32_t MaxInstancesPerFrame = 65536;
 	};
@@ -93,6 +98,9 @@ struct StaticInstancing : Feature
 		uint32_t excludedProperty = 0;
 		uint32_t excludedAlpha = 0;     // alpha-tested while IncludeAlphaTested is off
 		uint32_t excludedFading = 0;    // accumulation hint 10: per-object stencil fade
+		uint32_t culledSmallCasters = 0; // shadow-map draws skipped by MinCasterRadius
+		uint32_t waterPasses = 0;
+		uint32_t effectPasses = 0;
 		// Descriptor breakdown of every Utility pass (flags, not exclusive)
 		uint32_t descShadowmap = 0;
 		uint32_t descDepth = 0;
@@ -199,6 +207,7 @@ private:
 		kSkinned,
 		kProperty,
 		kFading,
+		kCulled,
 		kAlphaExcluded,
 		kEligible,
 	};

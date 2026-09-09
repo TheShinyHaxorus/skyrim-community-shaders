@@ -18,6 +18,8 @@ NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(
 	IncludeTrees,
 	InstanceSingles,
 	MinBatchSize,
+	MinCasterRadius,
+	MinCasterRadiusFocus,
 	MaxInstancesPerFrame)
 
 namespace
@@ -240,6 +242,10 @@ json StaticInstancing::GetStatsJson() const
 		{ "excludedProperty", c.excludedProperty },
 		{ "excludedAlpha", c.excludedAlpha },
 		{ "excludedFading", c.excludedFading },
+		{ "culledSmallCasters", c.culledSmallCasters },
+		{ "waterPasses", c.waterPasses },
+		{ "effectPasses", c.effectPasses },
+		{ "minCasterRadius", settings.MinCasterRadius },
 		{ "descShadowmap", c.descShadowmap },
 		{ "descDepth", c.descDepth },
 		{ "descShadowmask", c.descShadowmask },
@@ -285,6 +291,10 @@ void StaticInstancing::DrawSettings()
 	if (auto tooltip = Util::HoverTooltipWrapper()) {
 		ImGui::Text("Sends every eligible draw through the instanced vertex path with one instance. If shadows look identical to vanilla in this mode, the matrix path is correct.");
 	}
+	ImGui::SliderFloat("Cull shadow casters below radius", &settings.MinCasterRadius, 0.0f, 200.0f, "%.0f units");
+	if (auto tooltip = Util::HoverTooltipWrapper()) {
+		ImGui::Text("Static geometry with a world bound radius below this is not drawn into shadow maps at all. 0 disables. Actors are never culled.");
+	}
 	int minBatch = static_cast<int>(settings.MinBatchSize);
 	if (ImGui::SliderInt("Minimum batch size", &minBatch, 2, 16))
 		settings.MinBatchSize = static_cast<uint32_t>(minBatch);
@@ -317,6 +327,7 @@ void StaticInstancing::DrawSettings()
 		row("Excluded: property", c.excludedProperty);
 		row("Excluded: alpha-tested (opt-in off)", c.excludedAlpha);
 		row("Excluded: fading (stencil)", c.excludedFading);
+		row("Culled small casters", c.culledSmallCasters);
 		row("Passes with RenderShadowmap", c.descShadowmap);
 		row("Passes with RenderDepth", c.descDepth);
 		row("Passes with shadow mask", c.descShadowmask);
@@ -478,6 +489,16 @@ StaticInstancing::Verdict StaticInstancing::Classify(RE::BSRenderPass* a_pass, u
 	(void)isDepth;
 	if (!isShadowmap || (descriptor & kExcludedBits) != 0)
 		return Verdict::kTechnique;
+	// Shadow-caster culling: drop static casters too small to matter for the shadow map. Skinned
+	// geometry (actors) is never culled. The pass is simply not submitted, so its full cost is saved.
+	if (settings.MinCasterRadius > 0.0f || settings.MinCasterRadiusFocus > 0.0f) {
+		if (auto* geo = a_pass->geometry; geo && !geo->GetGeometryRuntimeData().skinInstance) {
+			const float threshold = settings.MinCasterRadius;
+			if (threshold > 0.0f && geo->worldBound.radius < threshold)
+				return Verdict::kCulled;
+		}
+	}
+
 	// Tree sway is computed per geometry (BSLeafAnimNode timers); the instance record carries it.
 	// Shadow maps only: the main pass computes its own sway and depth-tests for equality.
 	if ((descriptor & static_cast<uint32_t>(UF::TreeAnim)) != 0 && (!settings.IncludeTrees || !isShadowmap))
@@ -553,8 +574,15 @@ void StaticInstancing::OnRenderPass(RE::BSRenderPass* a_pass, uint32_t a_techniq
 
 	BeginFrameIfNeeded();
 
-	if (a_pass->shader && a_pass->shader->shaderType.get() == RE::BSShader::Type::Lighting)
-		AuditLightingPass(a_pass, a_technique, a_renderFlags);
+	if (a_pass->shader) {
+		const auto shaderType = a_pass->shader->shaderType.get();
+		if (shaderType == RE::BSShader::Type::Lighting)
+			AuditLightingPass(a_pass, a_technique, a_renderFlags);
+		else if (shaderType == RE::BSShader::Type::Water)
+			frame.waterPasses++;
+		else if (shaderType == RE::BSShader::Type::Effect)
+			frame.effectPasses++;
+	}
 
 	BatchKey key;
 	const Verdict verdict = Classify(a_pass, a_technique, a_alphaTest, a_renderFlags, key);
@@ -581,6 +609,9 @@ void StaticInstancing::OnRenderPass(RE::BSRenderPass* a_pass, uint32_t a_techniq
 	case Verdict::kFading:
 		frame.excludedFading++;
 		break;
+	case Verdict::kCulled:
+		frame.culledSmallCasters++;
+		return;  // not submitted at all
 	case Verdict::kAlphaExcluded:
 	case Verdict::kEligible:
 		{
