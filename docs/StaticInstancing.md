@@ -168,3 +168,47 @@ formula from BSUtilityShader::SetupGeometry: timer * 6, the shadow scene node wi
 BSMeshLODTriShape geometry (LOD mode is in the batch key; the representative draw supplies the
 index range), and per-frame counters for the Lighting pass: static TriShape passes, unique
 (renderer data, material, technique, flags, light counts) keys, and the collapsible count.
+
+## Results, build 13 (shadow maps only, trees, mesh-LOD, alpha-tested), 2026-09-08 late
+
+Validation: singles mode with every eligible caster type instanced renders identically to the
+feature-off frame (capture pair `v2-singles` / `v2-off`). Same spot, overlay open, 3 cycles x 10
+samples per configuration:
+
+| Configuration | Utility draws | Removed | Batches | Utility submit ms | Frame ms |
+|---|---|---|---|---|---|
+| Off | 3,134 | 0 | 0 | 4.99 | 22.3 |
+| Shadow static | 3,056 | 80 | 49 | 4.98 | 22.6 |
+| + mesh-LOD | 3,065 | 82 | 50 | 4.97 | 22.2 |
+| + alpha-tested | 3,051 | 103 | 62 | 5.01 | 22.7 |
+| + trees | 3,005 | 160 | 84 | 4.97 | 22.5 |
+
+Counters at that spot: 3,169 Utility passes per frame, of which 897 shadow-map and 2,272 depth
+pre-pass; 524 eligible shadow casters, 342 unique keys, 182 collapsible. Lighting pass: 2,920
+passes, 1,493 static TriShapes, 1,039 unique keys, 454 collapsible (30 percent); a further 1,262
+passes are other geometry types (mostly mesh-LOD shapes) and 165 skinned.
+
+Reading: with the pre-pass excluded the shadow-map duplicate pool is small at this spot (160
+draws, about 0.1 ms) and the frame-time effect is inside noise. The pre-pass holds 2,272 of the
+3,169 Utility passes, which is why the second pre-pass attempt below matters.
+
+## System profile, 30 s, feature off, overlay open (WPR CPU sampling)
+
+Render thread by module: CommunityShaders.dll 29.4 percent, SkyrimSE.exe 22.1, ntdll 11.5,
+d3d11 10.5, ntoskrnl 4.7, nvwgf2umx 4.7, vcruntime 4.4, EngineFixes 1.5,
+NativeMeshLightFlickerFix 1.5. Two other threads spin in ntdll (one is the FSR3 frame generation
+pacing thread). Engine functions on the render thread are diffuse: batch draw dispatch,
+BSWaterShader::SetupGeometry, culling, RenderPassImmediately, NiTransform::Multiply,
+BSLightingShader::SetupGeometry, BSStringPool::Release, SetDirtyStates, hkp3AxisSweep, each
+under 5 percent. Conclusion: the plugin's own per-draw work is the largest reachable CPU item on
+the render thread; driver cost is small; instancing tops out around 1 to 1.5 ms.
+
+## Depth pre-pass, second attempt
+
+Design that does not depend on compiler behaviour: while `IncludeDepthPrepass` was on at load,
+Utility RENDER_DEPTH permutations compile with STATIC_INSTANCING_PREPASS, every pre-pass draw
+adds a four-ulp NDC depth bias from b13.z, and the feature replaces the engine's 40 `kTestEqual`
+depth-stencil states (BSGraphics table, AE id 411362, [depthMode][40 stencil modes]) with
+less-or-equal clones. The main pass then passes wherever its depth is at or in front of the
+biased pre-pass depth, so instanced and vanilla draws never have to agree bit for bit. Changing
+the option requires a restart and a shader recompile.

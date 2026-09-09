@@ -14,6 +14,13 @@
 #if defined(STATIC_INSTANCING) && !defined(SKINNED) && defined(RENDER_SHADOWMAP) && !defined(RENDER_SHADOWMAP_PB) && !defined(RENDER_DEPTH)
 #	define STATIC_INSTANCING_VS
 #endif
+// With STATIC_INSTANCING_PREPASS (feature option, restart), depth pre-pass permutations take the
+// instanced path too. Every pre-pass draw then adds a small depth bias (b13.z) and the feature
+// swaps the main pass's equal depth test for less-or-equal, so exact agreement is not needed.
+#if defined(STATIC_INSTANCING) && defined(STATIC_INSTANCING_PREPASS) && !defined(SKINNED) && defined(RENDER_DEPTH) && !defined(RENDER_SHADOWMASK_ANY)
+#	define STATIC_INSTANCING_VS
+#	define STATIC_INSTANCING_DEPTH_BIAS
+#endif
 
 struct VS_INPUT
 {
@@ -293,6 +300,10 @@ VS_OUTPUT main(VS_INPUT input)
 
 #	if defined(OFFSET_DEPTH)
 	vsout.PositionCS.z += 10.0;
+#	endif
+#	if defined(STATIC_INSTANCING_DEPTH_BIAS)
+	// NDC z += bias (b13.z, zero unless the pre-pass option is active)
+	vsout.PositionCS.z += vsout.PositionCS.w * asfloat(StaticInstancePad.x);
 #	endif
 
 	return vsout;

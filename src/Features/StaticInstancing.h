@@ -47,6 +47,9 @@ struct StaticInstancing : Feature
 	virtual inline std::string_view GetShaderDefineName() override { return "STATIC_INSTANCING"; }
 	virtual inline bool HasShaderDefine(RE::BSShader::Type t) override { return t == RE::BSShader::Type::Utility; }
 	virtual std::string_view GetCategory() const override { return FeatureCategories::kUtility; }
+	/** STATIC_INSTANCING_PREPASS is emitted while the pre-pass option was on at load. */
+	virtual std::vector<std::pair<std::string_view, std::string_view>> GetShaderDefineOptions() override;
+	virtual void Prepass() override;
 	virtual std::pair<std::string, std::vector<std::string>> GetFeatureSummary() override;
 
 	struct Settings
@@ -55,8 +58,9 @@ struct StaticInstancing : Feature
 		bool Enabled = true;
 		/** Also coalesce alpha-tested casters (foliage, fences). Their key carries the material pointer. */
 		bool IncludeAlphaTested = false;
-		/** Retired: the depth pre-pass cannot be instanced without breaking the main pass's depth
-		 *  equality test. Kept so saved settings still parse; ignored. */
+		/** Also coalesce the main view's depth pre-pass. Requires a restart: the pre-pass shader
+		 *  permutations gain a small depth bias and the main pass's equal depth test becomes
+		 *  less-or-equal, so the two never have to agree bit for bit. */
 		bool IncludeDepthPrepass = false;
 		/** Also coalesce BSMeshLODTriShape geometry (statics with built-in LOD levels). */
 		bool IncludeMeshLOD = true;
@@ -223,6 +227,7 @@ private:
 	static void ComputeTreeParams(const RE::BSRenderPass* a_pass, float* o_params);
 	void DrawInstanced(RE::BSGraphics::TriShape* a_triShape, uint32_t a_startIndex, uint32_t a_count, uint32_t a_instanceCount, uint32_t a_block);
 	void ReleaseResources();
+	void SwapMainPassDepthStates(bool a_enable);
 
 	Counters frame{};
 	Counters last{};
@@ -238,6 +243,9 @@ private:
 	uint32_t batchDepth = 0;  // >0 while inside BSBatchRenderer::RenderBatches
 	bool flushing = false;
 	bool hooksInstalled = false;
+	bool prepassActive = false;  // IncludeDepthPrepass as it was when shaders and states were set up
+	std::vector<std::pair<ID3D11DepthStencilState**, ID3D11DepthStencilState*>> swappedDepthStates;  // (engine slot, original)
+	std::vector<ID3D11DepthStencilState*> lessEqualStates;
 	uint32_t lastDescriptor = 0;  // raw Utility descriptor of the last classified pass, for the stats readout
 
 	ID3D11Buffer* instanceBuffer = nullptr;
