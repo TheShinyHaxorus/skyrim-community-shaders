@@ -244,3 +244,53 @@ recovered, frame time inside noise. Per removed draw the net saving is about 0.3
 deferral bookkeeping. This is the practical ceiling of draw coalescing for the Utility pass at
 this location; the Lighting pass would add a similar amount. The system profile puts the
 plugin's own per-draw work at 20 to 30 percent of the render thread, which is the next target.
+
+## Frame Annotations and caster culling, measured live (build 17, overlay open)
+
+| State | Frame ms | All shader types submit ms | Utility ms | Lighting ms |
+|---|---|---|---|---|
+| Frame Annotations on | 16.75 | 12.2 | 4.18 | 4.90 |
+| Frame Annotations off | 15.3 | 8.2 | 3.26 | 3.23 |
+
+The advanced setting "Frame Annotations" (SettingsUser.json) makes the plugin format two strings
+and open a GPU debug event for every draw. With it off, draw submission drops by 4 ms per frame
+and the frame by about 1.4 ms (the rest is absorbed by pacing). It is meant for RenderDoc
+captures and should be off in play.
+
+Caster culling by world-bound radius (feature setting, shadow maps only, actors never culled):
+
+| Radius | Utility draws | Culled | Utility ms |
+|---|---|---|---|
+| 0 | 3,088 | 0 | 3.23 |
+| 20 | 2,976 | 147 | 3.13 |
+| 40 | 2,955 | 202 | 3.18 |
+| 80 | 2,802 | 389 | 3.17 |
+
+Removing small casters saves little here (they are cheap draws inside material runs), so 40 is
+kept as a harmless default and it is not a lever.
+
+## Pre-pass v2, retired
+
+With the feature disabled and only the bias plus less-or-equal states active, foliage and some
+meshes still flickered (bisect phase A). Some consumer of the depth buffer does not tolerate the
+bias. The option is off in the shipped settings; shadow maps only is the configuration.
+
+## Main-pass (Lighting) instancing, plan
+
+CS patches BSLightingShader::SetupGeometry to write the lighting constants in world space, so
+instances of one mesh differ only in World, PreviousWorld and MaterialData (envmap mask, specular
+LOD fade, alpha). Design:
+
+- A separate compiled permutation for instanced draws: descriptor bit 31 adds the define
+  STATIC_INSTANCING_LIGHTING; vanilla permutations stay byte-identical. The DrawTriShape detour
+  binds the instanced VS/PS for the representative; if the cache has not compiled them yet the
+  bucket falls back to individual vanilla draws.
+- Instance record: World rows, PreviousWorld rows (previousWorld minus previousPosAdjust, or the
+  current world when renderFlags bit 4 is set), MaterialData. The PS receives MaterialData
+  through a nointerpolation VS output.
+- Depth: instanced objects cannot pass the main pass's equality test against a vanilla pre-pass.
+  They are therefore skipped in the pre-pass (their pre-pass draw is saved as well) and drawn in
+  the main pass with test-and-write. Membership is decided during the pre-pass from the same
+  key; every Lighting pass whose geometry was skipped is forced to test-and-write, batched or not.
+- Exclusions: skinned, projected UV, landscape, tree animation, fading, decals, additive or
+  blended alpha, any pass with shadow lights.
