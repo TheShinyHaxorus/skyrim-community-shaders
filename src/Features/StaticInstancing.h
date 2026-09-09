@@ -55,11 +55,14 @@ struct StaticInstancing : Feature
 		bool Enabled = true;
 		/** Also coalesce alpha-tested casters (foliage, fences). Their key carries the material pointer. */
 		bool IncludeAlphaTested = false;
-		/** Also coalesce the main view's depth pre-pass (RenderDepth technique). Batches never cross a
-		 *  terrain/non-terrain boundary so Terrain Blending's depth sequencing stays intact. */
+		/** Retired: the depth pre-pass cannot be instanced without breaking the main pass's depth
+		 *  equality test. Kept so saved settings still parse; ignored. */
 		bool IncludeDepthPrepass = false;
 		/** Also coalesce BSMeshLODTriShape geometry (statics with built-in LOD levels). */
 		bool IncludeMeshLOD = true;
+		/** Also coalesce wind-animated trees in shadow-map passes. Their sway parameters travel per
+		 *  instance. Depth pre-pass trees stay vanilla. */
+		bool IncludeTrees = true;
 		/** Debug: route every eligible draw through the instanced path with one instance. Validates the
 		 *  matrix path independently of batching; costs a little more than vanilla. */
 		bool InstanceSingles = false;
@@ -208,6 +211,7 @@ private:
 	void OnRenderPass(RE::BSRenderPass* a_pass, uint32_t a_technique, bool a_alphaTest, uint32_t a_renderFlags);
 	void Flush();
 	bool WriteInstances(uint32_t a_totalInstances);
+	static void ComputeTreeParams(const RE::BSRenderPass* a_pass, float* o_params);
 	void DrawInstanced(RE::BSGraphics::TriShape* a_triShape, uint32_t a_startIndex, uint32_t a_count, uint32_t a_instanceCount, uint32_t a_block);
 	void ReleaseResources();
 

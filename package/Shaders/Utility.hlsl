@@ -7,9 +7,11 @@
 #if defined(RENDER_SHADOWMASK) || defined(RENDER_SHADOWMASKSPOT) || defined(RENDER_SHADOWMASKPB) || defined(RENDER_SHADOWMASKDPB)
 #	define RENDER_SHADOWMASK_ANY
 #endif
-// Static Instancing (feature): non-skinned permutations can read their world matrix from a
-// per-instance buffer instead of PerGeometry.World when the b13 marker is set.
-#if defined(STATIC_INSTANCING) && !defined(SKINNED)
+// Static Instancing (feature): shadow-map permutations can read their world matrix from a
+// per-instance buffer instead of PerGeometry.World when the b13 marker is set. Depth pre-pass
+// permutations are left untouched on purpose: the main pass depth-tests them for equality and
+// any change to their code shape breaks that, so they must stay byte-identical to vanilla.
+#if defined(STATIC_INSTANCING) && !defined(SKINNED) && defined(RENDER_SHADOWMAP) && !defined(RENDER_SHADOWMAP_PB) && !defined(RENDER_DEPTH)
 #	define STATIC_INSTANCING_VS
 #endif
 
@@ -105,6 +107,7 @@ struct StaticInstanceRecord
 	float4 Row0;
 	float4 Row1;
 	float4 Row2;
+	float4 TreeParams;  // per-instance sway (TreeAnim casters), otherwise zero
 };
 
 // Bound by the StaticInstancing feature around each instanced draw; a zeroed buffer is bound
@@ -144,9 +147,7 @@ VS_OUTPUT main(VS_INPUT input)
 #	else
 
 	precise float4 positionMS = float4(input.PositionMS.xyz, 1.0);
-	// precise: the depth pre-pass must produce the exact bits the main pass produces (it depth-tests
-	// for equality), including when Static Instancing feeds the matrix from a buffer.
-	precise float4 positionCS = float4(0, 0, 0, 0);
+	float4 positionCS = float4(0, 0, 0, 0);
 
 	float3 normalMS = float3(1, 1, 1);
 #		if defined(NORMALS)
@@ -154,8 +155,15 @@ VS_OUTPUT main(VS_INPUT input)
 #		endif
 
 #		if defined(VC) && defined(NORMALS) && defined(TREE_ANIM)
-	float2 treeTmp1 = SmoothSaturate(abs(2 * frac(float2(0.1, 0.25) * (TreeParams.w * TreeParams.y * TreeParams.x) + dot(input.PositionMS.xyz, 1.0.xxx) + 0.5) - 1));
-	float normalMult = (treeTmp1.x + 0.1 * treeTmp1.y) * (input.Color.w * TreeParams.z);
+#			if defined(STATIC_INSTANCING_VS)
+	float4 treeParams = TreeParams;
+	if (StaticInstanceEnabled == kStaticInstancingMagic)
+		treeParams = StaticInstanceWorlds[StaticInstanceBase + input.InstanceID].TreeParams;
+#			else
+	float4 treeParams = TreeParams;
+#			endif
+	float2 treeTmp1 = SmoothSaturate(abs(2 * frac(float2(0.1, 0.25) * (treeParams.w * treeParams.y * treeParams.x) + dot(input.PositionMS.xyz, 1.0.xxx) + 0.5) - 1));
+	float normalMult = (treeTmp1.x + 0.1 * treeTmp1.y) * (input.Color.w * treeParams.z);
 	positionMS.xyz += normalMS.xyz * normalMult;
 #		endif
 
@@ -172,9 +180,7 @@ VS_OUTPUT main(VS_INPUT input)
 	positionCS = mul(FrameBuffer::CameraViewProj, positionWS);
 #		else
 #			if defined(STATIC_INSTANCING_VS)
-	// The instanced path only swaps the matrix source. The arithmetic below is shared with the
-	// vanilla path so the compiler emits one instruction sequence for both, and the pre-pass depth
-	// of an instanced mesh stays bit-identical to the main pass, which depth-tests for equality.
+	// Shadow-map permutations only (see STATIC_INSTANCING_VS): swap the matrix source per instance.
 	row_major float4x4 worldMatrix = World;
 	if (StaticInstanceEnabled == kStaticInstancingMagic) {
 		StaticInstanceRecord instanceRecord = StaticInstanceWorlds[StaticInstanceBase + input.InstanceID];

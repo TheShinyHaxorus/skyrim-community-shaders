@@ -15,6 +15,7 @@ NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(
 	IncludeAlphaTested,
 	IncludeDepthPrepass,
 	IncludeMeshLOD,
+	IncludeTrees,
 	InstanceSingles,
 	MinBatchSize,
 	MaxInstancesPerFrame)
@@ -24,7 +25,7 @@ namespace
 	// Must match kStaticInstancingMagic in Utility.hlsl. A vanilla draw that reads a stale b13
 	// sees some other value and takes the normal path.
 	constexpr uint32_t kMagic = 0x5A17C0DE;
-	constexpr uint32_t kInstanceStride = 48;  // three float4 rows
+	constexpr uint32_t kInstanceStride = 64;  // three float4 rows plus TreeParams
 	constexpr uint32_t kBatchCBSlot = 13;  // b13: unused by the game and by every other feature (b8 is Light Limit Fix)
 	constexpr uint32_t kInstanceSRVSlot = 9;
 	constexpr uint32_t kUtilityTechniqueBase = 0x2B;
@@ -38,7 +39,6 @@ namespace
 	constexpr uint32_t kExcludedBits =
 		static_cast<uint32_t>(UF::Skinned) |
 		static_cast<uint32_t>(UF::LodLandscape) |
-		static_cast<uint32_t>(UF::TreeAnim) |
 		static_cast<uint32_t>(UF::RenderNormal) |
 		static_cast<uint32_t>(UF::RenderNormalClear) |
 		static_cast<uint32_t>(UF::RenderShadowmapPb) |
@@ -249,6 +249,7 @@ json StaticInstancing::GetStatsJson() const
 		{ "descAlphaTest", c.descAlphaTest },
 		{ "includeDepthPrepass", settings.IncludeDepthPrepass },
 		{ "includeMeshLOD", settings.IncludeMeshLOD },
+		{ "includeTrees", settings.IncludeTrees },
 		{ "excludedGeometryByType", std::vector<uint32_t>(std::begin(c.excludedGeometryByType), std::end(c.excludedGeometryByType)) },
 		{ "lightingPasses", c.lightingPasses },
 		{ "lightingStatic", c.lightingStatic },
@@ -272,13 +273,13 @@ void StaticInstancing::DrawSettings()
 	if (auto tooltip = Util::HoverTooltipWrapper()) {
 		ImGui::Text("Foliage, fences and other cut-out meshes. Their batch key includes the material, so only exact clones batch.");
 	}
-	ImGui::Checkbox("Include depth pre-pass", &settings.IncludeDepthPrepass);
-	if (auto tooltip = Util::HoverTooltipWrapper()) {
-		ImGui::Text("Also coalesce the main view's depth pre-pass. The instanced path repeats the vanilla matrix arithmetic so depths match the main pass exactly.");
-	}
 	ImGui::Checkbox("Include mesh-LOD shapes", &settings.IncludeMeshLOD);
 	if (auto tooltip = Util::HoverTooltipWrapper()) {
 		ImGui::Text("BSMeshLODTriShape geometry (statics with built-in LOD levels). Instances share the LOD level through the batch key.");
+	}
+	ImGui::Checkbox("Include wind-animated trees (shadow maps)", &settings.IncludeTrees);
+	if (auto tooltip = Util::HoverTooltipWrapper()) {
+		ImGui::Text("Trees sway per instance through the instance record. Shadow-map passes only.");
 	}
 	ImGui::Checkbox("Instance singles (debug)", &settings.InstanceSingles);
 	if (auto tooltip = Util::HoverTooltipWrapper()) {
@@ -389,6 +390,58 @@ void StaticInstancing::AuditLightingPass(RE::BSRenderPass* a_pass, uint32_t a_te
 	seen++;
 }
 
+void StaticInstancing::ComputeTreeParams(const RE::BSRenderPass* a_pass, float* o_params)
+{
+	// Same values and operation order as BSUtilityShader::SetupGeometry's TreeAnim block
+	// (1.6.1170 decompile): x = leaf timer * 6, y = the shadow scene node's wind value, z = the
+	// distance-dampened amplitude, w = leaf frequency. Defaults 0, wind, 1, 1 without a leaf node.
+	RE::BSLeafAnimNode* leaf = nullptr;
+	if (auto* property = a_pass->shaderProperty; property && property->fadeNode)
+		leaf = property->fadeNode->AsLeafAnimNode();
+	auto& shaderState = RE::BSShaderManager::State::GetSingleton();
+	float wind = 0.0f;
+	if (auto* ssn = shaderState.shadowSceneNode[0])
+		wind = *reinterpret_cast<const float*>(reinterpret_cast<const std::uint8_t*>(ssn) + 0x304);
+	float distance = 0.0f;
+	float amplitude = 1.0f;
+	float frequency = 1.0f;
+	float timer = 0.0f;
+	if (leaf) {
+		// BSLeafAnimNode keeps these private; read them at their documented offsets (SE 0x158.., VR 0x110..).
+		const auto* leafBytes = reinterpret_cast<const std::uint8_t*>(leaf) + (REL::Module::IsVR() ? 0x110 : 0x158);
+		const float sqrDistanceToCamera = *reinterpret_cast<const float*>(leafBytes + 0x0);
+		const float leafAmplitudeRefr = *reinterpret_cast<const float*>(leafBytes + 0x4);
+		const float leafFrequency = *reinterpret_cast<const float*>(leafBytes + 0x8);
+		const float runningTime = *reinterpret_cast<const float*>(leafBytes + 0xC);
+		timer = runningTime * 6.0f;
+		// x * rsqrt(x) with one Newton step, exactly as the engine does it
+		const float x = sqrDistanceToCamera;
+		std::uint32_t bits;
+		std::memcpy(&bits, &x, sizeof(bits));
+		bits = 0x5f3759df - (static_cast<std::int32_t>(bits) >> 1);
+		float y;
+		std::memcpy(&y, &bits, sizeof(y));
+		float t = x * 0.5f;
+		t = t * y;
+		t = t * y;
+		float r = 1.5f - t;
+		r = r * y;
+		distance = r * x;
+		amplitude = leafAmplitudeRefr;
+		frequency = leafFrequency;
+	}
+	const float start = shaderState.leafAnimDampenDistStartSPU;
+	const float end = shaderState.leafAnimDampenDistEndSPU;
+	float dampened = (distance - start) / (end - start);
+	dampened = (1.0f - dampened) * amplitude;
+	dampened = std::max(dampened, 0.0f);
+	dampened = std::min(dampened, amplitude);
+	o_params[0] = timer;
+	o_params[1] = wind;
+	o_params[2] = dampened;
+	o_params[3] = frequency;
+}
+
 bool StaticInstancing::IsTerrainPass(const RE::BSRenderPass* a_pass)
 {
 	return a_pass && a_pass->shaderProperty && a_pass->shaderProperty->flags.any(RE::BSShaderProperty::EShaderPropertyFlag::kMultiTextureLandscape);
@@ -420,7 +473,14 @@ StaticInstancing::Verdict StaticInstancing::Classify(RE::BSRenderPass* a_pass, u
 
 	const bool isShadowmap = (descriptor & static_cast<uint32_t>(UF::RenderShadowmap)) != 0;
 	const bool isDepth = (descriptor & static_cast<uint32_t>(UF::RenderDepth)) != 0;
-	if (!(isShadowmap || (isDepth && settings.IncludeDepthPrepass)) || (descriptor & kExcludedBits) != 0)
+	// Shadow maps only. The depth pre-pass is depth-tested for equality by the main pass and the
+	// instanced vertex path cannot be made bit-identical to it reliably (verified in game).
+	(void)isDepth;
+	if (!isShadowmap || (descriptor & kExcludedBits) != 0)
+		return Verdict::kTechnique;
+	// Tree sway is computed per geometry (BSLeafAnimNode timers); the instance record carries it.
+	// Shadow maps only: the main pass computes its own sway and depth-tests for equality.
+	if ((descriptor & static_cast<uint32_t>(UF::TreeAnim)) != 0 && (!settings.IncludeTrees || !isShadowmap))
 		return Verdict::kTechnique;
 
 	auto* geometry = a_pass->geometry;
@@ -617,7 +677,11 @@ bool StaticInstancing::WriteInstances(uint32_t a_totalInstances)
 		out[9] = r[2][1] * s;
 		out[10] = r[2][2] * s;
 		out[11] = world.translate.z - posAdjust.z;
-		out += 12;
+		if (((bucket.key.technique - kUtilityTechniqueBase) & static_cast<uint32_t>(UF::TreeAnim)) != 0)
+			ComputeTreeParams(deferred[passIndex].pass, out + 12);
+		else
+			out[12] = out[13] = out[14] = out[15] = 0.0f;
+		out += 16;
 	}
 	}
 	context->Unmap(instanceBuffer, 0);

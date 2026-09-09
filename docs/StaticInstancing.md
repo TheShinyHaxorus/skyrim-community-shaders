@@ -146,3 +146,25 @@ Findings:
 Ceiling in this scene for the Utility pass is therefore about 0.5 ms. Further gains need the
 Lighting pass (3,700 draws at about 2 us), TreeParams in the instance record for trees, and
 mesh-LOD shapes keyed on their LOD level.
+
+## Depth pre-pass: retired (2026-09-08, later the same evening)
+
+Instancing the depth pre-pass produced white-blue, dithered, flickering meshes. Two captures
+settled the cause: with the feature switched off and the modified shaders installed the artifact
+was present; with the feature off and the original shaders installed it was gone. The main pass
+depth-tests against the pre-pass for equality, and the original Utility and Lighting vertex
+shaders only match bit for bit because they compile from unchanged source. Any change to the
+pre-pass permutation's code shape, even one that leaves the vanilla expression intact or adds
+`precise`, let the compiler emit different arithmetic on some meshes.
+
+Consequence: `STATIC_INSTANCING_VS` is defined only for RENDER_SHADOWMAP permutations (not
+parabolic, not RENDER_DEPTH), so pre-pass permutations compile from source that is byte-identical
+to vanilla. Shadow maps have no equality test, so no code-shape change there can cause this.
+The `IncludeDepthPrepass` setting is retired and ignored.
+
+Also added: wind-animated trees in shadow maps (per-instance TreeParams computed with the exact
+formula from BSUtilityShader::SetupGeometry: timer * 6, the shadow scene node wind value at
++0x304, distance-dampened amplitude via the engine's fast inverse square root, leaf frequency),
+BSMeshLODTriShape geometry (LOD mode is in the batch key; the representative draw supplies the
+index range), and per-frame counters for the Lighting pass: static TriShape passes, unique
+(renderer data, material, technique, flags, light counts) keys, and the collapsible count.
