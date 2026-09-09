@@ -212,3 +212,35 @@ depth-stencil states (BSGraphics table, AE id 411362, [depthMode][40 stencil mod
 less-or-equal clones. The main pass then passes wherever its depth is at or in front of the
 biased pre-pass depth, so instanced and vanilla draws never have to agree bit for bit. Changing
 the option requires a restart and a shader recompile.
+
+## Results, build 17 (pre-pass v2 live), 2026-09-08 23:15
+
+Depth-state swap: the engine fills its table on first use, so the swap runs from Prepass each
+frame until it finds the 40 Equal states (found on the second frame; DepthFunc histogram over
+the 280 populated states: never 40, less 40, equal 40, lessEqual 80, greaterEqual 40, always 40).
+The bias is armed only after a swap succeeded, and the biased constant buffer is re-bound at
+every batch group; before that fix the feature-off path left pre-pass draws unbiased and the
+white dithered meshes came back.
+
+Validation: singles mode (every eligible draw instanced alone, pre-pass included) and feature
+off both render correctly (captures `v2-singles` / `v2-off`).
+
+Clean machine, same spot, 3 cycles x 10 samples:
+
+| Configuration | Utility draws | Removed | Batches | Utility submit ms | Frame ms |
+|---|---|---|---|---|---|
+| Off | 3,127 | 0 | 0 | 5.22 | 22.0 |
+| Shadow + pre-pass, static | 2,714 | 421 | 202 | 5.05 | 21.9 |
+| + mesh-LOD | 2,735 | 419 | 200 | 5.10 | 22.1 |
+| + alpha-tested | 2,625 | 537 | 251 | 5.05 | 22.3 |
+| + trees | 2,584 | 605 | 276 | 5.02 | 21.9 |
+
+Counters: 1,512 eligible, 918 unique keys, 594 collapsible (39 percent), all collapsed. The
+remaining exclusions are 627 BSSubIndexTriShape passes (segmented meshes), 510 skinned, and
+shadow-mask or parabolic techniques. Lighting: 1,459 static, 1,031 unique, 428 collapsible.
+
+Reading: correct and stable, 605 draws removed per frame, about 0.2 ms of Utility submission
+recovered, frame time inside noise. Per removed draw the net saving is about 0.3 us after the
+deferral bookkeeping. This is the practical ceiling of draw coalescing for the Utility pass at
+this location; the Lighting pass would add a similar amount. The system profile puts the
+plugin's own per-draw work at 20 to 30 percent of the render thread, which is the next target.
