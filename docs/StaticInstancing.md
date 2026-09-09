@@ -373,3 +373,30 @@ changes, no allocations in steady state. Visual check clean with Snow Cover's ca
 
 Shipped configuration (SettingsUser.json): Enabled, alpha-tested, trees, mesh-LOD, main pass on,
 caster culling below 40 units, Frame Annotations off.
+
+## Hang analysis, 2026-09-09 02:27 (combined build, C:/tmp/hangs/SkyrimSE-hang-20260909-022727.txt)
+
+Second freeze on an action (the first was 01:46 on build 22). Captured with Tools/Hang-Stacks.ps1
+while the process was still alive:
+
+- Main thread: Main::Draw -> BSShadowDirectionalLight -> BSBatchRenderer::RenderBatches ->
+  (Static Instancing / Light Limit Fix / Terrain Blending / Engine Fixes hooks) ->
+  RenderPassImmediately +0x1a7 -> BSDynamicTriShape::LockDynamicData (ID 70950, lock at
+  geometry+0x168) -> BSSpinLock::Lock spinning with Sleep(1). The geometry is
+  "00DZB_HumanBeard003" under BSFaceGenNiNodeSkinned in skeleton.nif, a face morph mesh.
+- The lock: owner thread 0x105bc, count 1. That thread is an engine job-pool worker
+  (ID 68445 thread start, ID 69344 wait) sitting idle at its work-queue wait. So a job that ran
+  on it locked the beard's morph data and finished without unlocking; the render thread hangs
+  the next time it draws the face. All 510 threads are parked in waits; nothing is running.
+- Dead-stack residue on that worker: engine culling/accumulation (BSGeometryListCullingProcess::
+  AppendNonAccum, ID 107784 which calls ShadowSceneNode::GetShadowCasterLightArrayEntry and
+  BSLightingShaderProperty), with NativeMeshLightFlickerFix, EngineFixes, MCMHelper,
+  PerkEntryPointExtender and AudioOcclusion frames in the same window. Not conclusive for one
+  module.
+- Community Shaders code appears on the render thread only (normal hook chain) and Static
+  Instancing never classifies or defers dynamic tri-shapes (skinned and face geometry are
+  excluded), so the leak did not come from this plugin. The trigger is an action (attack) that
+  starts a facial expression, which queues the face-morph job.
+
+First experiment for the modlist: disable Native Mesh Light Flicker Fix (it hooks the same
+accumulation path on job threads and duplicates Light Limit Fix), then reproduce the attack.
