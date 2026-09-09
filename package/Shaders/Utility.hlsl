@@ -8,16 +8,17 @@
 #	define RENDER_SHADOWMASK_ANY
 #endif
 // Static Instancing (feature): shadow-map permutations can read their world matrix from a
-// per-instance buffer instead of PerGeometry.World when the b13 marker is set. Depth pre-pass
-// permutations are left untouched on purpose: the main pass depth-tests them for equality and
-// any change to their code shape breaks that, so they must stay byte-identical to vanilla.
+// per-instance buffer instead of PerGeometry.World when the b13 marker is set. The vanilla depth
+// pre-pass permutations are left untouched on purpose: the main pass depth-tests them for
+// equality and any change to their code shape breaks that, so they must stay byte-identical.
 #if defined(STATIC_INSTANCING) && !defined(SKINNED) && defined(RENDER_SHADOWMAP) && !defined(RENDER_SHADOWMAP_PB) && !defined(RENDER_DEPTH)
 #	define STATIC_INSTANCING_VS
 #endif
-// With STATIC_INSTANCING_PREPASS (feature option, restart), depth pre-pass permutations take the
-// instanced path too. Every pre-pass draw then adds a small depth bias (b13.z) and the feature
-// swaps the main pass's equal depth test for less-or-equal, so exact agreement is not needed.
-#if defined(STATIC_INSTANCING) && defined(STATIC_INSTANCING_PREPASS) && !defined(SKINNED) && defined(RENDER_DEPTH) && !defined(RENDER_SHADOWMASK_ANY)
+// Main-pass instancing draws its objects into the depth pre-pass through a dedicated permutation
+// (descriptor bit 31 -> STATIC_INSTANCING_DEPTH) that only the feature ever binds. Their depth
+// gets a small bias and the main pass draws them test-and-write, so the two shaders never have
+// to agree bit for bit.
+#if defined(STATIC_INSTANCING) && defined(STATIC_INSTANCING_DEPTH) && !defined(SKINNED) && defined(RENDER_DEPTH)
 #	define STATIC_INSTANCING_VS
 #	define STATIC_INSTANCING_DEPTH_BIAS
 #endif
@@ -306,8 +307,9 @@ VS_OUTPUT main(VS_INPUT input)
 	vsout.PositionCS.z += 10.0;
 #	endif
 #	if defined(STATIC_INSTANCING_DEPTH_BIAS)
-	// NDC z += bias (b13.z, zero unless the pre-pass option is active)
-	vsout.PositionCS.z += vsout.PositionCS.w * asfloat(StaticInstancePad.x);
+	// NDC z += 4 ulps (at z = 1): pushes the pre-pass depth just behind what the main-pass
+	// permutation computes, so its less-or-equal test always passes.
+	vsout.PositionCS.z += vsout.PositionCS.w * 4.76837158e-7;
 #	endif
 
 	return vsout;

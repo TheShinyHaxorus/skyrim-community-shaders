@@ -289,8 +289,17 @@ LOD fade, alpha). Design:
   current world when renderFlags bit 4 is set), MaterialData. The PS receives MaterialData
   through a nointerpolation VS output.
 - Depth: instanced objects cannot pass the main pass's equality test against a vanilla pre-pass.
-  They are therefore skipped in the pre-pass (their pre-pass draw is saved as well) and drawn in
-  the main pass with test-and-write. Membership is decided during the pre-pass from the same
-  key; every Lighting pass whose geometry was skipped is forced to test-and-write, batched or not.
+  Build 19 simply skipped them in the pre-pass and drew them test-and-write in the main pass.
+  That was wrong in a way the flicker bisect did not catch: terrain blending and screen-space
+  shadows consume the pre-pass depth before the main pass, and a rock missing from it turns
+  see-through and casts a hard-edged wrong shadow (seen 2026-09-09 00:10 with InstanceSingles
+  on, which pulls large close rocks into the set).
+  Build 20 draws them into the pre-pass instead, as one instanced draw per bucket through a
+  dedicated Utility permutation (descriptor bit 31 adds STATIC_INSTANCING_DEPTH; vanilla
+  pre-pass permutations stay byte-identical). That permutation adds 4 ulps of NDC depth, and
+  the main pass draws those objects test-and-write, so the two shaders never need to agree bit
+  for bit. On a shader miss the bucket replays vanilla and its members are not marked, so the
+  main pass draws them vanilla against exact depth. The pre-pass draw count saving is the same
+  as before: one instanced draw replaces the bucket.
 - Exclusions: skinned, projected UV, landscape, tree animation, fading, decals, additive or
   blended alpha, any pass with shadow lights.

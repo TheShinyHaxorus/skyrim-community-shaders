@@ -134,7 +134,9 @@ struct StaticInstancing : Feature
 		uint32_t lightingCollapsed = 0;
 		uint32_t lightingInstancedDraws = 0;
 		uint32_t lightingShaderMisses = 0;  // instanced permutation not compiled yet
-		uint32_t prepassSkipped = 0;          // pre-pass draws removed for main-pass instanced objects
+		uint32_t prepassSkipped = 0;          // pre-pass draws folded into instanced pre-pass draws
+		uint32_t prepassInstancedDraws = 0;   // instanced pre-pass draws issued
+		uint32_t prepassShaderMisses = 0;     // pre-pass permutation not compiled yet (members drawn vanilla)
 		uint32_t forcedDepthWrite = 0;
 	};
 
@@ -198,6 +200,7 @@ private:
 		uint32_t renderFlags;
 		bool alphaTest;
 		bool lighting;
+		bool prepass;  // depth pre-pass draw of a main-pass instanced object
 		uint32_t bucket;
 	};
 
@@ -214,6 +217,7 @@ private:
 	{
 		bool active = false;
 		bool lighting = false;  // bind the instanced Lighting permutation for this draw
+		bool prepass = false;   // bind the instanced depth pre-pass permutation for this draw
 		bool fellBack = false;  // Lighting permutation unavailable: representative drawn vanilla, replay the rest
 		uint32_t count = 0;
 		uint32_t block = 0;  // index into instanceSRVs; the view starts at that block's first instance
@@ -225,6 +229,7 @@ private:
 		kNotUtility,
 		kLightingEligible,
 		kLightingExcluded,
+		kPrepassEligible,
 		kTechnique,
 		kGeometry,
 		kSkinned,
@@ -240,9 +245,10 @@ private:
 	static bool IsTerrainPass(const RE::BSRenderPass* a_pass);
 	Verdict Classify(RE::BSRenderPass* a_pass, uint32_t a_technique, bool a_alphaTest, uint32_t a_renderFlags, BatchKey& o_key);
 	Verdict ClassifyLighting(RE::BSRenderPass* a_pass, uint32_t a_technique, bool a_alphaTest, uint32_t a_renderFlags, BatchKey& o_key);
-	bool ShouldSkipPrepassDraw(RE::BSRenderPass* a_pass, uint32_t a_technique);
+	bool IsPrepassInstanceCandidate(RE::BSRenderPass* a_pass, uint32_t a_technique, bool a_alphaTest, uint32_t a_renderFlags, BatchKey& o_key);
 	void CallWithForcedDepthWrite(RE::BSRenderPass* a_pass, uint32_t a_technique, bool a_alphaTest, uint32_t a_renderFlags);
 	void DrawInstancedLighting(RE::BSGraphics::TriShape* a_triShape, uint32_t a_startIndex, uint32_t a_count, uint32_t a_instanceCount, uint32_t a_block);
+	void DrawInstancedPrepass(RE::BSGraphics::TriShape* a_triShape, uint32_t a_startIndex, uint32_t a_count, uint32_t a_instanceCount, uint32_t a_block);
 	void AuditLightingPass(RE::BSRenderPass* a_pass, uint32_t a_technique, uint32_t a_renderFlags);
 	void OnRenderPass(RE::BSRenderPass* a_pass, uint32_t a_technique, bool a_alphaTest, uint32_t a_renderFlags);
 	void Flush();

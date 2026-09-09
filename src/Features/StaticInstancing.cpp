@@ -30,8 +30,10 @@ namespace
 	// sees some other value and takes the normal path.
 	constexpr uint32_t kMagic = 0x5A17C0DE;
 	constexpr uint32_t kInstanceStride = 128;  // world rows, TreeParams, previous world rows, MaterialData
-	// Descriptor bit that selects the instanced Lighting permutation (STATIC_INSTANCING_LIGHTING).
+	// Descriptor bit that selects the instanced Lighting permutation (STATIC_INSTANCING_LIGHTING) and,
+	// on Utility descriptors, the instanced depth pre-pass permutation (STATIC_INSTANCING_DEPTH).
 	constexpr uint32_t kLightingInstancedBit = 0x80000000u;
+	constexpr uint32_t kPrepassInstancedBit = 0x80000000u;
 	constexpr uint32_t kBatchCBSlot = 13;  // b13: unused by the game and by every other feature (b8 is Light Limit Fix)
 	constexpr uint32_t kInstanceSRVSlot = 9;
 	constexpr uint32_t kUtilityTechniqueBase = 0x2B;
@@ -408,6 +410,8 @@ json StaticInstancing::GetStatsJson() const
 		{ "lightingInstancedDraws", c.lightingInstancedDraws },
 		{ "lightingShaderMisses", c.lightingShaderMisses },
 		{ "prepassSkipped", c.prepassSkipped },
+		{ "prepassInstancedDraws", c.prepassInstancedDraws },
+		{ "prepassShaderMisses", c.prepassShaderMisses },
 		{ "forcedDepthWrite", c.forcedDepthWrite },
 		{ "includeLighting", settings.IncludeLighting },
 		{ "lastDescriptor", lastDescriptor },
@@ -501,7 +505,9 @@ void StaticInstancing::DrawSettings()
 		row("Main pass: collapsed", c.lightingCollapsed);
 		row("Main pass: instanced draws", c.lightingInstancedDraws);
 		row("Main pass: shader misses", c.lightingShaderMisses);
-		row("Pre-pass draws skipped", c.prepassSkipped);
+		row("Pre-pass draws folded", c.prepassSkipped);
+		row("Pre-pass instanced draws", c.prepassInstancedDraws);
+		row("Pre-pass shader misses", c.prepassShaderMisses);
 		row("Forced depth write", c.forcedDepthWrite);
 		ImGui::EndTable();
 	}
@@ -644,14 +650,35 @@ void StaticInstancing::CallWithForcedDepthWrite(RE::BSRenderPass* a_pass, uint32
 	globals::game::stateUpdateFlags->set(RE::BSGraphics::ShaderFlags::DIRTY_DEPTH_MODE);
 }
 
-bool StaticInstancing::ShouldSkipPrepassDraw(RE::BSRenderPass* a_pass, uint32_t a_technique)
+bool StaticInstancing::IsPrepassInstanceCandidate(RE::BSRenderPass* a_pass, uint32_t a_technique, bool a_alphaTest, uint32_t a_renderFlags, BatchKey& o_key)
 {
 	if (!a_pass->shader || a_pass->shader->shaderType.get() != RE::BSShader::Type::Utility || !a_pass->geometry)
 		return false;
 	const uint32_t descriptor = a_technique - kUtilityTechniqueBase;
-	if ((descriptor & static_cast<uint32_t>(UF::RenderDepth)) == 0 || (descriptor & static_cast<uint32_t>(UF::RenderShadowmask)) != 0)
+	// Plain depth pre-pass techniques only: the instanced permutation exists for exactly these bits.
+	constexpr uint32_t kAllowed = static_cast<uint32_t>(UF::Vc) | static_cast<uint32_t>(UF::Texture) | static_cast<uint32_t>(UF::Normals) |
+	                              static_cast<uint32_t>(UF::BinormalTangent) | static_cast<uint32_t>(UF::AlphaTest) | static_cast<uint32_t>(UF::RenderDepth);
+	if ((descriptor & static_cast<uint32_t>(UF::RenderDepth)) == 0 || (descriptor & ~kAllowed) != 0)
 		return false;
-	return prepassSkipCandidates.contains(a_pass->geometry);
+	if (!prepassSkipCandidates.contains(a_pass->geometry))
+		return false;
+	const auto& runtime = a_pass->geometry->GetGeometryRuntimeData();
+	if (!runtime.rendererData || !runtime.rendererData->vertexBuffer || !runtime.rendererData->indexBuffer || runtime.skinInstance)
+		return false;
+	auto* property = a_pass->shaderProperty;
+	if (!property)
+		return false;
+	o_key = {};
+	o_key.rendererData = runtime.rendererData;
+	o_key.material = property->GetBaseMaterial();
+	o_key.propertyFlags = static_cast<uint64_t>(property->flags.get());
+	o_key.technique = a_technique;
+	o_key.renderFlags = a_renderFlags;
+	o_key.alpha = (a_alphaTest ? 1u << 24 : 0u);
+	if (auto* alphaProperty = runtime.alphaProperty.get())
+		o_key.alpha |= static_cast<uint32_t>(alphaProperty->alphaThreshold) | (static_cast<uint32_t>(alphaProperty->alphaFlags) << 8);
+	o_key.passState = 0x20000000u;
+	return true;
 }
 
 StaticInstancing::Verdict StaticInstancing::ClassifyLighting(RE::BSRenderPass* a_pass, uint32_t a_technique, bool a_alphaTest, uint32_t a_renderFlags, BatchKey& o_key)
@@ -822,21 +849,19 @@ void StaticInstancing::OnRenderPass(RE::BSRenderPass* a_pass, uint32_t a_techniq
 			frame.effectPasses++;
 	}
 
-	// Main-pass instancing: pre-pass draws of objects instanced last frame are dropped, and every
-	// main-pass draw of a dropped object runs test-and-write instead of the equality test.
-	if (settings.IncludeLighting && !prepassSkipCandidates.empty() && ShouldSkipPrepassDraw(a_pass, a_technique)) {
-		frame.prepassSkipped++;
-		prepassSkippedThisFrame.insert(a_pass->geometry);
-		if (!a_pass->passGroupNext)
-			Flush();
-		return;
-	}
-
+	// Main-pass instancing: pre-pass draws of objects instanced last frame are coalesced into one
+	// instanced draw through a dedicated pre-pass permutation (slightly biased depth), and every
+	// main-pass draw of such an object runs test-and-write instead of the equality test. Other
+	// consumers of the pre-pass depth (terrain blending, screen-space shadows) keep seeing them.
 	BatchKey key;
-	Verdict verdict = Classify(a_pass, a_technique, a_alphaTest, a_renderFlags, key);
-
-	if (verdict == Verdict::kNotUtility && settings.IncludeLighting && a_pass->shader && a_pass->shader->shaderType.get() == RE::BSShader::Type::Lighting)
-		verdict = ClassifyLighting(a_pass, a_technique, a_alphaTest, a_renderFlags, key);
+	Verdict verdict;
+	if (settings.IncludeLighting && !prepassSkipCandidates.empty() && IsPrepassInstanceCandidate(a_pass, a_technique, a_alphaTest, a_renderFlags, key)) {
+		verdict = Verdict::kPrepassEligible;
+	} else {
+		verdict = Classify(a_pass, a_technique, a_alphaTest, a_renderFlags, key);
+		if (verdict == Verdict::kNotUtility && settings.IncludeLighting && a_pass->shader && a_pass->shader->shaderType.get() == RE::BSShader::Type::Lighting)
+			verdict = ClassifyLighting(a_pass, a_technique, a_alphaTest, a_renderFlags, key);
+	}
 
 	if (verdict != Verdict::kNotUtility && verdict != Verdict::kLightingEligible && verdict != Verdict::kLightingExcluded)
 		frame.utilityPasses++;
@@ -845,6 +870,10 @@ void StaticInstancing::OnRenderPass(RE::BSRenderPass* a_pass, uint32_t a_techniq
 	switch (verdict) {
 	case Verdict::kNotUtility:
 	case Verdict::kLightingExcluded:
+		break;
+	case Verdict::kPrepassEligible:
+		frame.prepassSkipped++;
+		deferThis = settings.Enabled && !instanceSRVs.empty();
 		break;
 	case Verdict::kLightingEligible:
 		frame.lightingEligible++;
@@ -909,7 +938,7 @@ void StaticInstancing::OnRenderPass(RE::BSRenderPass* a_pass, uint32_t a_techniq
 			bucketLookup.emplace(key, bucketIndex);
 		}
 		buckets[bucketIndex].passes.push_back(static_cast<uint32_t>(deferred.size()));
-		deferred.push_back(DeferredPass{ a_pass, a_technique, a_renderFlags, a_alphaTest, verdict == Verdict::kLightingEligible, bucketIndex });
+		deferred.push_back(DeferredPass{ a_pass, a_technique, a_renderFlags, a_alphaTest, verdict == Verdict::kLightingEligible, verdict == Verdict::kPrepassEligible, bucketIndex });
 		frame.deferred++;
 		if (verdict == Verdict::kLightingEligible)
 			frame.lightingDeferred++;
@@ -1057,6 +1086,7 @@ void StaticInstancing::Flush()
 
 		pending.active = true;
 		pending.lighting = d.lighting;
+		pending.prepass = d.prepass;
 		pending.fellBack = false;
 		pending.count = count;
 		pending.block = bucket.block;
@@ -1078,7 +1108,10 @@ void StaticInstancing::Flush()
 		} else if (pending.fellBack) {
 			// Instanced permutation not ready: the representative was drawn alone, draw the rest.
 			pending = {};
-			frame.lightingShaderMisses++;
+			if (d.prepass)
+				frame.prepassShaderMisses++;
+			else
+				frame.lightingShaderMisses++;
 			for (uint32_t passIndex : bucket.passes) {
 				if (passIndex == i)
 					continue;
@@ -1091,6 +1124,14 @@ void StaticInstancing::Flush()
 			if (d.lighting) {
 				frame.lightingInstancedDraws++;
 				frame.lightingCollapsed += count - 1;
+			}
+			if (d.prepass) {
+				// These objects now have biased pre-pass depth; their main-pass draws must test-and-write.
+				// A vanilla replay (miss, too small a bucket) leaves them out, and the main pass draws
+				// them vanilla against their exact pre-pass depth.
+				frame.prepassInstancedDraws++;
+				for (uint32_t passIndex : bucket.passes)
+					prepassSkippedThisFrame.insert(deferred[passIndex].pass->geometry);
 			}
 		}
 		// Members of an instanced main-pass batch, and eligible objects that batched this frame, are
@@ -1166,6 +1207,27 @@ void StaticInstancing::DrawInstancedLighting(RE::BSGraphics::TriShape* a_triShap
 	context->PSSetShader(vanillaPS ? reinterpret_cast<ID3D11PixelShader*>(vanillaPS->shader) : nullptr, nullptr, 0);
 }
 
+void StaticInstancing::DrawInstancedPrepass(RE::BSGraphics::TriShape* a_triShape, uint32_t a_startIndex, uint32_t a_count, uint32_t a_instanceCount, uint32_t a_block)
+{
+	auto* state = globals::state;
+	auto* shaderCache = globals::shaderCache;
+	auto* context = globals::d3d::context;
+	if (!state->currentShader || !shaderCache) {
+		pending.fellBack = true;
+		return;
+	}
+	// Vertex shader only: the pre-pass pixel shaders (none, or the alpha-test one) read no instance data.
+	auto* instancedVS = shaderCache->GetVertexShader(*state->currentShader, state->modifiedVertexDescriptor | kPrepassInstancedBit);
+	if (!instancedVS) {
+		pending.fellBack = true;
+		return;
+	}
+	context->VSSetShader(reinterpret_cast<ID3D11VertexShader*>(instancedVS->shader), nullptr, 0);
+	DrawInstanced(a_triShape, a_startIndex, a_count, a_instanceCount, a_block);
+	auto* vanillaVS = globals::game::currentVertexShader ? *globals::game::currentVertexShader : nullptr;
+	context->VSSetShader(vanillaVS ? reinterpret_cast<ID3D11VertexShader*>(vanillaVS->shader) : nullptr, nullptr, 0);
+}
+
 void StaticInstancing::Hooks::BSBatchRenderer_RenderPassImmediately::thunk(RE::BSRenderPass* a_pass, uint32_t a_technique, bool a_alphaTest, uint32_t a_renderFlags)
 {
 	globals::features::staticInstancing.OnRenderPass(a_pass, a_technique, a_alphaTest, a_renderFlags);
@@ -1200,9 +1262,13 @@ void StaticInstancing::Hooks::Renderer_DrawTriShape::thunk(RE::BSGraphics::Rende
 	const uint32_t instanceCount = self.pending.count;
 	const uint32_t block = self.pending.block;
 	const bool lighting = self.pending.lighting;
+	const bool prepass = self.pending.prepass;
 	self.pending.active = false;
-	if (lighting) {
-		self.DrawInstancedLighting(a_triShape, a_startIndex, a_count, instanceCount, block);
+	if (lighting || prepass) {
+		if (lighting)
+			self.DrawInstancedLighting(a_triShape, a_startIndex, a_count, instanceCount, block);
+		else
+			self.DrawInstancedPrepass(a_triShape, a_startIndex, a_count, instanceCount, block);
 		if (self.pending.fellBack)
 			func(a_renderer, a_triShape, a_startIndex, a_count);
 		return;

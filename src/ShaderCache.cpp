@@ -515,6 +515,10 @@ namespace SIE
 		{
 			using enum ShaderCache::UtilityShaderFlags;
 
+			// Bit 31 selects the Static Instancing depth pre-pass permutation; it is not an engine flag.
+			const bool staticInstancedDepth = (descriptor & 0x80000000u) != 0;
+			descriptor &= 0x7FFFFFFFu;
+
 			size_t lastIndex = 0;
 			const auto shadowMaskFlags = static_cast<uint32_t>(RenderShadowmask) |
 			                             static_cast<uint32_t>(RenderShadowmaskDpb) |
@@ -663,6 +667,9 @@ namespace SIE
 			}
 
 			defines[lastIndex++] = { "SHADOWSPLITCOUNT", "3" };
+			if (staticInstancedDepth) {
+				defines[lastIndex++] = { "STATIC_INSTANCING_DEPTH", nullptr };
+			}
 
 			if ((descriptor & 0x14000) != 0x14000 &&
 				((descriptor & 0x20004000) == 0x4000 || (descriptor & 0x1E02000) == 0x2000) &&
