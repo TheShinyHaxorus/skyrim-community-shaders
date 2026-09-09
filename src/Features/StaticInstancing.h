@@ -55,6 +55,9 @@ struct StaticInstancing : Feature
 		bool Enabled = true;
 		/** Also coalesce alpha-tested casters (foliage, fences). Their key carries the material pointer. */
 		bool IncludeAlphaTested = false;
+		/** Also coalesce the main view's depth pre-pass (RenderDepth technique). Batches never cross a
+		 *  terrain/non-terrain boundary so Terrain Blending's depth sequencing stays intact. */
+		bool IncludeDepthPrepass = false;
 		/** Debug: route every eligible draw through the instanced path with one instance. Validates the
 		 *  matrix path independently of batching; costs a little more than vanilla. */
 		bool InstanceSingles = false;
@@ -84,6 +87,14 @@ struct StaticInstancing : Feature
 		uint32_t excludedSkinned = 0;
 		uint32_t excludedProperty = 0;
 		uint32_t excludedAlpha = 0;     // alpha-tested while IncludeAlphaTested is off
+		// Descriptor breakdown of every Utility pass (flags, not exclusive)
+		uint32_t descShadowmap = 0;
+		uint32_t descDepth = 0;
+		uint32_t descShadowmask = 0;
+		uint32_t descTreeAnim = 0;
+		uint32_t descSkinned = 0;
+		uint32_t descLodLandscape = 0;
+		uint32_t descAlphaTest = 0;
 	};
 
 	virtual void SetupResources() override;
@@ -174,6 +185,7 @@ private:
 
 	bool Active() const { return loaded; }
 	void BeginFrameIfNeeded();
+	static bool IsTerrainPass(const RE::BSRenderPass* a_pass);
 	Verdict Classify(RE::BSRenderPass* a_pass, uint32_t a_technique, bool a_alphaTest, uint32_t a_renderFlags, BatchKey& o_key);
 	void OnRenderPass(RE::BSRenderPass* a_pass, uint32_t a_technique, bool a_alphaTest, uint32_t a_renderFlags);
 	void Flush();

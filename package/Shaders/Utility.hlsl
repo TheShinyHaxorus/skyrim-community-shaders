@@ -172,10 +172,11 @@ VS_OUTPUT main(VS_INPUT input)
 #			if defined(STATIC_INSTANCING_VS)
 	if (StaticInstanceEnabled == kStaticInstancingMagic) {
 		StaticInstanceRecord instanceRecord = StaticInstanceWorlds[StaticInstanceBase + input.InstanceID];
-		float3x4 instanceWorld = float3x4(instanceRecord.Row0, instanceRecord.Row1, instanceRecord.Row2);
-		// Rows are [R*s | t] in world units; make it camera-relative the way the skinned path does.
-		precise float3 positionWS = mul(instanceWorld, positionMS) - FrameBuffer::CameraPosAdjust.xyz;
-		positionCS = mul(FrameBuffer::CameraViewProj, float4(positionWS, 1.0));
+		// Rows are [R*s | t - posAdjust], the same values the engine writes into PerGeometry.World, and
+		// the multiply order below is the vanilla one so depths match the non-instanced passes exactly.
+		row_major float4x4 instanceWorld = float4x4(instanceRecord.Row0, instanceRecord.Row1, instanceRecord.Row2, float4(0, 0, 0, 1));
+		precise float4x4 instanceModelViewProj = mul(FrameBuffer::CameraViewProj, instanceWorld);
+		positionCS = mul(instanceModelViewProj, positionMS);
 	} else {
 #			endif
 	precise float4x4 modelViewProj = mul(FrameBuffer::CameraViewProj, World);

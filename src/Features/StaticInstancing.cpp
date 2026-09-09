@@ -13,6 +13,7 @@ NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(
 	StaticInstancing::Settings,
 	Enabled,
 	IncludeAlphaTested,
+	IncludeDepthPrepass,
 	InstanceSingles,
 	MinBatchSize,
 	MaxInstancesPerFrame)
@@ -29,7 +30,6 @@ namespace
 
 	using UF = SIE::ShaderCache::UtilityShaderFlags;
 
-	constexpr uint32_t kRequiredBits = static_cast<uint32_t>(UF::RenderShadowmap);
 
 	// Anything that changes what the vertex shader does with World, or that is not a plain
 	// shadow-map pass. RenderDepth is excluded because Terrain Blending sequences those passes.
@@ -40,7 +40,6 @@ namespace
 		static_cast<uint32_t>(UF::RenderNormal) |
 		static_cast<uint32_t>(UF::RenderNormalClear) |
 		static_cast<uint32_t>(UF::RenderShadowmapPb) |
-		static_cast<uint32_t>(UF::RenderDepth) |
 		static_cast<uint32_t>(UF::RenderShadowmask) |
 		static_cast<uint32_t>(UF::RenderShadowmaskSpot) |
 		static_cast<uint32_t>(UF::RenderShadowmaskPb) |
@@ -222,6 +221,14 @@ json StaticInstancing::GetStatsJson() const
 		{ "excludedSkinned", c.excludedSkinned },
 		{ "excludedProperty", c.excludedProperty },
 		{ "excludedAlpha", c.excludedAlpha },
+		{ "descShadowmap", c.descShadowmap },
+		{ "descDepth", c.descDepth },
+		{ "descShadowmask", c.descShadowmask },
+		{ "descTreeAnim", c.descTreeAnim },
+		{ "descSkinned", c.descSkinned },
+		{ "descLodLandscape", c.descLodLandscape },
+		{ "descAlphaTest", c.descAlphaTest },
+		{ "includeDepthPrepass", settings.IncludeDepthPrepass },
 		{ "lastDescriptor", lastDescriptor },
 	};
 }
@@ -237,6 +244,10 @@ void StaticInstancing::DrawSettings()
 	ImGui::Checkbox("Include alpha-tested casters", &settings.IncludeAlphaTested);
 	if (auto tooltip = Util::HoverTooltipWrapper()) {
 		ImGui::Text("Foliage, fences and other cut-out meshes. Their batch key includes the material, so only exact clones batch.");
+	}
+	ImGui::Checkbox("Include depth pre-pass", &settings.IncludeDepthPrepass);
+	if (auto tooltip = Util::HoverTooltipWrapper()) {
+		ImGui::Text("Also coalesce the main view's depth pre-pass. The instanced path repeats the vanilla matrix arithmetic so depths match the main pass exactly.");
 	}
 	ImGui::Checkbox("Instance singles (debug)", &settings.InstanceSingles);
 	if (auto tooltip = Util::HoverTooltipWrapper()) {
@@ -273,6 +284,13 @@ void StaticInstancing::DrawSettings()
 		row("Excluded: skinned", c.excludedSkinned);
 		row("Excluded: property", c.excludedProperty);
 		row("Excluded: alpha-tested (opt-in off)", c.excludedAlpha);
+		row("Passes with RenderShadowmap", c.descShadowmap);
+		row("Passes with RenderDepth", c.descDepth);
+		row("Passes with shadow mask", c.descShadowmask);
+		row("Passes with TreeAnim", c.descTreeAnim);
+		row("Passes with Skinned", c.descSkinned);
+		row("Passes with LodLandscape", c.descLodLandscape);
+		row("Passes with AlphaTest", c.descAlphaTest);
 		ImGui::EndTable();
 	}
 	if (c.eligible > 0) {
@@ -303,6 +321,11 @@ void StaticInstancing::BeginFrameIfNeeded()
 	pending = {};
 }
 
+bool StaticInstancing::IsTerrainPass(const RE::BSRenderPass* a_pass)
+{
+	return a_pass && a_pass->shaderProperty && a_pass->shaderProperty->flags.any(RE::BSShaderProperty::EShaderPropertyFlag::kMultiTextureLandscape);
+}
+
 StaticInstancing::Verdict StaticInstancing::Classify(RE::BSRenderPass* a_pass, uint32_t a_technique, bool a_alphaTest, uint32_t a_renderFlags, BatchKey& o_key)
 {
 	if (!a_pass || !a_pass->shader || a_pass->shader->shaderType.get() != RE::BSShader::Type::Utility)
@@ -312,7 +335,24 @@ StaticInstancing::Verdict StaticInstancing::Classify(RE::BSRenderPass* a_pass, u
 	// 1.6.1170 decompile), so the UtilityShaderFlags bits live on that value, not on the technique id.
 	const uint32_t descriptor = a_technique - kUtilityTechniqueBase;
 	lastDescriptor = descriptor;
-	if ((descriptor & kRequiredBits) != kRequiredBits || (descriptor & kExcludedBits) != 0)
+	if (descriptor & static_cast<uint32_t>(UF::RenderShadowmap))
+		frame.descShadowmap++;
+	if (descriptor & static_cast<uint32_t>(UF::RenderDepth))
+		frame.descDepth++;
+	if (descriptor & (static_cast<uint32_t>(UF::RenderShadowmask) | static_cast<uint32_t>(UF::RenderShadowmaskSpot) | static_cast<uint32_t>(UF::RenderShadowmaskPb) | static_cast<uint32_t>(UF::RenderShadowmaskDpb)))
+		frame.descShadowmask++;
+	if (descriptor & static_cast<uint32_t>(UF::TreeAnim))
+		frame.descTreeAnim++;
+	if (descriptor & static_cast<uint32_t>(UF::Skinned))
+		frame.descSkinned++;
+	if (descriptor & static_cast<uint32_t>(UF::LodLandscape))
+		frame.descLodLandscape++;
+	if (descriptor & static_cast<uint32_t>(UF::AlphaTest))
+		frame.descAlphaTest++;
+
+	const bool isShadowmap = (descriptor & static_cast<uint32_t>(UF::RenderShadowmap)) != 0;
+	const bool isDepth = (descriptor & static_cast<uint32_t>(UF::RenderDepth)) != 0;
+	if (!(isShadowmap || (isDepth && settings.IncludeDepthPrepass)) || (descriptor & kExcludedBits) != 0)
 		return Verdict::kTechnique;
 
 	auto* geometry = a_pass->geometry;
@@ -426,8 +466,10 @@ void StaticInstancing::OnRenderPass(RE::BSRenderPass* a_pass, uint32_t a_techniq
 	}
 
 	// Last pass of this group: replay before the engine's EndPass resets cull mode and
-	// alpha-to-coverage for the group.
-	if (!a_pass->passGroupNext)
+	// alpha-to-coverage for the group. Also flush before a terrain/non-terrain transition so
+	// deferred passes never replay under Terrain Blending's other depth state.
+	auto* next = a_pass->passGroupNext;
+	if (!next || IsTerrainPass(next) != IsTerrainPass(a_pass))
 		Flush();
 }
 
@@ -456,24 +498,26 @@ bool StaticInstancing::WriteInstances(const Bucket& a_bucket, uint32_t& o_base)
 	if (FAILED(context->Map(instanceBuffer, 0, mapType, 0, &mapped)))
 		return false;
 
+	// Same construction as BSShaderUtil::GetXMFromNiPosAdjust followed by TransposeStoreMatrix3x4:
+	// rows are [R*s | t - posAdjust], so the shader can repeat the vanilla mul sequence exactly.
+	const RE::NiPoint3 posAdjust = globals::game::shadowState->GetRuntimeData().posAdjust.getEye();
 	auto* out = reinterpret_cast<float*>(static_cast<uint8_t*>(mapped.pData) + static_cast<size_t>(o_base) * kInstanceStride);
 	for (uint32_t passIndex : a_bucket.passes) {
 		const RE::NiTransform& world = deferred[passIndex].pass->geometry->world;
 		const auto& r = world.rotate.entry;
 		const float s = world.scale;
-		// Rows of [R*s | t]; the shader multiplies as mul(float3x4, float4(positionMS, 1)).
 		out[0] = r[0][0] * s;
 		out[1] = r[0][1] * s;
 		out[2] = r[0][2] * s;
-		out[3] = world.translate.x;
+		out[3] = world.translate.x - posAdjust.x;
 		out[4] = r[1][0] * s;
 		out[5] = r[1][1] * s;
 		out[6] = r[1][2] * s;
-		out[7] = world.translate.y;
+		out[7] = world.translate.y - posAdjust.y;
 		out[8] = r[2][0] * s;
 		out[9] = r[2][1] * s;
 		out[10] = r[2][2] * s;
-		out[11] = world.translate.z;
+		out[11] = world.translate.z - posAdjust.z;
 		out += 12;
 	}
 	context->Unmap(instanceBuffer, 0);
