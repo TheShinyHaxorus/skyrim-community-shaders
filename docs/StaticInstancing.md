@@ -109,3 +109,40 @@ Same spot, frame generation at 2X or off, overlay open:
 
 Feature toggle in the menu, or delete the `Static Instancing` feature folder. No engine state is
 modified outside the three detours.
+
+## Results, 2026-09-08 (BottleRim2_3, AE 1.6.1170, pine forest near Falkreath, 9950X3D + 4090)
+
+Measured live through devbench (`tools/static_instancing_probe.py`, plus an A/B script cycling
+the settings, 2 cycles x 18 one-second samples per configuration, performance overlay open).
+
+| Configuration | Utility draws | Draws removed | Batches | Utility submit ms | Frame ms |
+|---|---|---|---|---|---|
+| Off | 2,977 | 0 | 0 | 4.43 | 19.1 |
+| Shadow maps only | 2,914 | 76 | 48 | 4.22 | 17.6 |
+| Plus depth pre-pass | 2,624 | 373 | 152 | 4.14 | 18.4 |
+| Plus alpha-tested casters | 2,556 | 483 | 200 | 4.16 | 18.3 |
+
+Findings:
+
+- The technique id passed to RenderPassImmediately is the raw Utility descriptor plus 0x2B
+  (BSUtilityShader::SetupTechnique decompile). The first build tested the wrong value and
+  matched nothing.
+- Per-batch overhead matters. With a Map/Unmap pair for the matrices and another for a
+  per-batch constant buffer, 260 batches per frame cancelled most of the saving (0.15 ms for
+  690 removed draws). One Map per flush and pre-created SRVs per 64-instance block brought it
+  to about 0.3 ms for 480 removed draws.
+- The removable cost per duplicate draw is about 0.6 us, not the 1.4 us average cost per
+  Utility draw. Duplicates sit inside a material run, so they never paid for the technique and
+  material switches that make the average high.
+- Blue flicker on some meshes appeared with an early key. Adding the shader-property flags and
+  the pass state (accumulation hint, LOD mode, extra param) to the key, and excluding passes in
+  the fade range (accumulation hint 10, which sets a per-object stencil reference), removed it.
+  Shadows were unchanged in instance-singles mode by inspection.
+- Of roughly 3,000 Utility passes per frame, 1,300 to 1,500 are eligible; the rest are skinned
+  (about 400), wind-animated trees (about 530, per-geometry TreeParams), non-TriShape geometry
+  types (about 590, mostly mesh-LOD shapes), landscape, and a few dozen custom-render passes.
+  Duplicates are 35 to 45 percent of the eligible set.
+
+Ceiling in this scene for the Utility pass is therefore about 0.5 ms. Further gains need the
+Lighting pass (3,700 draws at about 2 us), TreeParams in the instance record for trees, and
+mesh-LOD shapes keyed on their LOD level.
