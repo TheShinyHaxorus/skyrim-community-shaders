@@ -115,6 +115,10 @@ struct StaticInstanceRecord
 	float4 Row1;
 	float4 Row2;
 	float4 TreeParams;  // per-instance sway (TreeAnim casters), otherwise zero
+	float4 PrevRow0;    // main-pass instancing only
+	float4 PrevRow1;
+	float4 PrevRow2;
+	float4 MaterialData;
 };
 
 // Bound by the StaticInstancing feature around each instanced draw; a zeroed buffer is bound

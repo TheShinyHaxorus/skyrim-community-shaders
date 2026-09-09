@@ -6,6 +6,7 @@
 #include <d3d11.h>
 #include <nlohmann/json.hpp>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 using json = nlohmann::json;
@@ -77,6 +78,11 @@ struct StaticInstancing : Feature
 		float MinCasterRadius = 0.0f;
 		/** Same threshold for focus lights (point and spot shadow maps), which have a far coarser texel footprint. */
 		float MinCasterRadiusFocus = 0.0f;
+		/** Count Lighting-pass duplicates and water/effect passes (hashing on every main-pass draw). */
+		bool AuditCounters = false;
+		/** Coalesce identical static meshes in the main (Lighting) pass. Instanced objects are skipped
+		 *  in the depth pre-pass and drawn test-and-write through a dedicated shader permutation. */
+		bool IncludeLighting = false;
 		/** Capacity of the per-frame instance matrix ring (48 bytes each). */
 		uint32_t MaxInstancesPerFrame = 65536;
 	};
@@ -122,6 +128,14 @@ struct StaticInstancing : Feature
 		uint32_t lightingCollapsible = 0;  // lightingStatic minus lightingUniqueKeys
 		uint32_t lightingSkinned = 0;
 		uint32_t lightingOtherType = 0;
+		// Main-pass instancing
+		uint32_t lightingEligible = 0;
+		uint32_t lightingDeferred = 0;
+		uint32_t lightingCollapsed = 0;
+		uint32_t lightingInstancedDraws = 0;
+		uint32_t lightingShaderMisses = 0;  // instanced permutation not compiled yet
+		uint32_t prepassSkipped = 0;          // pre-pass draws removed for main-pass instanced objects
+		uint32_t forcedDepthWrite = 0;
 	};
 
 	virtual void SetupResources() override;
@@ -183,6 +197,7 @@ private:
 		uint32_t technique;
 		uint32_t renderFlags;
 		bool alphaTest;
+		bool lighting;
 		uint32_t bucket;
 	};
 
@@ -198,6 +213,8 @@ private:
 	struct PendingBatch
 	{
 		bool active = false;
+		bool lighting = false;  // bind the instanced Lighting permutation for this draw
+		bool fellBack = false;  // Lighting permutation unavailable: representative drawn vanilla, replay the rest
 		uint32_t count = 0;
 		uint32_t block = 0;  // index into instanceSRVs; the view starts at that block's first instance
 		const RE::BSGraphics::TriShape* rendererData = nullptr;
@@ -206,6 +223,8 @@ private:
 	enum class Verdict
 	{
 		kNotUtility,
+		kLightingEligible,
+		kLightingExcluded,
 		kTechnique,
 		kGeometry,
 		kSkinned,
@@ -220,6 +239,10 @@ private:
 	void BeginFrameIfNeeded();
 	static bool IsTerrainPass(const RE::BSRenderPass* a_pass);
 	Verdict Classify(RE::BSRenderPass* a_pass, uint32_t a_technique, bool a_alphaTest, uint32_t a_renderFlags, BatchKey& o_key);
+	Verdict ClassifyLighting(RE::BSRenderPass* a_pass, uint32_t a_technique, bool a_alphaTest, uint32_t a_renderFlags, BatchKey& o_key);
+	bool ShouldSkipPrepassDraw(RE::BSRenderPass* a_pass, uint32_t a_technique);
+	void CallWithForcedDepthWrite(RE::BSRenderPass* a_pass, uint32_t a_technique, bool a_alphaTest, uint32_t a_renderFlags);
+	void DrawInstancedLighting(RE::BSGraphics::TriShape* a_triShape, uint32_t a_startIndex, uint32_t a_count, uint32_t a_instanceCount, uint32_t a_block);
 	void AuditLightingPass(RE::BSRenderPass* a_pass, uint32_t a_technique, uint32_t a_renderFlags);
 	void OnRenderPass(RE::BSRenderPass* a_pass, uint32_t a_technique, bool a_alphaTest, uint32_t a_renderFlags);
 	void Flush();
@@ -240,6 +263,13 @@ private:
 	std::unordered_map<BatchKey, uint32_t, BatchKeyHash> bucketLookup;
 	std::unordered_map<BatchKey, uint32_t, BatchKeyHash> measure;  // every eligible pass, for the counters
 	std::unordered_map<BatchKey, uint32_t, BatchKeyHash> lightingMeasure;  // Lighting pass audit
+	// Main-pass instancing bookkeeping: geometries instanced last frame are skipped in this frame's
+	// pre-pass; geometries skipped this frame must be drawn test-and-write in the main pass.
+	std::unordered_set<const RE::BSGeometry*> prepassSkipCandidates;
+	std::unordered_set<const RE::BSGeometry*> prepassSkippedThisFrame;
+	std::unordered_set<const RE::BSGeometry*> instancedThisFrame;
+	std::unordered_set<BatchKey, BatchKeyHash> lightingCandidateKeys;
+	std::vector<std::pair<const RE::BSGeometry*, BatchKey>> lightingKeyByGeometry;
 
 	PendingBatch pending;
 	uint32_t batchDepth = 0;  // >0 while inside BSBatchRenderer::RenderBatches

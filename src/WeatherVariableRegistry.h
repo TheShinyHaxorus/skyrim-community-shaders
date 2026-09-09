@@ -628,6 +628,9 @@ namespace WeatherVariables
 			return featureRegistries.find(featureName) != featureRegistries.end();
 		}
 
+		/** @brief True when at least one feature registered weather variables. */
+		bool HasAnyWeatherSupport() const { return !featureRegistries.empty(); }
+
 		/**
 		 * @brief Interpolates a feature's weather variables between two weather states.
 		 *

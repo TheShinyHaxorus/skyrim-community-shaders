@@ -110,6 +110,13 @@ void WeatherManager::UpdateFeatures()
 	if (weatherChanged || transitionEnding || std::abs(currentWeathers.lerpFactor - lastKnownWeather.lerpFactor) > 0.001f) {
 		auto* globalRegistry = WeatherVariables::GlobalWeatherRegistry::GetSingleton();
 
+		// Nothing registered: remember the state and return before the per-feature work, which
+		// otherwise runs every frame of a weather transition.
+		if (!globalRegistry->HasAnyWeatherSupport()) {
+			lastKnownWeather = currentWeathers;
+			return;
+		}
+
 		// Get all features and update those that have registered weather variables
 		for (auto* feature : Feature::GetFeatureList()) {
 			if (!feature || !feature->loaded) {

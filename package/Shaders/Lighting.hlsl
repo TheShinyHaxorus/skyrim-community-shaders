@@ -62,6 +62,9 @@ struct VS_INPUT
 #if defined(EYE)
 	float EyeParameter: TEXCOORD2;
 #endif  // EYE
+#if defined(STATIC_INSTANCING_LIGHTING)
+	uint InstanceID: SV_InstanceID;
+#endif
 };
 
 struct VS_OUTPUT
@@ -98,6 +101,9 @@ struct VS_OUTPUT
 	float4 FogParam: COLOR1;
 
 	float3 ModelPosition: TEXCOORD12;
+#if defined(STATIC_INSTANCING_LIGHTING)
+	nointerpolation float4 InstanceMaterialData: TEXCOORD13;
+#endif
 };
 #ifdef VSHADER
 
@@ -129,6 +135,27 @@ cbuffer PerGeometry : register(b2)
 	float4 WorldMapOverlayParameters : packoffset(c14);
 };
 
+#	if defined(STATIC_INSTANCING_LIGHTING)
+// Static Instancing main-pass permutation: World and PreviousWorld come from the per-instance
+// record (camera-relative, same layout the engine writes to PerGeometry), selected by SV_InstanceID.
+struct StaticInstanceRecord
+{
+	float4 Row0;
+	float4 Row1;
+	float4 Row2;
+	float4 TreeParams;
+	float4 PrevRow0;
+	float4 PrevRow1;
+	float4 PrevRow2;
+	float4 MaterialData;
+};
+StructuredBuffer<StaticInstanceRecord> StaticInstanceRecords : register(t9);
+static row_major float3x4 StaticInstanceWorld;
+static row_major float3x4 StaticInstancePreviousWorld;
+#		define World StaticInstanceWorld
+#		define PreviousWorld StaticInstancePreviousWorld
+#	endif
+
 cbuffer VS_PerFrame : register(b12)
 {
 	row_major float3x3 ScreenProj : packoffset(c0);
@@ -153,6 +180,15 @@ float2 GetTreeShiftVector(float4 position, float4 color)
 VS_OUTPUT main(VS_INPUT input)
 {
 	VS_OUTPUT vsout;
+
+#	if defined(STATIC_INSTANCING_LIGHTING)
+	{
+		StaticInstanceRecord instanceRecord = StaticInstanceRecords[input.InstanceID];
+		StaticInstanceWorld = float3x4(instanceRecord.Row0, instanceRecord.Row1, instanceRecord.Row2);
+		StaticInstancePreviousWorld = float3x4(instanceRecord.PrevRow0, instanceRecord.PrevRow1, instanceRecord.PrevRow2);
+		vsout.InstanceMaterialData = instanceRecord.MaterialData;
+	}
+#	endif
 
 	precise float4 inputPosition = float4(input.Position.xyz, 1.0);
 
@@ -584,6 +620,11 @@ cbuffer PerGeometry : register(b2)
 	float4 PointLightColor[7] : packoffset(c22);
 	float2 NumLightNumShadowLight : packoffset(c29);
 };
+#	if defined(STATIC_INSTANCING_LIGHTING)
+static float4 StaticInstanceMaterialData;
+#		define MaterialData StaticInstanceMaterialData
+#	endif
+
 
 cbuffer AlphaTestRefBuffer : register(b11)
 {
@@ -912,6 +953,9 @@ float GetSnowParameterY(float texProjTmp, float alpha)
 PS_OUTPUT main(PS_INPUT input, bool frontFace : SV_IsFrontFace)
 {
 	PS_OUTPUT psout;
+#	if defined(STATIC_INSTANCING_LIGHTING)
+	StaticInstanceMaterialData = input.InstanceMaterialData;
+#	endif
 
 	float3 viewPosition = mul(FrameBuffer::CameraView, float4(input.WorldPosition.xyz, 1)).xyz;
 	float3 viewDirection = -normalize(input.WorldPosition.xyz);

@@ -137,9 +137,14 @@ namespace SIE
 		static void GetLightingShaderDefines(uint32_t descriptor, std::span<D3D_SHADER_MACRO> defines)
 		{
 			static REL::Relocation<void(uint32_t, D3D_SHADER_MACRO*)> VanillaGetLightingShaderDefines(RELOCATION_ID(101631, 108698));
-			VanillaGetLightingShaderDefines(descriptor, defines.data());
+			// Bit 31 selects the Static Instancing main-pass permutation; hide it from the engine's generator.
+			const bool staticInstanced = (descriptor & 0x80000000u) != 0;
+			VanillaGetLightingShaderDefines(descriptor & 0x7FFFFFFFu, defines.data());
 
 			size_t lastIndex = std::ranges::find_if(defines, [](const D3D_SHADER_MACRO& macro) { return macro.Name == nullptr; }) - defines.begin();
+			if (staticInstanced) {
+				defines[lastIndex++] = { "STATIC_INSTANCING_LIGHTING", nullptr };
+			}
 
 			if (descriptor & static_cast<uint32_t>(ShaderCache::LightingShaderFlags::Deferred)) {
 				defines[lastIndex++] = { "DEFERRED", nullptr };

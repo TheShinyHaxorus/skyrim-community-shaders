@@ -186,6 +186,12 @@ private:
 
 	struct KnownTimer
 	{
+		// Percentiles are refreshed every 32 collected frames (see CollectResults); cached here in between.
+		float cachedP95Ms = 0.0f;
+		float cachedP99Ms = 0.0f;
+		float cachedCpuP95Ms = 0.0f;
+		float cachedCpuP99Ms = 0.0f;
+
 		std::string name;
 		RollingHistory gpu;
 		RollingHistory cpu;

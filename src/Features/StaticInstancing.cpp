@@ -20,6 +20,8 @@ NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(
 	MinBatchSize,
 	MinCasterRadius,
 	MinCasterRadiusFocus,
+	AuditCounters,
+	IncludeLighting,
 	MaxInstancesPerFrame)
 
 namespace
@@ -27,7 +29,9 @@ namespace
 	// Must match kStaticInstancingMagic in Utility.hlsl. A vanilla draw that reads a stale b13
 	// sees some other value and takes the normal path.
 	constexpr uint32_t kMagic = 0x5A17C0DE;
-	constexpr uint32_t kInstanceStride = 64;  // three float4 rows plus TreeParams
+	constexpr uint32_t kInstanceStride = 128;  // world rows, TreeParams, previous world rows, MaterialData
+	// Descriptor bit that selects the instanced Lighting permutation (STATIC_INSTANCING_LIGHTING).
+	constexpr uint32_t kLightingInstancedBit = 0x80000000u;
 	constexpr uint32_t kBatchCBSlot = 13;  // b13: unused by the game and by every other feature (b8 is Light Limit Fix)
 	constexpr uint32_t kInstanceSRVSlot = 9;
 	constexpr uint32_t kUtilityTechniqueBase = 0x2B;
@@ -398,6 +402,14 @@ json StaticInstancing::GetStatsJson() const
 		{ "lightingCollapsible", c.lightingCollapsible },
 		{ "lightingSkinned", c.lightingSkinned },
 		{ "lightingOtherType", c.lightingOtherType },
+		{ "lightingEligible", c.lightingEligible },
+		{ "lightingDeferred", c.lightingDeferred },
+		{ "lightingCollapsed", c.lightingCollapsed },
+		{ "lightingInstancedDraws", c.lightingInstancedDraws },
+		{ "lightingShaderMisses", c.lightingShaderMisses },
+		{ "prepassSkipped", c.prepassSkipped },
+		{ "forcedDepthWrite", c.forcedDepthWrite },
+		{ "includeLighting", settings.IncludeLighting },
 		{ "lastDescriptor", lastDescriptor },
 	};
 }
@@ -428,6 +440,11 @@ void StaticInstancing::DrawSettings()
 	if (auto tooltip = Util::HoverTooltipWrapper()) {
 		ImGui::Text("Trees sway per instance through the instance record. Shadow-map passes only.");
 	}
+	ImGui::Checkbox("Include main pass (Lighting)", &settings.IncludeLighting);
+	if (auto tooltip = Util::HoverTooltipWrapper()) {
+		ImGui::Text("Instances identical static meshes in the main pass. Instanced objects are skipped in the depth pre-pass and drawn test-and-write through a dedicated shader permutation. Converges one frame after an object appears.");
+	}
+	ImGui::Checkbox("Audit counters (Lighting duplicates, water, effects)", &settings.AuditCounters);
 	ImGui::Checkbox("Instance singles (debug)", &settings.InstanceSingles);
 	if (auto tooltip = Util::HoverTooltipWrapper()) {
 		ImGui::Text("Sends every eligible draw through the instanced vertex path with one instance. If shadows look identical to vanilla in this mode, the matrix path is correct.");
@@ -480,6 +497,12 @@ void StaticInstancing::DrawSettings()
 		row("Lighting static TriShapes", c.lightingStatic);
 		row("Lighting unique keys", c.lightingUniqueKeys);
 		row("Lighting collapsible", c.lightingCollapsible);
+		row("Main pass: eligible", c.lightingEligible);
+		row("Main pass: collapsed", c.lightingCollapsed);
+		row("Main pass: instanced draws", c.lightingInstancedDraws);
+		row("Main pass: shader misses", c.lightingShaderMisses);
+		row("Pre-pass draws skipped", c.prepassSkipped);
+		row("Forced depth write", c.forcedDepthWrite);
 		ImGui::EndTable();
 	}
 	if (c.eligible > 0) {
@@ -499,6 +522,14 @@ void StaticInstancing::BeginFrameIfNeeded()
 	frame = {};
 	measure.clear();
 	lightingMeasure.clear();
+	prepassSkipCandidates.swap(instancedThisFrame);
+	instancedThisFrame.clear();
+	prepassSkippedThisFrame.clear();
+	for (auto& [geometry, key] : lightingKeyByGeometry)
+		if (lightingCandidateKeys.contains(key))
+			prepassSkipCandidates.insert(geometry);
+	lightingKeyByGeometry.clear();
+	lightingCandidateKeys.clear();
 
 	ringUsed = 0;
 	ringDiscardPending = true;
@@ -592,6 +623,73 @@ void StaticInstancing::ComputeTreeParams(const RE::BSRenderPass* a_pass, float* 
 	o_params[1] = wind;
 	o_params[2] = dampened;
 	o_params[3] = frequency;
+}
+
+void StaticInstancing::CallWithForcedDepthWrite(RE::BSRenderPass* a_pass, uint32_t a_technique, bool a_alphaTest, uint32_t a_renderFlags)
+{
+	using Fn = Hooks::BSBatchRenderer_RenderPassImmediately;
+	const bool force = settings.IncludeLighting && !prepassSkippedThisFrame.empty() && a_pass->shader &&
+	                   a_pass->shader->shaderType.get() == RE::BSShader::Type::Lighting && prepassSkippedThisFrame.contains(a_pass->geometry);
+	if (!force) {
+		Fn::func(a_pass, a_technique, a_alphaTest, a_renderFlags);
+		return;
+	}
+	auto& shadowState = globals::game::shadowState->GetRuntimeData();
+	const auto saved = shadowState.depthStencilDepthMode;
+	shadowState.depthStencilDepthMode = RE::BSGraphics::DepthStencilDepthMode::kTestWrite;
+	globals::game::stateUpdateFlags->set(RE::BSGraphics::ShaderFlags::DIRTY_DEPTH_MODE);
+	frame.forcedDepthWrite++;
+	Fn::func(a_pass, a_technique, a_alphaTest, a_renderFlags);
+	shadowState.depthStencilDepthMode = saved;
+	globals::game::stateUpdateFlags->set(RE::BSGraphics::ShaderFlags::DIRTY_DEPTH_MODE);
+}
+
+bool StaticInstancing::ShouldSkipPrepassDraw(RE::BSRenderPass* a_pass, uint32_t a_technique)
+{
+	if (!a_pass->shader || a_pass->shader->shaderType.get() != RE::BSShader::Type::Utility || !a_pass->geometry)
+		return false;
+	const uint32_t descriptor = a_technique - kUtilityTechniqueBase;
+	if ((descriptor & static_cast<uint32_t>(UF::RenderDepth)) == 0 || (descriptor & static_cast<uint32_t>(UF::RenderShadowmask)) != 0)
+		return false;
+	return prepassSkipCandidates.contains(a_pass->geometry);
+}
+
+StaticInstancing::Verdict StaticInstancing::ClassifyLighting(RE::BSRenderPass* a_pass, uint32_t a_technique, bool a_alphaTest, uint32_t a_renderFlags, BatchKey& o_key)
+{
+	auto* geometry = a_pass->geometry;
+	if (!geometry)
+		return Verdict::kLightingExcluded;
+	const auto geometryType = geometry->GetType().get();
+	if (geometryType != RE::BSGeometry::Type::kTriShape && (geometryType != RE::BSGeometry::Type::kMeshLODTriShape || !settings.IncludeMeshLOD))
+		return Verdict::kLightingExcluded;
+	const auto& runtime = geometry->GetGeometryRuntimeData();
+	if (!runtime.rendererData || !runtime.rendererData->vertexBuffer || !runtime.rendererData->indexBuffer || runtime.skinInstance)
+		return Verdict::kLightingExcluded;
+	if (!REL::Module::IsVR() && (reinterpret_cast<const std::uint8_t*>(geometry)[0x109] & 0x8) != 0)
+		return Verdict::kLightingExcluded;
+	auto* property = a_pass->shaderProperty;
+	if (!property || property->GetRTTI() != globals::rtti::BSLightingShaderPropertyRTTI.get())
+		return Verdict::kLightingExcluded;
+	using F = RE::BSShaderProperty::EShaderPropertyFlag;
+	if (property->flags.any(F::kMultiTextureLandscape, F::kProjectedUV, F::kTreeAnim, F::kSkinned, F::kDecal, F::kDynamicDecal, F::kLODLandscape, F::kLODObjects, F::kEyeReflect, F::kHairTint, F::kFaceGenRGBTint))
+		return Verdict::kLightingExcluded;
+	if (!property->flags.all(F::kZBufferWrite, F::kZBufferTest))
+		return Verdict::kLightingExcluded;
+	if (a_pass->accumulationHint == 10 || a_pass->numShadowLights != 0 || a_pass->LODMode.singleLevel)
+		return Verdict::kLightingExcluded;
+	if (auto* alphaProperty = runtime.alphaProperty.get(); alphaProperty && (alphaProperty->alphaFlags & 1) != 0)
+		return Verdict::kLightingExcluded;  // alpha blending is order dependent
+	o_key = {};
+	o_key.rendererData = runtime.rendererData;
+	o_key.material = property->GetBaseMaterial();
+	o_key.propertyFlags = static_cast<uint64_t>(property->flags.get());
+	o_key.technique = a_technique;
+	o_key.renderFlags = a_renderFlags;
+	o_key.alpha = (a_alphaTest ? 1u << 24 : 0u);
+	if (auto* alphaProperty = runtime.alphaProperty.get())
+		o_key.alpha |= static_cast<uint32_t>(alphaProperty->alphaThreshold) | (static_cast<uint32_t>(alphaProperty->alphaFlags) << 8);
+	o_key.passState = 0x40000000u | static_cast<uint32_t>(a_pass->accumulationHint) | (static_cast<uint32_t>(*reinterpret_cast<const std::uint8_t*>(&a_pass->LODMode)) << 8) | (static_cast<uint32_t>(a_pass->numLights) << 16) | (static_cast<uint32_t>(a_pass->extraParam) << 24);
+	return Verdict::kLightingEligible;
 }
 
 bool StaticInstancing::IsTerrainPass(const RE::BSRenderPass* a_pass)
@@ -714,7 +812,7 @@ void StaticInstancing::OnRenderPass(RE::BSRenderPass* a_pass, uint32_t a_techniq
 
 	BeginFrameIfNeeded();
 
-	if (a_pass->shader) {
+	if (settings.AuditCounters && a_pass->shader) {
 		const auto shaderType = a_pass->shader->shaderType.get();
 		if (shaderType == RE::BSShader::Type::Lighting)
 			AuditLightingPass(a_pass, a_technique, a_renderFlags);
@@ -724,15 +822,43 @@ void StaticInstancing::OnRenderPass(RE::BSRenderPass* a_pass, uint32_t a_techniq
 			frame.effectPasses++;
 	}
 
-	BatchKey key;
-	const Verdict verdict = Classify(a_pass, a_technique, a_alphaTest, a_renderFlags, key);
+	// Main-pass instancing: pre-pass draws of objects instanced last frame are dropped, and every
+	// main-pass draw of a dropped object runs test-and-write instead of the equality test.
+	if (settings.IncludeLighting && !prepassSkipCandidates.empty() && ShouldSkipPrepassDraw(a_pass, a_technique)) {
+		frame.prepassSkipped++;
+		prepassSkippedThisFrame.insert(a_pass->geometry);
+		if (!a_pass->passGroupNext)
+			Flush();
+		return;
+	}
 
-	if (verdict != Verdict::kNotUtility)
+	BatchKey key;
+	Verdict verdict = Classify(a_pass, a_technique, a_alphaTest, a_renderFlags, key);
+
+	if (verdict == Verdict::kNotUtility && settings.IncludeLighting && a_pass->shader && a_pass->shader->shaderType.get() == RE::BSShader::Type::Lighting)
+		verdict = ClassifyLighting(a_pass, a_technique, a_alphaTest, a_renderFlags, key);
+
+	if (verdict != Verdict::kNotUtility && verdict != Verdict::kLightingEligible && verdict != Verdict::kLightingExcluded)
 		frame.utilityPasses++;
 
 	bool deferThis = false;
 	switch (verdict) {
 	case Verdict::kNotUtility:
+	case Verdict::kLightingExcluded:
+		break;
+	case Verdict::kLightingEligible:
+		frame.lightingEligible++;
+		// Only objects that were skipped in this frame's pre-pass can be instanced (their depth is
+		// not in the buffer, so test-and-write is correct for them); everything else stays vanilla.
+		deferThis = settings.Enabled && !instanceSRVs.empty() && prepassSkippedThisFrame.contains(a_pass->geometry);
+		if (settings.Enabled && !deferThis) {
+			// First sighting: count duplicates now so next frame's pre-pass can skip them.
+			auto& seen = lightingMeasure[key];
+			seen++;
+			if (seen >= settings.MinBatchSize)
+				lightingCandidateKeys.insert(key);
+			lightingKeyByGeometry.emplace_back(a_pass->geometry, key);
+		}
 		break;
 	case Verdict::kTechnique:
 		frame.excludedTechnique++;
@@ -783,10 +909,12 @@ void StaticInstancing::OnRenderPass(RE::BSRenderPass* a_pass, uint32_t a_techniq
 			bucketLookup.emplace(key, bucketIndex);
 		}
 		buckets[bucketIndex].passes.push_back(static_cast<uint32_t>(deferred.size()));
-		deferred.push_back(DeferredPass{ a_pass, a_technique, a_renderFlags, a_alphaTest, bucketIndex });
+		deferred.push_back(DeferredPass{ a_pass, a_technique, a_renderFlags, a_alphaTest, verdict == Verdict::kLightingEligible, bucketIndex });
 		frame.deferred++;
+		if (verdict == Verdict::kLightingEligible)
+			frame.lightingDeferred++;
 	} else {
-		Fn::func(a_pass, a_technique, a_alphaTest, a_renderFlags);
+		CallWithForcedDepthWrite(a_pass, a_technique, a_alphaTest, a_renderFlags);
 	}
 
 	// Last pass of this group: replay before the engine's EndPass resets cull mode and
@@ -825,6 +953,7 @@ bool StaticInstancing::WriteInstances(uint32_t a_totalInstances)
 	// Same construction as BSShaderUtil::GetXMFromNiPosAdjust followed by TransposeStoreMatrix3x4:
 	// rows are [R*s | t - posAdjust], so the shader can repeat the vanilla mul sequence exactly.
 	const RE::NiPoint3 posAdjust = globals::game::shadowState->GetRuntimeData().posAdjust.getEye();
+	const RE::NiPoint3 previousPosAdjust = globals::game::shadowState->GetRuntimeData().previousPosAdjust.getEye();
 	auto* base = static_cast<uint8_t*>(mapped.pData);
 	for (Bucket& bucket : buckets) {
 		if (!bucket.instanced)
@@ -848,11 +977,39 @@ bool StaticInstancing::WriteInstances(uint32_t a_totalInstances)
 		out[9] = r[2][1] * s;
 		out[10] = r[2][2] * s;
 		out[11] = world.translate.z - posAdjust.z;
-		if (((bucket.key.technique - kUtilityTechniqueBase) & static_cast<uint32_t>(UF::TreeAnim)) != 0)
-			ComputeTreeParams(deferred[passIndex].pass, out + 12);
+		const DeferredPass& dp = deferred[passIndex];
+		if (!dp.lighting && ((bucket.key.technique - kUtilityTechniqueBase) & static_cast<uint32_t>(UF::TreeAnim)) != 0)
+			ComputeTreeParams(dp.pass, out + 12);
 		else
 			out[12] = out[13] = out[14] = out[15] = 0.0f;
-		out += 16;
+		if (dp.lighting) {
+			// PreviousWorld rows, camera-relative with the previous frame's adjust (renderFlags bit 4:
+			// no previous transform, use the current one), then MaterialData.
+			const RE::NiTransform& prev = (dp.renderFlags & 0x10) ? world : dp.pass->geometry->previousWorld;
+			const auto& pr = prev.rotate.entry;
+			const float ps = prev.scale;
+			out[16] = pr[0][0] * ps;
+			out[17] = pr[0][1] * ps;
+			out[18] = pr[0][2] * ps;
+			out[19] = prev.translate.x - previousPosAdjust.x;
+			out[20] = pr[1][0] * ps;
+			out[21] = pr[1][1] * ps;
+			out[22] = pr[1][2] * ps;
+			out[23] = prev.translate.y - previousPosAdjust.y;
+			out[24] = pr[2][0] * ps;
+			out[25] = pr[2][1] * ps;
+			out[26] = pr[2][2] * ps;
+			out[27] = prev.translate.z - previousPosAdjust.z;
+			auto* lightingProperty = static_cast<RE::BSLightingShaderProperty*>(dp.pass->shaderProperty);
+			out[28] = lightingProperty->envmapLODFade;
+			out[29] = lightingProperty->specularLODFade;
+			out[30] = lightingProperty->alpha;
+			out[31] = 0.0f;
+		} else {
+			for (int i = 16; i < 32; ++i)
+				out[i] = 0.0f;
+		}
+		out += 32;
 	}
 	}
 	context->Unmap(instanceBuffer, 0);
@@ -889,7 +1046,7 @@ void StaticInstancing::Flush()
 		const uint32_t count = static_cast<uint32_t>(bucket.passes.size());
 
 		if (!bucket.instanced || !written) {
-			Fn::func(d.pass, d.technique, d.alphaTest, d.renderFlags);
+			CallWithForcedDepthWrite(d.pass, d.technique, d.alphaTest, d.renderFlags);
 			frame.singlesReplayed++;
 			continue;
 		}
@@ -899,13 +1056,18 @@ void StaticInstancing::Flush()
 		bucket.drawn = true;
 
 		pending.active = true;
+		pending.lighting = d.lighting;
+		pending.fellBack = false;
 		pending.count = count;
 		pending.block = bucket.block;
 		pending.rendererData = bucket.key.rendererData
 			? static_cast<const RE::BSGraphics::TriShape*>(bucket.key.rendererData)
 			: nullptr;
 
-		Fn::func(d.pass, d.technique, d.alphaTest, d.renderFlags);
+		if (d.lighting)
+			CallWithForcedDepthWrite(d.pass, d.technique, d.alphaTest, d.renderFlags);
+		else
+			Fn::func(d.pass, d.technique, d.alphaTest, d.renderFlags);
 
 		if (pending.active) {
 			// The engine never reached DrawTriShape for the representative (technique setup
@@ -913,10 +1075,29 @@ void StaticInstancing::Flush()
 			// have skipped them.
 			pending = {};
 			frame.pendingDropped++;
+		} else if (pending.fellBack) {
+			// Instanced permutation not ready: the representative was drawn alone, draw the rest.
+			pending = {};
+			frame.lightingShaderMisses++;
+			for (uint32_t passIndex : bucket.passes) {
+				if (passIndex == i)
+					continue;
+				const DeferredPass& p = deferred[passIndex];
+				CallWithForcedDepthWrite(p.pass, p.technique, p.alphaTest, p.renderFlags);
+			}
 		} else {
 			frame.instancedDraws++;
 			frame.collapsed += count - 1;
+			if (d.lighting) {
+				frame.lightingInstancedDraws++;
+				frame.lightingCollapsed += count - 1;
+			}
 		}
+		// Members of an instanced main-pass batch, and eligible objects that batched this frame, are
+		// skipped in next frame's pre-pass so they can be instanced again.
+		if (d.lighting && !pending.fellBack)
+			for (uint32_t passIndex : bucket.passes)
+				instancedThisFrame.insert(deferred[passIndex].pass->geometry);
 	}
 
 	deferred.clear();
@@ -960,6 +1141,31 @@ void StaticInstancing::DrawInstanced(RE::BSGraphics::TriShape* a_triShape, uint3
 	context->VSSetConstantBuffers(kBatchCBSlot, 1, &disabledCB);
 }
 
+void StaticInstancing::DrawInstancedLighting(RE::BSGraphics::TriShape* a_triShape, uint32_t a_startIndex, uint32_t a_count, uint32_t a_instanceCount, uint32_t a_block)
+{
+	auto* state = globals::state;
+	auto* shaderCache = globals::shaderCache;
+	auto* context = globals::d3d::context;
+	if (!state->currentShader || !shaderCache) {
+		pending.fellBack = true;
+		return;
+	}
+	auto* instancedVS = shaderCache->GetVertexShader(*state->currentShader, state->modifiedVertexDescriptor | kLightingInstancedBit);
+	auto* instancedPS = shaderCache->GetPixelShader(*state->currentShader, state->modifiedPixelDescriptor | kLightingInstancedBit);
+	if (!instancedVS || !instancedPS) {
+		pending.fellBack = true;
+		return;
+	}
+	context->VSSetShader(reinterpret_cast<ID3D11VertexShader*>(instancedVS->shader), nullptr, 0);
+	context->PSSetShader(reinterpret_cast<ID3D11PixelShader*>(instancedPS->shader), nullptr, 0);
+	DrawInstanced(a_triShape, a_startIndex, a_count, a_instanceCount, a_block);
+	// Restore the engine's shaders: its technique cache assumes they are still bound.
+	auto* vanillaVS = globals::game::currentVertexShader ? *globals::game::currentVertexShader : nullptr;
+	auto* vanillaPS = globals::game::currentPixelShader ? *globals::game::currentPixelShader : nullptr;
+	context->VSSetShader(vanillaVS ? reinterpret_cast<ID3D11VertexShader*>(vanillaVS->shader) : nullptr, nullptr, 0);
+	context->PSSetShader(vanillaPS ? reinterpret_cast<ID3D11PixelShader*>(vanillaPS->shader) : nullptr, nullptr, 0);
+}
+
 void StaticInstancing::Hooks::BSBatchRenderer_RenderPassImmediately::thunk(RE::BSRenderPass* a_pass, uint32_t a_technique, bool a_alphaTest, uint32_t a_renderFlags)
 {
 	globals::features::staticInstancing.OnRenderPass(a_pass, a_technique, a_alphaTest, a_renderFlags);
@@ -993,6 +1199,14 @@ void StaticInstancing::Hooks::Renderer_DrawTriShape::thunk(RE::BSGraphics::Rende
 	}
 	const uint32_t instanceCount = self.pending.count;
 	const uint32_t block = self.pending.block;
+	const bool lighting = self.pending.lighting;
+	self.pending.active = false;
+	if (lighting) {
+		self.DrawInstancedLighting(a_triShape, a_startIndex, a_count, instanceCount, block);
+		if (self.pending.fellBack)
+			func(a_renderer, a_triShape, a_startIndex, a_count);
+		return;
+	}
 	self.pending = {};
 	self.DrawInstanced(a_triShape, a_startIndex, a_count, instanceCount, block);
 }

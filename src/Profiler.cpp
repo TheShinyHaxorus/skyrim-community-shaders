@@ -215,7 +215,8 @@ void Profiler::CollectResults()
 
 	results.clear();
 	results.reserve(knownTimers.size());
-	for (const auto& known : knownTimers) {
+	const bool refreshPercentiles = (collectedFrames & 31) == 0;
+	for (auto& known : knownTimers) {
 		TimerResult result;
 		result.name = known.name;
 		auto it = activeTimers.find(known.name);
@@ -227,11 +228,17 @@ void Profiler::CollectResults()
 			result.cpuTimeMs = known.cpu.lastMs;
 		}
 		result.avgMs = known.gpu.GetAverage();
-		result.p95Ms = known.gpu.GetPercentile(95.0f);
-		result.p99Ms = known.gpu.GetPercentile(99.0f);
+		if (refreshPercentiles) {
+			known.cachedP95Ms = known.gpu.GetPercentile(95.0f);
+			known.cachedP99Ms = known.gpu.GetPercentile(99.0f);
+			known.cachedCpuP95Ms = known.cpu.GetPercentile(95.0f);
+			known.cachedCpuP99Ms = known.cpu.GetPercentile(99.0f);
+		}
+		result.p95Ms = known.cachedP95Ms;
+		result.p99Ms = known.cachedP99Ms;
 		result.cpuAvgMs = known.cpu.GetAverage();
-		result.cpuP95Ms = known.cpu.GetPercentile(95.0f);
-		result.cpuP99Ms = known.cpu.GetPercentile(99.0f);
+		result.cpuP95Ms = known.cachedCpuP95Ms;
+		result.cpuP99Ms = known.cachedCpuP99Ms;
 		result.valid = true;
 		result.historyBuffer = known.gpu.history;
 		result.historyHead = known.gpu.head;
