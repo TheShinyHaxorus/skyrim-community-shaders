@@ -353,3 +353,20 @@ Third-party per-draw hooks on the same thread, for the modlist owner: NativeMesh
 1.9%, EngineFixes 1.6% (its SetupGeometry wrapper appears in every Lighting stack, plus
 GetCurrentThreadId per pass), UnderwaterNG and HorizonFix inside the water and lighting setup
 chains, FPWeaponAdjust and ImprovedCameraSE 0.5% each. About 0.6 ms a frame between them.
+
+## Results, build 22, 2026-09-09 01:36 (same spot, overlay open, 15 samples per config)
+
+| config            | frame ms              | Utility ms | Lighting ms |
+|-------------------|-----------------------|------------|-------------|
+| shadow maps only  | 14.96 / 15.84 / 14.56 | 3.34       | 3.17        |
+| plus main pass    | 15.03 / 15.57         | 3.36-3.40  | 3.18-3.19   |
+| feature off       | 15.36                 | 3.22       | 3.14        |
+
+Against build 21 at the same spot (Utility 3.41-4.27, Lighting 3.50-4.73) the per-type submission
+timers dropped by 0.3 to 0.5 ms each; frame time is still dominated by run-to-run drift, so the
+three per-draw fixes are confirmed by the timers, not by the frame average. Static Instancing's
+own counters: flush 0.44 ms (was 0.55), writes 0.04 ms, instanced draws 0.13 ms, 30 depth-mode
+changes, no allocations in steady state. Visual check clean with Snow Cover's cache in place.
+
+Shipped configuration (SettingsUser.json): Enabled, alpha-tested, trees, mesh-LOD, main pass on,
+caster culling below 40 units, Frame Annotations off.
