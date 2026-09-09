@@ -27,6 +27,7 @@ namespace
 	constexpr uint32_t kBatchCBSlot = 13;  // b13: unused by the game and by every other feature (b8 is Light Limit Fix)
 	constexpr uint32_t kInstanceSRVSlot = 9;
 	constexpr uint32_t kUtilityTechniqueBase = 0x2B;
+	constexpr uint32_t kBlockSize = 64;  // batch bases are aligned to this many instances
 
 	using UF = SIE::ShaderCache::UtilityShaderFlags;
 
@@ -92,7 +93,12 @@ void StaticInstancing::SetupResources()
 	else
 		noOverwriteSupported = false;
 
-	ringCapacity = std::max<uint32_t>(settings.MaxInstancesPerFrame, 1024);
+	ringCapacity = std::max<uint32_t>(settings.MaxInstancesPerFrame, 4096);
+	ringCapacity = (ringCapacity + kBlockSize - 1) / kBlockSize * kBlockSize;
+	deferred.reserve(4096);
+	buckets.reserve(2048);
+	bucketLookup.reserve(4096);
+	measure.reserve(4096);
 
 	{
 		D3D11_BUFFER_DESC desc{};
@@ -109,37 +115,44 @@ void StaticInstancing::SetupResources()
 		}
 		Util::SetResourceName(instanceBuffer, "StaticInstancing::instanceBuffer");
 
-		D3D11_SHADER_RESOURCE_VIEW_DESC srvDesc{};
-		srvDesc.Format = DXGI_FORMAT_UNKNOWN;
-		srvDesc.ViewDimension = D3D11_SRV_DIMENSION_BUFFER;
-		srvDesc.Buffer.FirstElement = 0;
-		srvDesc.Buffer.NumElements = ringCapacity;
-		if (FAILED(device->CreateShaderResourceView(instanceBuffer, &srvDesc, &instanceSRV))) {
-			logger::error("[Static Instancing] instance SRV creation failed");
-			ReleaseResources();
-			return;
+		const uint32_t blockCount = ringCapacity / kBlockSize;
+		instanceSRVs.reserve(blockCount);
+		for (uint32_t block = 0; block < blockCount; ++block) {
+			D3D11_SHADER_RESOURCE_VIEW_DESC srvDesc{};
+			srvDesc.Format = DXGI_FORMAT_UNKNOWN;
+			srvDesc.ViewDimension = D3D11_SRV_DIMENSION_BUFFER;
+			srvDesc.Buffer.FirstElement = block * kBlockSize;
+			srvDesc.Buffer.NumElements = ringCapacity - block * kBlockSize;
+			ID3D11ShaderResourceView* srv = nullptr;
+			if (FAILED(device->CreateShaderResourceView(instanceBuffer, &srvDesc, &srv))) {
+				logger::error("[Static Instancing] instance SRV creation failed at block {}", block);
+				ReleaseResources();
+				return;
+			}
+			instanceSRVs.push_back(srv);
 		}
-		Util::SetResourceName(instanceSRV, "StaticInstancing::instanceSRV");
 	}
 
 	{
 		D3D11_BUFFER_DESC desc{};
 		desc.ByteWidth = 16;
-		desc.Usage = D3D11_USAGE_DYNAMIC;
 		desc.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
-		desc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
-		if (FAILED(device->CreateBuffer(&desc, nullptr, &batchCB))) {
-			logger::error("[Static Instancing] batch constant buffer creation failed");
+		desc.Usage = D3D11_USAGE_IMMUTABLE;
+		desc.CPUAccessFlags = 0;
+
+		// Base is always 0: the bound SRV already starts at the batch's first instance.
+		const uint32_t enabled[4] = { 0, kMagic, 0, 0 };
+		D3D11_SUBRESOURCE_DATA init{};
+		init.pSysMem = enabled;
+		if (FAILED(device->CreateBuffer(&desc, &init, &enabledCB))) {
+			logger::error("[Static Instancing] enabled constant buffer creation failed");
 			ReleaseResources();
 			return;
 		}
-		Util::SetResourceName(batchCB, "StaticInstancing::batchCB");
+		Util::SetResourceName(enabledCB, "StaticInstancing::enabledCB");
 
 		const uint32_t zeros[4] = { 0, 0, 0, 0 };
-		D3D11_SUBRESOURCE_DATA init{};
 		init.pSysMem = zeros;
-		desc.Usage = D3D11_USAGE_IMMUTABLE;
-		desc.CPUAccessFlags = 0;
 		if (FAILED(device->CreateBuffer(&desc, &init, &disabledCB))) {
 			logger::error("[Static Instancing] disabled constant buffer creation failed");
 			ReleaseResources();
@@ -150,14 +163,16 @@ void StaticInstancing::SetupResources()
 
 	ringUsed = 0;
 	ringDiscardPending = true;
-	logger::info("[Static Instancing] resources ready: {} instances, NO_OVERWRITE on SRV buffers {}", ringCapacity, noOverwriteSupported ? "supported" : "unsupported (discard per batch)");
+	logger::info("[Static Instancing] resources ready: {} instances in {} blocks, NO_OVERWRITE on SRV buffers {}", ringCapacity, instanceSRVs.size(), noOverwriteSupported ? "supported" : "unsupported (discard per flush)");
 }
 
 void StaticInstancing::ReleaseResources()
 {
-	SafeRelease(instanceSRV);
+	for (auto*& srv : instanceSRVs)
+		SafeRelease(srv);
+	instanceSRVs.clear();
 	SafeRelease(instanceBuffer);
-	SafeRelease(batchCB);
+	SafeRelease(enabledCB);
 	SafeRelease(disabledCB);
 	ringCapacity = 0;
 }
@@ -305,7 +320,7 @@ void StaticInstancing::BeginFrameIfNeeded()
 		return;
 
 	last = frame;
-	last.uniqueKeys = static_cast<uint32_t>(measure.size());
+	last.uniqueKeys = frame.uniqueKeys + static_cast<uint32_t>(measure.size());
 	frame = {};
 	measure.clear();
 
@@ -437,14 +452,17 @@ void StaticInstancing::OnRenderPass(RE::BSRenderPass* a_pass, uint32_t a_techniq
 			frame.eligible++;
 			if (key.alpha != 0)
 				frame.eligibleAlpha++;
-			auto& seen = measure[key];
-			if (seen > 0)
-				frame.collapsible++;
-			seen++;
 			if (verdict == Verdict::kAlphaExcluded)
 				frame.excludedAlpha++;
 			else
-				deferThis = settings.Enabled && instanceSRV != nullptr;
+				deferThis = settings.Enabled && !instanceSRVs.empty();
+			if (!deferThis) {
+				// Not batched, so count duplicates here; batched passes are counted at flush.
+				auto& seen = measure[key];
+				if (seen > 0)
+					frame.collapsible++;
+				seen++;
+			}
 		}
 		break;
 	}
@@ -473,25 +491,25 @@ void StaticInstancing::OnRenderPass(RE::BSRenderPass* a_pass, uint32_t a_techniq
 		Flush();
 }
 
-bool StaticInstancing::WriteInstances(const Bucket& a_bucket, uint32_t& o_base)
+bool StaticInstancing::WriteInstances(uint32_t a_totalInstances)
 {
-	const uint32_t count = static_cast<uint32_t>(a_bucket.passes.size());
-	if (count == 0 || !instanceBuffer)
+	// Writes every instanced bucket's matrices with one Map. Each bucket starts on a block
+	// boundary so its SRV block addresses it; the gap between buckets is left unused.
+	if (a_totalInstances == 0 || !instanceBuffer)
 		return false;
 
 	auto* context = globals::d3d::context;
 	D3D11_MAP mapType;
 	if (noOverwriteSupported) {
-		if (ringUsed + count > ringCapacity)
+		if (ringUsed + a_totalInstances > ringCapacity)
 			return false;
 		mapType = ringDiscardPending ? D3D11_MAP_WRITE_DISCARD : D3D11_MAP_WRITE_NO_OVERWRITE;
-		o_base = ringUsed;
 	} else {
-		// Without NO_OVERWRITE on SRV buffers every batch renames the whole buffer.
-		if (count > ringCapacity)
+		// Without NO_OVERWRITE on SRV buffers every flush renames the whole buffer.
+		if (a_totalInstances > ringCapacity)
 			return false;
 		mapType = D3D11_MAP_WRITE_DISCARD;
-		o_base = 0;
+		ringUsed = 0;
 	}
 
 	D3D11_MAPPED_SUBRESOURCE mapped{};
@@ -501,8 +519,14 @@ bool StaticInstancing::WriteInstances(const Bucket& a_bucket, uint32_t& o_base)
 	// Same construction as BSShaderUtil::GetXMFromNiPosAdjust followed by TransposeStoreMatrix3x4:
 	// rows are [R*s | t - posAdjust], so the shader can repeat the vanilla mul sequence exactly.
 	const RE::NiPoint3 posAdjust = globals::game::shadowState->GetRuntimeData().posAdjust.getEye();
-	auto* out = reinterpret_cast<float*>(static_cast<uint8_t*>(mapped.pData) + static_cast<size_t>(o_base) * kInstanceStride);
-	for (uint32_t passIndex : a_bucket.passes) {
+	auto* base = static_cast<uint8_t*>(mapped.pData);
+	for (Bucket& bucket : buckets) {
+		if (!bucket.instanced)
+			continue;
+		bucket.block = ringUsed / kBlockSize;
+		auto* out = reinterpret_cast<float*>(base + static_cast<size_t>(ringUsed) * kInstanceStride);
+		ringUsed += (static_cast<uint32_t>(bucket.passes.size()) + kBlockSize - 1) / kBlockSize * kBlockSize;
+	for (uint32_t passIndex : bucket.passes) {
 		const RE::NiTransform& world = deferred[passIndex].pass->geometry->world;
 		const auto& r = world.rotate.entry;
 		const float s = world.scale;
@@ -520,12 +544,9 @@ bool StaticInstancing::WriteInstances(const Bucket& a_bucket, uint32_t& o_base)
 		out[11] = world.translate.z - posAdjust.z;
 		out += 12;
 	}
-	context->Unmap(instanceBuffer, 0);
-
-	if (noOverwriteSupported) {
-		ringUsed += count;
-		ringDiscardPending = false;
 	}
+	context->Unmap(instanceBuffer, 0);
+	ringDiscardPending = false;
 	return true;
 }
 
@@ -537,13 +558,27 @@ void StaticInstancing::Flush()
 	using Fn = Hooks::BSBatchRenderer_RenderPassImmediately;
 	flushing = true;
 
+	// Pass 1: decide which buckets are instanced and how much ring space they need.
+	uint32_t totalInstances = 0;
+	frame.uniqueKeys += static_cast<uint32_t>(buckets.size());
+	for (Bucket& bucket : buckets) {
+		const uint32_t count = static_cast<uint32_t>(bucket.passes.size());
+		frame.collapsible += count - 1;
+		bucket.instanced = count >= settings.MinBatchSize || settings.InstanceSingles;
+		if (bucket.instanced)
+			totalInstances += (count + kBlockSize - 1) / kBlockSize * kBlockSize;
+	}
+	const bool written = totalInstances > 0 && WriteInstances(totalInstances);
+	if (totalInstances > 0 && !written)
+		frame.ringOverflow++;
+
+	// Pass 2: replay in original order; an instanced bucket draws once, at its first pass.
 	for (size_t i = 0; i < deferred.size(); ++i) {
 		const DeferredPass& d = deferred[i];
 		Bucket& bucket = buckets[d.bucket];
 		const uint32_t count = static_cast<uint32_t>(bucket.passes.size());
-		const bool instance = count >= settings.MinBatchSize || settings.InstanceSingles;
 
-		if (!instance) {
+		if (!bucket.instanced || !written) {
 			Fn::func(d.pass, d.technique, d.alphaTest, d.renderFlags);
 			frame.singlesReplayed++;
 			continue;
@@ -553,19 +588,9 @@ void StaticInstancing::Flush()
 			continue;
 		bucket.drawn = true;
 
-		uint32_t base = 0;
-		if (!WriteInstances(bucket, base)) {
-			frame.ringOverflow++;
-			for (uint32_t passIndex : bucket.passes) {
-				const DeferredPass& p = deferred[passIndex];
-				Fn::func(p.pass, p.technique, p.alphaTest, p.renderFlags);
-			}
-			continue;
-		}
-
 		pending.active = true;
 		pending.count = count;
-		pending.base = base;
+		pending.block = bucket.block;
 		pending.rendererData = bucket.key.rendererData
 			? static_cast<const RE::BSGraphics::TriShape*>(bucket.key.rendererData)
 			: nullptr;
@@ -590,7 +615,7 @@ void StaticInstancing::Flush()
 	flushing = false;
 }
 
-void StaticInstancing::DrawInstanced(RE::BSGraphics::TriShape* a_triShape, uint32_t a_startIndex, uint32_t a_count, uint32_t a_instanceCount, uint32_t a_base)
+void StaticInstancing::DrawInstanced(RE::BSGraphics::TriShape* a_triShape, uint32_t a_startIndex, uint32_t a_count, uint32_t a_instanceCount, uint32_t a_block)
 {
 	auto* context = globals::d3d::context;
 	auto& shadowState = globals::game::shadowState->GetRuntimeData();
@@ -616,17 +641,8 @@ void StaticInstancing::DrawInstanced(RE::BSGraphics::TriShape* a_triShape, uint3
 	ID3D11Buffer* vertexBuffer = reinterpret_cast<ID3D11Buffer*>(a_triShape->vertexBuffer);
 	context->IASetVertexBuffers(0, 1, &vertexBuffer, &stride, &offset);
 
-	D3D11_MAPPED_SUBRESOURCE mapped{};
-	if (SUCCEEDED(context->Map(batchCB, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped))) {
-		auto* data = static_cast<uint32_t*>(mapped.pData);
-		data[0] = a_base;
-		data[1] = kMagic;
-		data[2] = 0;
-		data[3] = 0;
-		context->Unmap(batchCB, 0);
-	}
-	context->VSSetConstantBuffers(kBatchCBSlot, 1, &batchCB);
-	context->VSSetShaderResources(kInstanceSRVSlot, 1, &instanceSRV);
+	context->VSSetConstantBuffers(kBatchCBSlot, 1, &enabledCB);
+	context->VSSetShaderResources(kInstanceSRVSlot, 1, &instanceSRVs[a_block]);
 
 	context->DrawIndexedInstanced(a_count * 3, a_instanceCount, a_startIndex, 0, 0);
 
@@ -661,9 +677,9 @@ void StaticInstancing::Hooks::Renderer_DrawTriShape::thunk(RE::BSGraphics::Rende
 		return;
 	}
 	const uint32_t instanceCount = self.pending.count;
-	const uint32_t base = self.pending.base;
+	const uint32_t block = self.pending.block;
 	self.pending = {};
-	self.DrawInstanced(a_triShape, a_startIndex, a_count, instanceCount, base);
+	self.DrawInstanced(a_triShape, a_startIndex, a_count, instanceCount, block);
 }
 
 void StaticInstancing::Hooks::Install()

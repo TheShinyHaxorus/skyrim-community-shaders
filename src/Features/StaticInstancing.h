@@ -162,13 +162,15 @@ private:
 		BatchKey key;
 		std::vector<uint32_t> passes;  // indices into `deferred`
 		bool drawn = false;
+		bool instanced = false;
+		uint32_t block = 0;  // SRV block the bucket's matrices were written to
 	};
 
 	struct PendingBatch
 	{
 		bool active = false;
 		uint32_t count = 0;
-		uint32_t base = 0;
+		uint32_t block = 0;  // index into instanceSRVs; the view starts at that block's first instance
 		const RE::BSGraphics::TriShape* rendererData = nullptr;
 	};
 
@@ -189,8 +191,8 @@ private:
 	Verdict Classify(RE::BSRenderPass* a_pass, uint32_t a_technique, bool a_alphaTest, uint32_t a_renderFlags, BatchKey& o_key);
 	void OnRenderPass(RE::BSRenderPass* a_pass, uint32_t a_technique, bool a_alphaTest, uint32_t a_renderFlags);
 	void Flush();
-	bool WriteInstances(const Bucket& a_bucket, uint32_t& o_base);
-	void DrawInstanced(RE::BSGraphics::TriShape* a_triShape, uint32_t a_startIndex, uint32_t a_count, uint32_t a_instanceCount, uint32_t a_base);
+	bool WriteInstances(uint32_t a_totalInstances);
+	void DrawInstanced(RE::BSGraphics::TriShape* a_triShape, uint32_t a_startIndex, uint32_t a_count, uint32_t a_instanceCount, uint32_t a_block);
 	void ReleaseResources();
 
 	Counters frame{};
@@ -209,8 +211,10 @@ private:
 	uint32_t lastDescriptor = 0;  // raw Utility descriptor of the last classified pass, for the stats readout
 
 	ID3D11Buffer* instanceBuffer = nullptr;
-	ID3D11ShaderResourceView* instanceSRV = nullptr;
-	ID3D11Buffer* batchCB = nullptr;
+	// One SRV per kBlockSize-instance block of the ring, FirstElement = block start, so a batch's
+	// matrices are addressed by choosing a view instead of uploading a base offset per batch.
+	std::vector<ID3D11ShaderResourceView*> instanceSRVs;
+	ID3D11Buffer* enabledCB = nullptr;
 	ID3D11Buffer* disabledCB = nullptr;
 	uint32_t ringCapacity = 0;
 	uint32_t ringUsed = 0;
