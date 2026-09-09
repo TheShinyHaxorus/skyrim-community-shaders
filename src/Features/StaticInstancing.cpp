@@ -968,6 +968,11 @@ void StaticInstancing::Hooks::BSBatchRenderer_RenderPassImmediately::thunk(RE::B
 bool StaticInstancing::Hooks::BSBatchRenderer_RenderBatches::thunk(void* a_renderer, uint32_t* a_currentPass, uint32_t* a_bucketIndex, void* a_passIndexList, uint32_t a_renderFlags)
 {
 	auto& self = globals::features::staticInstancing;
+	// While the pre-pass bias is armed every pre-pass draw must see b13 = disabledCB (bias, no
+	// instancing). Bind it at the start of every batch group: a once-per-frame bind does not
+	// survive to the depth pre-pass when no instanced draw rebinds it.
+	if (self.biasArmed && self.disabledCB)
+		globals::d3d::context->VSSetConstantBuffers(kBatchCBSlot, 1, &self.disabledCB);
 	self.batchDepth++;
 	const bool result = func(a_renderer, a_currentPass, a_bucketIndex, a_passIndexList, a_renderFlags);
 	self.batchDepth--;
