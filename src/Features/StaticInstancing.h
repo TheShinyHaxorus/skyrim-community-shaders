@@ -87,6 +87,7 @@ struct StaticInstancing : Feature
 		uint32_t excludedSkinned = 0;
 		uint32_t excludedProperty = 0;
 		uint32_t excludedAlpha = 0;     // alpha-tested while IncludeAlphaTested is off
+		uint32_t excludedFading = 0;    // accumulation hint 10: per-object stencil fade
 		// Descriptor breakdown of every Utility pass (flags, not exclusive)
 		uint32_t descShadowmap = 0;
 		uint32_t descDepth = 0;
@@ -136,9 +137,11 @@ private:
 	{
 		const void* rendererData = nullptr;
 		const void* material = nullptr;
+		uint64_t propertyFlags = 0;  // BSShaderProperty flags: depth write/test, two-sided, decal and friends
 		uint32_t technique = 0;
 		uint32_t renderFlags = 0;
 		uint32_t alpha = 0;
+		uint32_t passState = 0;  // accumulationHint | LODMode << 8 | extraParam << 16
 
 		bool operator==(const BatchKey&) const = default;
 	};
@@ -181,6 +184,7 @@ private:
 		kGeometry,
 		kSkinned,
 		kProperty,
+		kFading,
 		kAlphaExcluded,
 		kEligible,
 	};

@@ -65,6 +65,8 @@ size_t StaticInstancing::BatchKeyHash::operator()(const BatchKey& k) const noexc
 	size_t h = std::hash<const void*>{}(k.rendererData);
 	auto mix = [&h](size_t v) { h ^= v + 0x9e3779b97f4a7c15ULL + (h << 6) + (h >> 2); };
 	mix(std::hash<const void*>{}(k.material));
+	mix(std::hash<uint64_t>{}(k.propertyFlags));
+	mix(static_cast<size_t>(k.passState) * 0x27D4EB2FULL);
 	mix(static_cast<size_t>(k.technique) * 0x9E3779B1ULL);
 	mix(static_cast<size_t>(k.renderFlags) * 0x85EBCA77ULL);
 	mix(static_cast<size_t>(k.alpha) * 0xC2B2AE3DULL);
@@ -236,6 +238,7 @@ json StaticInstancing::GetStatsJson() const
 		{ "excludedSkinned", c.excludedSkinned },
 		{ "excludedProperty", c.excludedProperty },
 		{ "excludedAlpha", c.excludedAlpha },
+		{ "excludedFading", c.excludedFading },
 		{ "descShadowmap", c.descShadowmap },
 		{ "descDepth", c.descDepth },
 		{ "descShadowmask", c.descShadowmask },
@@ -299,6 +302,7 @@ void StaticInstancing::DrawSettings()
 		row("Excluded: skinned", c.excludedSkinned);
 		row("Excluded: property", c.excludedProperty);
 		row("Excluded: alpha-tested (opt-in off)", c.excludedAlpha);
+		row("Excluded: fading (stencil)", c.excludedFading);
 		row("Passes with RenderShadowmap", c.descShadowmap);
 		row("Passes with RenderDepth", c.descDepth);
 		row("Passes with shadow mask", c.descShadowmask);
@@ -392,10 +396,17 @@ StaticInstancing::Verdict StaticInstancing::Classify(RE::BSRenderPass* a_pass, u
 	if (property->flags.any(RE::BSShaderProperty::EShaderPropertyFlag::kMultiTextureLandscape))
 		return Verdict::kProperty;
 
+	// Objects inside their fade range get a per-object stencil reference in SetupGeometry; the
+	// dithered fade would then use the representative's value for every instance.
+	if (a_pass->accumulationHint == 10)
+		return Verdict::kFading;
+
 	o_key = {};
 	o_key.rendererData = runtime.rendererData;
 	o_key.technique = a_technique;
 	o_key.renderFlags = a_renderFlags;
+	o_key.propertyFlags = static_cast<uint64_t>(property->flags.get());
+	o_key.passState = static_cast<uint32_t>(a_pass->accumulationHint) | (static_cast<uint32_t>(*reinterpret_cast<const std::uint8_t*>(&a_pass->LODMode)) << 8) | (static_cast<uint32_t>(a_pass->extraParam) << 16);
 
 	const bool alphaTested = a_alphaTest || (descriptor & static_cast<uint32_t>(UF::AlphaTest)) != 0;
 	if (alphaTested) {
@@ -445,6 +456,9 @@ void StaticInstancing::OnRenderPass(RE::BSRenderPass* a_pass, uint32_t a_techniq
 		break;
 	case Verdict::kProperty:
 		frame.excludedProperty++;
+		break;
+	case Verdict::kFading:
+		frame.excludedFading++;
 		break;
 	case Verdict::kAlphaExcluded:
 	case Verdict::kEligible:
