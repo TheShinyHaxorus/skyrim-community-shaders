@@ -167,6 +167,20 @@ struct StaticInstancing : Feature
 			static void thunk(void* a_this);
 			static inline REL::Relocation<decltype(thunk)> func;
 		};
+		/** Both LockDynamicData entry points (ids 70950 and 70951). Records who locked each mesh and,
+		 *  when the lock is held by another thread that never releases it, logs that record and
+		 *  breaks the lock instead of spinning forever. */
+		struct BSDynamicTriShape_LockDynamicData
+		{
+			static void* thunk(void* a_this);
+			static inline REL::Relocation<decltype(thunk)> func;
+		};
+		struct BSDynamicTriShape_LockDynamicData2
+		{
+			static void* thunk(void* a_this);
+			static inline REL::Relocation<decltype(thunk)> func;
+		};
+		static void* LockDynamicDataAudited(void* a_this, void* (*a_original)(void*));
 		struct BSBatchRenderer_RenderPassImmediately
 		{
 			static void thunk(RE::BSRenderPass* a_pass, uint32_t a_technique, bool a_alphaTest, uint32_t a_renderFlags);

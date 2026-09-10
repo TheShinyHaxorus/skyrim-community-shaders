@@ -11,6 +11,8 @@
 
 #include <chrono>
 #include <atomic>
+#include <mutex>
+#include <unordered_map>
 
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(
 	StaticInstancing::Settings,
@@ -1368,11 +1370,46 @@ void StaticInstancing::Hooks::Renderer_DrawTriShape::thunk(RE::BSGraphics::Rende
 	self.DrawInstanced(a_triShape, a_startIndex, a_count, instanceCount, block);
 }
 
+namespace
+{
+	// BSSpinLock inside BSDynamicTriShape (1.6.1170): owning thread id at +0x168, count at +0x16c.
+	constexpr size_t kDynamicLockOffset = 0x168;
+
+	struct LockRecord
+	{
+		uint32_t tid = 0;
+		uint16_t frameCount = 0;
+		void* frames[16]{};
+	};
+	std::mutex lockRecordMutex;
+	std::unordered_map<const void*, LockRecord> lockRecords;
+
+	std::string FormatStack(void* const* a_frames, size_t a_count)
+	{
+		std::string stack;
+		for (size_t i = 0; i < a_count; ++i) {
+			HMODULE module = nullptr;
+			char path[MAX_PATH]{};
+			if (GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT, static_cast<LPCSTR>(a_frames[i]), &module) && module && GetModuleFileNameA(module, path, MAX_PATH)) {
+				const char* base = std::strrchr(path, '\\');
+				stack += std::format(" {}+{:#x}", base ? base + 1 : path, reinterpret_cast<uintptr_t>(a_frames[i]) - reinterpret_cast<uintptr_t>(module));
+			} else {
+				stack += std::format(" {:#x}", reinterpret_cast<uintptr_t>(a_frames[i]));
+			}
+		}
+		return stack;
+	}
+
+	const char* GeometryName(void* a_this)
+	{
+		const char* name = reinterpret_cast<RE::NiAVObject*>(a_this)->name.c_str();
+		return name ? name : "?";
+	}
+}
+
 void StaticInstancing::Hooks::BSDynamicTriShape_UnlockDynamicData::thunk(void* a_this)
 {
-	// BSSpinLock at +0x168: owning thread id, then lock count (1.6.1170 decompile of
-	// UnlockDynamicData: the release is skipped unless the owner matches the caller).
-	const auto* lock = reinterpret_cast<const volatile uint32_t*>(static_cast<const uint8_t*>(a_this) + 0x168);
+	const auto* lock = reinterpret_cast<const volatile uint32_t*>(static_cast<const uint8_t*>(a_this) + kDynamicLockOffset);
 	const uint32_t owner = lock[0];
 	const uint32_t count = lock[1];
 	const uint32_t tid = GetCurrentThreadId();
@@ -1381,22 +1418,72 @@ void StaticInstancing::Hooks::BSDynamicTriShape_UnlockDynamicData::thunk(void* a
 		if (logged.fetch_add(1) < 40) {
 			void* frames[24]{};
 			const auto n = RtlCaptureStackBackTrace(0, 24, frames, nullptr);
-			std::string stack;
-			for (USHORT i = 0; i < n; ++i) {
-				HMODULE module = nullptr;
-				char path[MAX_PATH]{};
-				if (GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT, static_cast<LPCSTR>(frames[i]), &module) && module && GetModuleFileNameA(module, path, MAX_PATH)) {
-					const char* base = std::strrchr(path, '\\');
-					stack += std::format(" {}+{:#x}", base ? base + 1 : path, reinterpret_cast<uintptr_t>(frames[i]) - reinterpret_cast<uintptr_t>(module));
-				} else {
-					stack += std::format(" {:#x}", reinterpret_cast<uintptr_t>(frames[i]));
-				}
-			}
-			const char* name = reinterpret_cast<RE::NiAVObject*>(a_this)->name.c_str();
-			logger::warn("[Static Instancing] UnlockDynamicData from thread {:#x} but the lock of '{}' is owned by thread {:#x} (count {}); the engine will leave it locked. Stack:{}", tid, name ? name : "?", owner, count, stack);
+			logger::warn("[Static Instancing] UnlockDynamicData from thread {:#x} but the lock of '{}' is owned by thread {:#x} (count {}); the engine will leave it locked. Stack:{}", tid, GeometryName(a_this), owner, count, FormatStack(frames, n));
+			spdlog::default_logger_raw()->flush();
 		}
 	}
 	func(a_this);
+}
+
+void* StaticInstancing::Hooks::LockDynamicDataAudited(void* a_this, void* (*a_original)(void*))
+{
+	auto* lock = reinterpret_cast<volatile uint32_t*>(static_cast<uint8_t*>(a_this) + kDynamicLockOffset);
+	const uint32_t tid = GetCurrentThreadId();
+	if (lock[1] != 0 && lock[0] != tid) {
+		// Contended. Give the owner a real chance (the legitimate holds are microseconds), then
+		// treat it as leaked: log who took it and from where, and break it rather than hang.
+		uint32_t owner = lock[0];
+		bool released = false;
+		for (int i = 0; i < 400; ++i) {
+			Sleep(1);
+			if (lock[1] == 0 || lock[0] == tid) {
+				released = true;
+				break;
+			}
+			owner = lock[0];
+		}
+		if (!released) {
+			LockRecord record{};
+			{
+				std::lock_guard guard(lockRecordMutex);
+				if (auto it = lockRecords.find(a_this); it != lockRecords.end())
+					record = it->second;
+			}
+			static std::atomic<int> logged{ 0 };
+			if (logged.fetch_add(1) < 40) {
+				void* frames[16]{};
+				const auto n = RtlCaptureStackBackTrace(0, 16, frames, nullptr);
+				logger::error("[Static Instancing] dynamic-data lock of '{}' held by thread {:#x} (count {}) for 400 ms with no release; breaking it. Locked from thread {:#x} at:{} | waiting here:{}",
+					GeometryName(a_this), owner, lock[1], record.tid, record.frameCount ? FormatStack(record.frames, record.frameCount) : " (no record)", FormatStack(frames, n));
+				spdlog::default_logger_raw()->flush();
+			}
+			// Same store order as the engine's own unlock: owner first, then count.
+			lock[0] = 0;
+			MemoryBarrier();
+			InterlockedExchange(reinterpret_cast<volatile LONG*>(&lock[1]), 0);
+		}
+	}
+	void* data = a_original(a_this);
+	{
+		LockRecord record{};
+		record.tid = tid;
+		record.frameCount = RtlCaptureStackBackTrace(1, 16, record.frames, nullptr);
+		std::lock_guard guard(lockRecordMutex);
+		if (lockRecords.size() > 8192)
+			lockRecords.clear();
+		lockRecords[a_this] = record;
+	}
+	return data;
+}
+
+void* StaticInstancing::Hooks::BSDynamicTriShape_LockDynamicData::thunk(void* a_this)
+{
+	return LockDynamicDataAudited(a_this, func.get());
+}
+
+void* StaticInstancing::Hooks::BSDynamicTriShape_LockDynamicData2::thunk(void* a_this)
+{
+	return LockDynamicDataAudited(a_this, func.get());
 }
 
 void StaticInstancing::Hooks::Install()
@@ -1407,6 +1494,8 @@ void StaticInstancing::Hooks::Install()
 	if (REL::Module::IsAE()) {
 		// 1.6.1170 only; the SE id is not mapped. Diagnostic for the leaked-lock hang.
 		stl::detour_thunk<BSDynamicTriShape_UnlockDynamicData>(REL::RelocationID(70952, 70952));
+		stl::detour_thunk<BSDynamicTriShape_LockDynamicData>(REL::RelocationID(70950, 70950));
+		stl::detour_thunk<BSDynamicTriShape_LockDynamicData2>(REL::RelocationID(70951, 70951));
 	}
 	logger::info("[Static Instancing] hooks installed");
 }
