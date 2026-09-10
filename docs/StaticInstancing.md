@@ -400,3 +400,21 @@ while the process was still alive:
 
 First experiment for the modlist: disable Native Mesh Light Flicker Fix (it hooks the same
 accumulation path on job threads and duplicates Light Limit Fix), then reproduce the attack.
+
+## Hang root cause, 2026-09-10 00:02 (build 25 log)
+
+Build 25 hooked both LockDynamicData entry points, recorded the locking thread and stack per
+mesh, and broke any lock held by another thread for 400 ms. Forty records, all identical:
+the beard's lock is taken by `BSFaceGenMorphData::ApplyMorph` (ID 26917) on a job-pool worker
+running `Job_Face_morphing` (ID 39096) via BSFaceGenNiNode (ID 26988) and
+BSFaceGenMorphDataHead (ID 26926), and never released. Disassembly: ApplyMorph calls
+LockDynamicData at +0x65, then compares the mesh's vertex count (uint16 at shape+0x15a) with the
+morph's (uint32 at this+0x30); when the mesh has fewer, `jb` goes straight to the epilogue at
++0x4a5, skipping the UnlockDynamicData call at +0x47a. Engine bug, triggered by a head part
+whose mesh does not match its morph file. Attacking plays an expression, which runs the job.
+
+Fix (build 26/27, StaticInstancing::Hooks::BSFaceGenMorphData_ApplyMorph, AE only): make the
+same comparison before calling the engine and return early on a mismatch, logging the actor,
+its facial-hair head parts and their mesh/.tri paths once. The lock audit and the 400 ms
+break stay as a safety net. Not a Community Shaders bug; the earlier suspects (Native Mesh
+Light Flicker Fix, MFG Fix, shader compilation) were coincidental.
