@@ -1476,6 +1476,46 @@ void* StaticInstancing::Hooks::LockDynamicDataAudited(void* a_this, void* (*a_or
 	return data;
 }
 
+void StaticInstancing::Hooks::BSFaceGenMorphData_ApplyMorph::thunk(void* a_this, void* a_target, float a_weight)
+{
+	// Mirrors the function's own prologue: target->vfunc[12]() yields the BSDynamicTriShape, whose
+	// vertex count is the uint16 at +0x15a; the morph's vertex count is the uint32 at this+0x30.
+	if (a_this && a_target) {
+		auto getShape = (*reinterpret_cast<void* (***)(void*)>(a_target))[12];
+		auto* shape = getShape ? getShape(a_target) : nullptr;
+		if (shape) {
+			const uint32_t meshVertices = *reinterpret_cast<const uint16_t*>(static_cast<const uint8_t*>(shape) + 0x15a);
+			const uint32_t morphVertices = *reinterpret_cast<const uint32_t*>(static_cast<const uint8_t*>(a_this) + 0x30);
+			if (meshVertices < morphVertices) {
+				static std::atomic<int> logged{ 0 };
+				if (logged.fetch_add(1) < 20) {
+					// Name the actor and its facial-hair head parts so the offending mesh/.tri pair can be found.
+					std::string who = "?";
+					if (auto* ref = reinterpret_cast<RE::NiAVObject*>(shape)->GetUserData()) {
+						const char* display = ref->GetDisplayFullName();
+						who = std::format("{} ({:08X})", display ? display : "?", ref->GetFormID());
+						if (auto* actor = ref->As<RE::Actor>()) {
+							if (auto* npc = actor->GetActorBase()) {
+								for (std::int8_t i = 0; i < npc->numHeadParts; ++i) {
+									auto* part = npc->headParts[i];
+									if (!part || part->type.get() != RE::BGSHeadPart::HeadPartType::kFacialHair)
+										continue;
+									const char* editorId = part->GetFormEditorID();
+									who += std::format(" facialHair[{} {:08X} model='{}' race.tri='{}' tri='{}' chargen.tri='{}']", editorId ? editorId : "", part->GetFormID(), part->model.c_str(), part->morphs[0].model.c_str(), part->morphs[1].model.c_str(), part->morphs[2].model.c_str());
+								}
+							}
+						}
+					}
+					logger::warn("[Static Instancing] face morph skipped for '{}' on {}: mesh has {} vertices, morph data expects {} (mesh/.tri mismatch; the engine would leak the mesh's lock here)", GeometryName(shape), who, meshVertices, morphVertices);
+					spdlog::default_logger_raw()->flush();
+				}
+				return;
+			}
+		}
+	}
+	func(a_this, a_target, a_weight);
+}
+
 void* StaticInstancing::Hooks::BSDynamicTriShape_LockDynamicData::thunk(void* a_this)
 {
 	return LockDynamicDataAudited(a_this, func.get());
@@ -1496,6 +1536,7 @@ void StaticInstancing::Hooks::Install()
 		stl::detour_thunk<BSDynamicTriShape_UnlockDynamicData>(REL::RelocationID(70952, 70952));
 		stl::detour_thunk<BSDynamicTriShape_LockDynamicData>(REL::RelocationID(70950, 70950));
 		stl::detour_thunk<BSDynamicTriShape_LockDynamicData2>(REL::RelocationID(70951, 70951));
+		stl::detour_thunk<BSFaceGenMorphData_ApplyMorph>(REL::RelocationID(26917, 26917));
 	}
 	logger::info("[Static Instancing] hooks installed");
 }

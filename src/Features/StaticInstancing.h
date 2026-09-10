@@ -181,6 +181,16 @@ struct StaticInstancing : Feature
 			static inline REL::Relocation<decltype(thunk)> func;
 		};
 		static void* LockDynamicDataAudited(void* a_this, void* (*a_original)(void*));
+		/** Engine bug fix (1.6.1170): BSFaceGenMorphData::ApplyMorph locks the target's dynamic
+		 *  data, then bails out without unlocking when the mesh has fewer vertices than the morph.
+		 *  A mesh/morph vertex-count mismatch (a mod's head part without a matching .tri) then leaks
+		 *  the lock on a job thread and the next draw of that mesh hangs the render thread. Skip the
+		 *  call up front in that case, which is what the engine does anyway minus the leak. */
+		struct BSFaceGenMorphData_ApplyMorph
+		{
+			static void thunk(void* a_this, void* a_target, float a_weight);
+			static inline REL::Relocation<decltype(thunk)> func;
+		};
 		struct BSBatchRenderer_RenderPassImmediately
 		{
 			static void thunk(RE::BSRenderPass* a_pass, uint32_t a_technique, bool a_alphaTest, uint32_t a_renderFlags);
