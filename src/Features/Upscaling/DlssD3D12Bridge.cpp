@@ -345,7 +345,7 @@ bool DlssD3D12Bridge::EnsureSharedResources(const Inputs& a_inputs)
 	const bool hasMasks = TryGetTexture2DDesc(a_inputs.reactiveMask, reactiveSourceDesc) && TryGetTexture2DDesc(a_inputs.transparencyMask, transparencySourceDesc);
 
 	// Caller textures created shareable are used in place; anything else goes through a copy.
-	OpenAlias(aliasOutput, a_inputs.evaluateDLSS ? a_inputs.output : nullptr);
+	OpenAlias(aliasOutput, a_inputs.output);
 	OpenAlias(aliasDepth, a_inputs.depth);
 	OpenAlias(aliasMotion, a_inputs.motionVectors);
 	OpenAlias(aliasReactive, hasMasks ? a_inputs.reactiveMask : nullptr);
@@ -358,7 +358,7 @@ bool DlssD3D12Bridge::EnsureSharedResources(const Inputs& a_inputs)
 	const auto wantedReactive = hasMasks ? SharedDesc(reactiveSourceDesc, D3D11_BIND_SHADER_RESOURCE) : D3D11_TEXTURE2D_DESC{};
 	const auto wantedTransparency = hasMasks ? SharedDesc(transparencySourceDesc, D3D11_BIND_SHADER_RESOURCE) : D3D11_TEXTURE2D_DESC{};
 
-	const bool needOut = a_inputs.evaluateDLSS && !aliasOutput.resource;
+	const bool needOut = (a_inputs.evaluateDLSS || a_inputs.neuralAfterUpscale) && !aliasOutput.resource;
 	const bool needDepth = !aliasDepth.resource;
 	const bool needMotion = !aliasMotion.resource;
 	const bool needReactive = hasMasks && !aliasReactive.resource;
@@ -496,18 +496,19 @@ bool DlssD3D12Bridge::Dispatch(const Inputs& a_inputs)
 		DX::ThrowIfFailed(commandList->Reset(commandAllocator, nullptr));
 		stamp(0);
 
-		if (a_inputs.runNeuralRendering) {
-			// NGX needs the native device and list, not Streamline's proxies. The model rewrites the
-			// render-resolution colour in place; DLSS (here or on D3D11) then upscales that.
-			ID3D12GraphicsCommandList* nativeList = commandList;
-			winrt::com_ptr<IUnknown> nativeOwner;
-			if (streamline.UsesD3D12() && streamline.slGetNativeInterface) {
-				void* native = nullptr;
-				if (streamline.slGetNativeInterface(commandList, &native) == sl::Result::eOk && native) {
-					nativeOwner.attach(static_cast<IUnknown*>(native));
-					nativeList = static_cast<ID3D12GraphicsCommandList*>(native);
-				}
+		// NGX needs the native device and list, not Streamline's proxies.
+		ID3D12GraphicsCommandList* nativeList = commandList;
+		winrt::com_ptr<IUnknown> nativeOwner;
+		if (a_inputs.runNeuralRendering && streamline.UsesD3D12() && streamline.slGetNativeInterface) {
+			void* native = nullptr;
+			if (streamline.slGetNativeInterface(commandList, &native) == sl::Result::eOk && native) {
+				nativeOwner.attach(static_cast<IUnknown*>(native));
+				nativeList = static_cast<ID3D12GraphicsCommandList*>(native);
 			}
+		}
+		if (a_inputs.runNeuralRendering && !a_inputs.neuralAfterUpscale) {
+			// The model rewrites the render-resolution colour in place; DLSS (here or on D3D11)
+			// then upscales that.
 			DlssNR::Run(swapChain.d3d12Device.get(), nativeList,
 				colorInShared->resource.get(), depth12, motion12,
 				colorInDesc.Width, colorInDesc.Height, a_inputs.resetHistory, 1.0f, 1.0f, a_inputs.jitterDeltaX, a_inputs.jitterDeltaY);
@@ -525,6 +526,21 @@ bool DlssD3D12Bridge::Dispatch(const Inputs& a_inputs)
 				reactive12,
 				transparency12,
 				colorInDesc.Width, colorInDesc.Height, a_inputs.displayWidth, a_inputs.displayHeight, a_inputs.hdr);
+		}
+		if (dlssOk && a_inputs.runNeuralRendering && a_inputs.neuralAfterUpscale && out12) {
+			// The previous placement: the model runs over the display-resolution DLSS output (evaluated
+			// here or, on the D3D11 path, already written into the caller's shared output texture).
+			if (!aliasOutput.resource && !a_inputs.evaluateDLSS)
+				dlssOk = false;  // no shared alias of the output and nothing evaluated here to work on
+			if (dlssOk) {
+				if (a_inputs.evaluateDLSS) {
+					const auto srToNr = CD3DX12_RESOURCE_BARRIER::UAV(out12);
+					commandList->ResourceBarrier(1, &srToNr);
+				}
+				DlssNR::Run(swapChain.d3d12Device.get(), nativeList,
+					out12, depth12, motion12,
+					colorInDesc.Width, colorInDesc.Height, a_inputs.resetHistory, 1.0f, 1.0f, a_inputs.jitterDeltaX, a_inputs.jitterDeltaY);
+			}
 		}
 		stamp(2);
 		if (queryHeap && queryReadback) {
