@@ -43,6 +43,7 @@ public:
 	float2 jitter = { 0, 0 };
 	float2 neuralPreviousJitter = { 0, 0 };            ///< Last frame's jitter, for the neural rendering model's motion input
 	uint32_t neuralPreviousJitterFrame = UINT32_MAX;
+	int neuralPreviousState = -1;                        ///< Last frame's neural pass state (off / before / after / failed), for DLSS history resets
 
 	enum class UpscaleMethod
 	{
@@ -97,6 +98,7 @@ public:
 
 		// DLSS 5 Neural Rendering over the DLSS output (needs nvngx_dlssnr.dll in the Streamline folder)
 		bool neuralRenderingEnabled = false;
+		bool neuralRenderingAfterUpscale = false;  ///< Run the model over the DLSS output instead of the render-resolution input
 		DlssNR::Settings neuralRendering;
 	};
 

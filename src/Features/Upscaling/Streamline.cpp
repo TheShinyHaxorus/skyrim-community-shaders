@@ -578,7 +578,8 @@ bool Streamline::SetCommonConstants(sl::FrameToken& a_token, uint32_t a_frameInd
 	auto& upscaling = globals::features::upscaling;
 	auto jitter = upscaling.jitter;
 	slConstants.jitterOffset = { -jitter.x, -jitter.y };
-	slConstants.reset = sl::Boolean::eFalse;
+	slConstants.reset = historyResetPending ? sl::Boolean::eTrue : sl::Boolean::eFalse;
+	historyResetPending = false;
 
 	slConstants.mvecScale = { 1.0f, 1.0f };
 	slConstants.motionVectors3D = sl::Boolean::eFalse;

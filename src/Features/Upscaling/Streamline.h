@@ -120,6 +120,7 @@ public:
 	ReflexOptionsCache reflexOptionsCache{};
 	uint32_t lastReflexSleepFrame = UINT32_MAX;
 	uint32_t lastRenderSubmitFrame = UINT32_MAX;
+	bool historyResetPending = false;  ///< Next common constants carry reset=true (neural rendering toggled or failed)
 
 	// DLSS-G runtime state
 	bool dlssgActive = false;               ///< slDLSSGSetOptions currently holds a non-off mode
@@ -191,6 +192,9 @@ public:
 
 	/** @brief Acquires a new frame token from Streamline for the current frame. */
 	bool EnsureFrameToken();
+
+	/** @brief Ask DLSS to drop its temporal history on the next frame: the colour it accumulates changed character. */
+	void RequestHistoryReset() { historyResetPending = true; }
 
 	/** @brief PCL SimulationEnd + RenderSubmitStart, once per frame, when the game starts submitting the player view. */
 	void OnRenderSubmitStart();

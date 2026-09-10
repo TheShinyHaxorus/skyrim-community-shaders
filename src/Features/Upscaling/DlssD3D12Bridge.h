@@ -43,6 +43,7 @@ public:
 		bool hdr = false;
 		bool evaluateDLSS = false;          ///< DLSS evaluates here (Streamline on D3D12); else the caller runs it on D3D11 afterwards
 		bool runNeuralRendering = false;    ///< Neural rendering on the render-resolution colour before DLSS
+		bool neuralAfterUpscale = false;    ///< Instead run it over the display-resolution DLSS output (the previous behaviour)
 		bool resetHistory = false;
 		float jitterDeltaX = 0.0f;  ///< Current minus previous frame's render-resolution jitter, pixels; for the neural rendering model
 		float jitterDeltaY = 0.0f;
