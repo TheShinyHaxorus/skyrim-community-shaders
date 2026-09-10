@@ -159,6 +159,14 @@ struct StaticInstancing : Feature
 
 	struct Hooks
 	{
+		/** Diagnostic (AE only): BSDynamicTriShape::UnlockDynamicData ignores the call when the
+		 *  caller does not own the lock, which leaks the lock and hangs the next draw of that
+		 *  mesh. Log who does that, with a resolved stack. */
+		struct BSDynamicTriShape_UnlockDynamicData
+		{
+			static void thunk(void* a_this);
+			static inline REL::Relocation<decltype(thunk)> func;
+		};
 		struct BSBatchRenderer_RenderPassImmediately
 		{
 			static void thunk(RE::BSRenderPass* a_pass, uint32_t a_technique, bool a_alphaTest, uint32_t a_renderFlags);

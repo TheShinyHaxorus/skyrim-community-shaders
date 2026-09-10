@@ -10,6 +10,7 @@
 #include <imgui.h>
 
 #include <chrono>
+#include <atomic>
 
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(
 	StaticInstancing::Settings,
@@ -1367,10 +1368,45 @@ void StaticInstancing::Hooks::Renderer_DrawTriShape::thunk(RE::BSGraphics::Rende
 	self.DrawInstanced(a_triShape, a_startIndex, a_count, instanceCount, block);
 }
 
+void StaticInstancing::Hooks::BSDynamicTriShape_UnlockDynamicData::thunk(void* a_this)
+{
+	// BSSpinLock at +0x168: owning thread id, then lock count (1.6.1170 decompile of
+	// UnlockDynamicData: the release is skipped unless the owner matches the caller).
+	const auto* lock = reinterpret_cast<const volatile uint32_t*>(static_cast<const uint8_t*>(a_this) + 0x168);
+	const uint32_t owner = lock[0];
+	const uint32_t count = lock[1];
+	const uint32_t tid = GetCurrentThreadId();
+	if (count != 0 && owner != tid) {
+		static std::atomic<int> logged{ 0 };
+		if (logged.fetch_add(1) < 40) {
+			void* frames[24]{};
+			const auto n = RtlCaptureStackBackTrace(0, 24, frames, nullptr);
+			std::string stack;
+			for (USHORT i = 0; i < n; ++i) {
+				HMODULE module = nullptr;
+				char path[MAX_PATH]{};
+				if (GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT, static_cast<LPCSTR>(frames[i]), &module) && module && GetModuleFileNameA(module, path, MAX_PATH)) {
+					const char* base = std::strrchr(path, '\\');
+					stack += std::format(" {}+{:#x}", base ? base + 1 : path, reinterpret_cast<uintptr_t>(frames[i]) - reinterpret_cast<uintptr_t>(module));
+				} else {
+					stack += std::format(" {:#x}", reinterpret_cast<uintptr_t>(frames[i]));
+				}
+			}
+			const char* name = reinterpret_cast<RE::NiAVObject*>(a_this)->name.c_str();
+			logger::warn("[Static Instancing] UnlockDynamicData from thread {:#x} but the lock of '{}' is owned by thread {:#x} (count {}); the engine will leave it locked. Stack:{}", tid, name ? name : "?", owner, count, stack);
+		}
+	}
+	func(a_this);
+}
+
 void StaticInstancing::Hooks::Install()
 {
 	stl::detour_thunk<BSBatchRenderer_RenderPassImmediately>(REL::RelocationID(100854, 107644));
 	stl::detour_thunk<BSBatchRenderer_RenderBatches>(REL::RelocationID(100852, 107642));
 	stl::detour_thunk<Renderer_DrawTriShape>(REL::RelocationID(75477, 77263));
+	if (REL::Module::IsAE()) {
+		// 1.6.1170 only; the SE id is not mapped. Diagnostic for the leaked-lock hang.
+		stl::detour_thunk<BSDynamicTriShape_UnlockDynamicData>(REL::RelocationID(70952, 70952));
+	}
 	logger::info("[Static Instancing] hooks installed");
 }
