@@ -418,3 +418,19 @@ same comparison before calling the engine and return early on a mismatch, loggin
 its facial-hair head parts and their mesh/.tri paths once. The lock audit and the 400 ms
 break stay as a safety net. Not a Community Shaders bug; the earlier suspects (Native Mesh
 Light Flicker Fix, MFG Fix, shader compilation) were coincidental.
+
+## Second hang type, 2026-09-10 12:43 (C:/tmp/hangs/SkyrimSE-hang-20260910-124503.txt)
+
+Different mechanism, not the beard (no morph-skip or lock-break lines; the ParallaxGen rerun
+fixed that mesh). Main thread: Main_RenderShadowMaps -> ID 107133 -> ID 69377 (wait for jobs,
+SwitchToThread loop). Worker thread 14d2c: BSCullingProcess (ID 76558) -> BSShaderAccumulator
+(ID 106567) -> BSLightingShaderProperty::GetRenderPasses (ID 106516, via TruePBR's vfunc hook,
+which only post-processes) -> EngineFixes memory manager (tbbmalloc) walking a free list:
+`rdx = [rdx]` until null, but the 16-byte bin's public free list is a 17-node ring
+(f539d360 -> ... -> f539d060 -> f539d360), so it never returns. Two snapshots two seconds
+apart at the same instruction. Leftover payloads in the nodes point at BSLight /
+BSShadowParabolicLight objects and an hkbStateMachine::StateInfo, i.e. these were light-list
+nodes and behaviour-graph data: a 16-byte object was freed twice by something. Nothing in CS
+frees BSSimpleList nodes. Attribution needs a heap that detects double frees: Engine Fixes
+`[MemoryManager] bDisableTBB = true` routes engine allocations to the CRT heap, which crashes at
+the offending free with a Crash Logger stack instead of silently looping later.
