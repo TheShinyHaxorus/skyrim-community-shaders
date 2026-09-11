@@ -358,7 +358,7 @@ bool DlssD3D12Bridge::EnsureSharedResources(const Inputs& a_inputs)
 	const auto wantedReactive = hasMasks ? SharedDesc(reactiveSourceDesc, D3D11_BIND_SHADER_RESOURCE) : D3D11_TEXTURE2D_DESC{};
 	const auto wantedTransparency = hasMasks ? SharedDesc(transparencySourceDesc, D3D11_BIND_SHADER_RESOURCE) : D3D11_TEXTURE2D_DESC{};
 
-	const bool needOut = (a_inputs.evaluateDLSS || a_inputs.neuralAfterUpscale) && !aliasOutput.resource;
+	const bool needOut = a_inputs.evaluateDLSS && !aliasOutput.resource;
 	const bool needDepth = !aliasDepth.resource;
 	const bool needMotion = !aliasMotion.resource;
 	const bool needReactive = hasMasks && !aliasReactive.resource;
@@ -506,12 +506,12 @@ bool DlssD3D12Bridge::Dispatch(const Inputs& a_inputs)
 				nativeList = static_cast<ID3D12GraphicsCommandList*>(native);
 			}
 		}
-		if (a_inputs.runNeuralRendering && !a_inputs.neuralAfterUpscale) {
+		if (a_inputs.runNeuralRendering) {
 			// The model rewrites the render-resolution colour in place; DLSS (here or on D3D11)
 			// then upscales that.
 			DlssNR::Run(swapChain.d3d12Device.get(), nativeList,
 				colorInShared->resource.get(), depth12, motion12,
-				colorInDesc.Width, colorInDesc.Height, a_inputs.resetHistory, 1.0f, 1.0f, a_inputs.jitterDeltaX, a_inputs.jitterDeltaY);
+				colorInDesc.Width, colorInDesc.Height, a_inputs.resetHistory, 1.0f, 1.0f, a_inputs.jitterDeltaX, a_inputs.jitterDeltaY, a_inputs.neuralQuality);
 			// Order the model's UAV writes before DLSS reads the same texture.
 			const auto nrToSr = CD3DX12_RESOURCE_BARRIER::UAV(colorInShared->resource.get());
 			commandList->ResourceBarrier(1, &nrToSr);
@@ -526,21 +526,6 @@ bool DlssD3D12Bridge::Dispatch(const Inputs& a_inputs)
 				reactive12,
 				transparency12,
 				colorInDesc.Width, colorInDesc.Height, a_inputs.displayWidth, a_inputs.displayHeight, a_inputs.hdr);
-		}
-		if (dlssOk && a_inputs.runNeuralRendering && a_inputs.neuralAfterUpscale && out12) {
-			// The previous placement: the model runs over the display-resolution DLSS output (evaluated
-			// here or, on the D3D11 path, already written into the caller's shared output texture).
-			if (!aliasOutput.resource && !a_inputs.evaluateDLSS)
-				dlssOk = false;  // no shared alias of the output and nothing evaluated here to work on
-			if (dlssOk) {
-				if (a_inputs.evaluateDLSS) {
-					const auto srToNr = CD3DX12_RESOURCE_BARRIER::UAV(out12);
-					commandList->ResourceBarrier(1, &srToNr);
-				}
-				DlssNR::Run(swapChain.d3d12Device.get(), nativeList,
-					out12, depth12, motion12,
-					colorInDesc.Width, colorInDesc.Height, a_inputs.resetHistory, 1.0f, 1.0f, a_inputs.jitterDeltaX, a_inputs.jitterDeltaY);
-			}
 		}
 		stamp(2);
 		if (queryHeap && queryReadback) {

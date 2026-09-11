@@ -331,7 +331,8 @@ __declspec(dllexport) void *dlssnr_call_create(const wchar_t *snippetPath, const
                                                unsigned int height, int preset, float intensity,
                                                int style, float localStructure, float localTone,
                                                float skinStructure, int useAutoMask,
-                                               int uiCorrection) {
+                                               int uiCorrection, unsigned int perfQuality,
+                                               unsigned int createFlags) {
     if (!loadSnippet(snippetPath) || !capabilityParams) {
         return nullptr;
     }
@@ -350,6 +351,25 @@ __declspec(dllexport) void *dlssnr_call_create(const wchar_t *snippetPath, const
     setUInt(capabilityParams, "DLSSNR.Height", height);
     setUInt(capabilityParams, "CreationNodeMask", 1);
     setUInt(capabilityParams, "VisibilityNodeMask", 1);
+    // The creation contract the reference integration (fo4test-jarari, direct NGX) hands the model:
+    // the standard DLSS size parameters, the NR input/output sizes as a 1:1 pass, the quality level
+    // derived from the DLSS mode, and the DLSS feature flags (MVLowRes | AutoExposure by default).
+    // Without a quality level the model picks its own tier, which is not the one the reference runs.
+    setUInt(capabilityParams, "Width", width);
+    setUInt(capabilityParams, "Height", height);
+    setUInt(capabilityParams, "OutWidth", width);
+    setUInt(capabilityParams, "OutHeight", height);
+    setUInt(capabilityParams, "DLSSNR.InputWidth", width);
+    setUInt(capabilityParams, "DLSSNR.InputHeight", height);
+    setUInt(capabilityParams, "DLSSNR.OutputWidth", width);
+    setUInt(capabilityParams, "DLSSNR.OutputHeight", height);
+    setUInt(capabilityParams, "DLSSNR.Output.Width", width);
+    setUInt(capabilityParams, "DLSSNR.Output.Height", height);
+    setFloat(capabilityParams, "DLSSNR.ScalingRatio", 1.0f);
+    setFloat(capabilityParams, "DLSSNR.Scale", 1.0f);
+    setUInt(capabilityParams, "DLSSNR.Upscaling", 0);
+    setUInt(capabilityParams, "PerfQualityValue", perfQuality);
+    setUInt(capabilityParams, "DLSS.Feature.Create.Flags", createFlags);
     // Written unconditionally, including zero. This block belongs to the driver and outlives the
     // feature, so skipping the write for "default" left whichever preset was chosen last still sitting
     // in it -- and going back to default did nothing at all.
@@ -394,6 +414,17 @@ __declspec(dllexport) int dlssnr_call_evaluate(ID3D12GraphicsCommandList *cmd, v
     setUInt(capabilityParams, "DLSSNR.Enabled", 1);
     setUInt(capabilityParams, "DLSSNR.Width", width);
     setUInt(capabilityParams, "DLSSNR.Height", height);
+    setUInt(capabilityParams, "Width", width);
+    setUInt(capabilityParams, "Height", height);
+    setUInt(capabilityParams, "OutWidth", width);
+    setUInt(capabilityParams, "OutHeight", height);
+    setUInt(capabilityParams, "DLSSNR.InputWidth", width);
+    setUInt(capabilityParams, "DLSSNR.InputHeight", height);
+    setUInt(capabilityParams, "DLSSNR.OutputWidth", width);
+    setUInt(capabilityParams, "DLSSNR.OutputHeight", height);
+    setFloat(capabilityParams, "DLSSNR.ScalingRatio", 1.0f);
+    setFloat(capabilityParams, "DLSSNR.Scale", 1.0f);
+    setUInt(capabilityParams, "DLSSNR.Upscaling", 0);
     setUInt(capabilityParams, "DLSSNR.DepthInverted", (unsigned int) depthInverted);
     setUInt(capabilityParams, "DLSSNR.Reset", (unsigned int) reset);
 

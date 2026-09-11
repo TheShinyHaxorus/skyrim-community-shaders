@@ -39,7 +39,7 @@ namespace DlssNR
 		uint32_t debugView = 0;               ///< 0 off, 1 model input, 2 model output, 3 difference x20
 		float editStability = 0.5f;           ///< reduced model only: how much of last frame's reprojected edit is kept (0 off .. 0.95)
 		float motionScale = 1.0f;             ///< multiplier on the motion vector scale handed to the model and the stabiliser; 1 = normalised screen units
-		uint32_t hdrEncode = 0;               ///< scene-linear (float) frames: 1 = tone map to an sRGB proxy for the model and decode back; 0 = hand the frame over as is (default, as the reference implementation does)
+		uint32_t hdrEncode = 1;               ///< scene-linear (float) frames: 1 = tone map to an sRGB proxy for the model and decode back (default); 0 = hand the frame over as is
 		float hdrWhitePoint = 1.0f;           ///< with hdrEncode: value shown to the model as white before the soft knee
 	};
 
@@ -89,7 +89,8 @@ namespace DlssNR
 		float a_mvScaleX,
 		float a_mvScaleY,
 		float a_jitterDeltaX = 0.0f,
-		float a_jitterDeltaY = 0.0f);
+		float a_jitterDeltaY = 0.0f,
+		uint32_t a_perfQuality = 5);  ///< NGX PerfQualityValue: 0 performance, 1 balanced, 2 quality, 3 ultra performance, 5 DLAA
 
 	bool IsRunning();
 	std::string FailureReason();

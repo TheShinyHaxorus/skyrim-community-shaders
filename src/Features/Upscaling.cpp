@@ -51,7 +51,6 @@ NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(
 	fsr4RuntimeEnable,
 	fsr4RuntimeSelectionSchemaVersion,
 	neuralRenderingEnabled,
-	neuralRenderingAfterUpscale,
 	neuralRendering);
 
 decltype(&D3D11CreateDeviceAndSwapChain) ptrD3D11CreateDeviceAndSwapChainUpscaling;
@@ -698,20 +697,6 @@ void Upscaling::DrawNeuralRenderingTab()
 	if (GetUpscaleMethod() != UpscaleMethod::kDLSS)
 		Util::Text::Warning("%s", T(TKEY("nr_requires_dlss"), "Neural Rendering only runs with the DLSS upscaling method."));
 
-	int placement = settings.neuralRenderingAfterUpscale ? 1 : 0;
-	const char* placements[] = {
-		T(TKEY("nr_placement_before"), "Before upscaling (render resolution)"),
-		T(TKEY("nr_placement_after"), "After upscaling (display resolution)")
-	};
-	if (ImGui::Combo(T(TKEY("nr_placement"), "Placement"), &placement, placements, IM_ARRAYSIZE(placements))) {
-		settings.neuralRenderingAfterUpscale = placement == 1;
-		changed = true;
-	}
-	if (auto _tt = Util::HoverTooltipWrapper()) {
-		ImGui::TextUnformatted(T(TKEY("nr_placement_tooltip_1"), "Before: the model runs on the render-resolution frame and DLSS upscales its result. Cheapest, and what the reference implementation does; DLSS then accumulates the model's per-frame changes, which can blotch in dark low-contrast areas."));
-		ImGui::TextUnformatted(T(TKEY("nr_placement_tooltip_2"), "After: the model runs on the finished DLSS output at display resolution. Several times the cost at 4K, but DLSS's history is untouched by it."));
-	}
-
 	ImGui::SeparatorText(T(TKEY("nr_blend_section"), "Blend"));
 	uint32_t modelWidth = 0, modelHeight = 0;
 	DlssNR::GetModelSize(modelWidth, modelHeight);
@@ -736,8 +721,8 @@ void Upscaling::DrawNeuralRenderingTab()
 		changed = true;
 	}
 	if (auto _tt = Util::HoverTooltipWrapper()) {
-		ImGui::TextUnformatted(T(TKEY("nr_hdr_encode_tooltip_1"), "Off (default): the model is handed the raw scene-linear frame at render resolution, as the reference implementation does."));
-		ImGui::TextUnformatted(T(TKEY("nr_hdr_encode_tooltip_2"), "On: the frame is tone mapped with a soft knee at the white point below and sRGB-encoded for the model, then decoded back. Try it if sunlit scenes wash out."));
+		ImGui::TextUnformatted(T(TKEY("nr_hdr_encode_tooltip_1"), "On (default): the scene-linear frame is tone mapped with a soft knee at the white point below and sRGB-encoded for the model, then decoded back."));
+		ImGui::TextUnformatted(T(TKEY("nr_hdr_encode_tooltip_2"), "Off: the model is handed the raw scene-linear frame. Sunlit scenes with values far above 1.0 wash out and flicker."));
 	}
 	if (!hdrEncode)
 		ImGui::BeginDisabled();
@@ -2005,12 +1990,17 @@ void Upscaling::Upscale()
 			bridgeInputs.displayHeight = mainDesc.Height;
 			bridgeInputs.hdr = mainDesc.Format != DXGI_FORMAT_R8G8B8A8_UNORM;
 			bridgeInputs.runNeuralRendering = settings.neuralRenderingEnabled && !dlssBridge.IsQuarantined();
-			bridgeInputs.neuralAfterUpscale = settings.neuralRenderingAfterUpscale;
+			// The model's quality tier follows the DLSS mode, as the reference derives it: NGX
+			// PerfQualityValue 0 performance, 1 balanced, 2 quality, 3 ultra performance, 5 DLAA.
+			{
+				constexpr uint32_t kNgxQuality[] = { 5u, 2u, 1u, 0u, 3u };
+				bridgeInputs.neuralQuality = settings.qualityMode < std::size(kNgxQuality) ? kNgxQuality[settings.qualityMode] : 2u;
+			}
 			bridgeInputs.resetHistory = state->IsMainOrLoadingMenuOpen();
 			// The model wants motion in pixels with the change in jitter since last frame; a gap in
 			// the frame sequence means the history does not belong to this frame. The jitter is kept
 			// in display pixels, so it is scaled to the picture the model works on.
-			const float jitterScale = bridgeInputs.neuralAfterUpscale ? 1.0f : static_cast<float>(bridgeInputs.renderWidth) / static_cast<float>(std::max(1u, bridgeInputs.displayWidth));
+			const float jitterScale = static_cast<float>(bridgeInputs.renderWidth) / static_cast<float>(std::max(1u, bridgeInputs.displayWidth));
 			if (neuralPreviousJitterFrame + 1 == state->frameCount) {
 				bridgeInputs.jitterDeltaX = (jitter.x - neuralPreviousJitter.x) * jitterScale;
 				bridgeInputs.jitterDeltaY = (jitter.y - neuralPreviousJitter.y) * jitterScale;
@@ -2022,7 +2012,7 @@ void Upscaling::Upscale()
 			// DLSS accumulates whatever it is fed; when the neural pass switches on, off, moves, or
 			// fails, the picture it accumulates changes character and its history must go (the
 			// reference implementation resets on the same events).
-			const int neuralState = !bridgeInputs.runNeuralRendering ? 0 : !DlssNR::IsRunning() && !DlssNR::FailureReason().empty() ? 3 : bridgeInputs.neuralAfterUpscale ? 2 : 1;
+			const int neuralState = !bridgeInputs.runNeuralRendering ? 0 : !DlssNR::IsRunning() && !DlssNR::FailureReason().empty() ? 3 : 1;
 			if (neuralState != neuralPreviousState) {
 				neuralPreviousState = neuralState;
 				streamline.RequestHistoryReset();
@@ -2043,19 +2033,13 @@ void Upscaling::Upscale()
 						context->CopyResource(sharpenerTexture->resource.get(), main.texture);
 				}
 			} else {
-				if (bridgeInputs.runNeuralRendering && bridgeInputs.depth && !bridgeInputs.neuralAfterUpscale) {
+				if (bridgeInputs.runNeuralRendering && bridgeInputs.depth) {
 					// Neural rendering first, at render resolution on D3D12; the rewritten rectangle
 					// is copied back into kMAIN and DLSS upscales it on D3D11.
 					bridgeInputs.evaluateDLSS = false;
 					dlssBridge.Dispatch(bridgeInputs);
 				}
 				streamline.Upscale(main.texture, reactiveMaskTexture->resource.get(), transparencyCompositionMaskTexture->resource.get(), motionVectorCopyTexture->resource.get());
-				if (bridgeInputs.runNeuralRendering && bridgeInputs.depth && bridgeInputs.neuralAfterUpscale && bridgeInputs.output) {
-					// The previous placement: DLSS ran on D3D11 into the shared sharpener texture; the
-					// model rewrites that in place on D3D12 before RCAS.
-					bridgeInputs.evaluateDLSS = false;
-					dlssBridge.Dispatch(bridgeInputs);
-				}
 			}
 		} else if (upscaleMethod == UpscaleMethod::kFSR) {
 			auto& depthStencil = renderer->GetDepthStencilData().depthStencils[RE::RENDER_TARGETS_DEPTHSTENCIL::kMAIN];
