@@ -73,7 +73,9 @@ namespace DlssNR
 #pragma warning(pop)
 
 		// The forwarder's exports. Positional, matching dlssnr_forwarder.cpp exactly.
-		using PFN_Create = void*(__cdecl*)(const wchar_t*, const wchar_t*, ID3D12Device*, ID3D12GraphicsCommandList*, void*, unsigned int, unsigned int, int, float, int, float, float, float, int, int);
+		using PFN_Create = void*(__cdecl*)(const wchar_t*, const wchar_t*, ID3D12Device*, ID3D12GraphicsCommandList*, void*, unsigned int, unsigned int, int, float, int, float, float, float, int, int, unsigned int, unsigned int);
+		// NVSDK_NGX_DLSS_Feature_Flags_MVLowRes | NVSDK_NGX_DLSS_Feature_Flags_AutoExposure, as the reference creates the feature.
+		constexpr unsigned int kCreateFlags = (1u << 1) | (1u << 6);
 		using PFN_Evaluate = int(__cdecl*)(ID3D12GraphicsCommandList*, void*, void*, ID3D12Resource*, ID3D12Resource*, ID3D12Resource*, ID3D12Resource*, unsigned int, unsigned int, unsigned int, unsigned int, int, int, float, int, float, float, float, int, float, float);
 		using PFN_Release = void(__cdecl*)(void*);
 		using PFN_SetExtras = void(__cdecl*)(void*, float, ID3D12Resource*, ID3D12Resource*, ID3D12Resource*, unsigned int, unsigned int, unsigned int, unsigned int);
@@ -150,6 +152,7 @@ namespace DlssNR
 			float builtLocalTone = 0.0f;
 			float builtSkin = 0.0f;
 			uint32_t builtAutoMask = 0;
+			uint32_t builtPerfQuality = 0;  // NGX PerfQualityValue the feature was created with
 			unsigned long long settledAt = 0;
 			unsigned long long frames = 0;
 
@@ -796,7 +799,7 @@ namespace DlssNR
 		g.commandQueue = a_queue;
 	}
 
-	void Run(ID3D12Device* a_device, ID3D12GraphicsCommandList* a_commandList, ID3D12Resource* a_color, ID3D12Resource* a_depth, ID3D12Resource* a_motion, uint32_t a_renderWidth, uint32_t a_renderHeight, bool a_reset, float a_mvScaleX, float a_mvScaleY, float a_jitterDeltaX, float a_jitterDeltaY)
+	void Run(ID3D12Device* a_device, ID3D12GraphicsCommandList* a_commandList, ID3D12Resource* a_color, ID3D12Resource* a_depth, ID3D12Resource* a_motion, uint32_t a_renderWidth, uint32_t a_renderHeight, bool a_reset, float a_mvScaleX, float a_mvScaleY, float a_jitterDeltaX, float a_jitterDeltaY, uint32_t a_perfQuality)
 	{
 		std::scoped_lock lock(g.mutex);
 		const Settings settings = g.settings;
@@ -844,7 +847,7 @@ namespace DlssNR
 		if (a_reset)
 			g.reset = true;
 
-		const bool resolutionChanged = g.width != width || g.height != height || g.workWidth != workWidth || g.workHeight != workHeight || g.encodeHdr != hdrFrame;
+		const bool resolutionChanged = g.width != width || g.height != height || g.workWidth != workWidth || g.workHeight != workHeight || g.encodeHdr != hdrFrame || g.builtPerfQuality != a_perfQuality;
 		const bool tuningChanged = !TuningMatchesFeature(settings);
 		bool rebuildBlockedBySettle = false;
 		if (g.feature && (resolutionChanged || tuningChanged)) {
@@ -915,7 +918,8 @@ namespace DlssNR
 				g.setExtras(g.capabilityParams, 1.0f, nullptr, nullptr, nullptr, 0, 0, 0, 0);
 			g.feature = g.create(snippet.c_str(), g.dataPath.c_str(), a_device, a_commandList, g.capabilityParams, workWidth, workHeight,
 				static_cast<int>(settings.preset), settings.intensity, static_cast<int>(settings.style), settings.localStructureStrength,
-				settings.localToneStrength, settings.skinStructureStrength, settings.useAutoMask ? 1 : 0, 1);
+				settings.localToneStrength, settings.skinStructureStrength, settings.useAutoMask ? 1 : 0, 1, a_perfQuality, kCreateFlags);
+			g.builtPerfQuality = a_perfQuality;
 			if (!g.feature) {
 				const auto initResult = static_cast<unsigned int>(g.lastInit ? *g.lastInit : 0);
 				const auto createResult = static_cast<unsigned int>(g.lastCreate ? *g.lastCreate : 0);
@@ -924,7 +928,7 @@ namespace DlssNR
 			}
 			RecordBuiltTuning(settings);
 			g.reset = true;
-			logger::info("[DLSS-NR] running at {}x{} (model {}x{}, guides {}x{}, preset {}, style {}, intensity {}, motion scale x{} -> {} px/unit to the model, edit stability {}, {} frame{})", width, height, workWidth, workHeight, guideWidth, guideHeight, settings.preset, settings.style, settings.intensity, settings.motionScale, static_cast<float>(guideWidth) * settings.motionScale * static_cast<float>(workWidth) / static_cast<float>(width), reduced ? settings.editStability : 0.0f, hdrFrame ? "scene-linear" : "display-referred", hdrFrame ? std::format(", white point {}", whitePoint) : std::string{});
+			logger::info("[DLSS-NR] running at {}x{} (model {}x{}, guides {}x{}, NGX quality {}, preset {}, style {}, intensity {}, motion scale x{} -> {} px/unit to the model, {} frame{})", width, height, workWidth, workHeight, guideWidth, guideHeight, a_perfQuality, settings.preset, settings.style, settings.intensity, settings.motionScale, static_cast<float>(guideWidth) * settings.motionScale * static_cast<float>(workWidth) / static_cast<float>(width), hdrFrame ? "scene-linear" : "display-referred", hdrFrame ? std::format(", white point {}", whitePoint) : std::string{});
 			// Creating and evaluating in the same list is what hung GPUs upstream. The creation goes
 			// through this frame's submit; the first evaluate happens next frame.
 			return;

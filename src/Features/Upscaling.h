@@ -98,7 +98,6 @@ public:
 
 		// DLSS 5 Neural Rendering over the DLSS output (needs nvngx_dlssnr.dll in the Streamline folder)
 		bool neuralRenderingEnabled = false;
-		bool neuralRenderingAfterUpscale = false;  ///< Run the model over the DLSS output instead of the render-resolution input
 		DlssNR::Settings neuralRendering;
 	};
 
