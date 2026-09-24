@@ -55,8 +55,9 @@ struct StaticInstancing : Feature
 
 	struct Settings
 	{
-		/** Coalesce eligible draws. Off keeps the classification and counters running (measure only). */
-		bool Enabled = true;
+		/** Coalesce eligible draws. Off keeps the classification and counters running (measure only).
+		 *  Off by default: grey flickering was reported on distant statics outdoors with it on. */
+		bool Enabled = false;
 		/** Also coalesce alpha-tested casters (foliage, fences). Their key carries the material pointer. */
 		bool IncludeAlphaTested = false;
 		/** Also coalesce the main view's depth pre-pass. Requires a restart: the pre-pass shader
