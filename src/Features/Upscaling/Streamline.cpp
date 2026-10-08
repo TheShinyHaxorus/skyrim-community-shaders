@@ -16,6 +16,7 @@
 #include "../Upscaling.h"
 #include "CameraReprojection.h"
 #include "DX12SwapChain.h"
+#include "RTX40MFG/MfgUnlock.h"
 
 void LoggingCallback(sl::LogType type, const char* msg)
 {
@@ -103,6 +104,11 @@ void Streamline::LoadInterposer()
 
 	logger::info("[Streamline {}] Initializing Streamline", instanceTag);
 
+	// RTX 40 MFG unlock: follow the interposer's own LoadLibrary calls from here on, so the DLSS-G
+	// plugin and provider are inspected as they load rather than on the next rescan.
+	if (renderAPI == sl::RenderAPI::eD3D12 && MfgUnlock::IsEnabled())
+		MfgUnlock::InstallLoaderDiscovery(interposer);
+
 	sl::Preferences pref;
 
 	sl::Feature featuresDX11[] = { sl::kFeatureDLSS, sl::kFeatureReflex, sl::kFeaturePCL };
@@ -184,6 +190,13 @@ void Streamline::LoadInterposer()
 		reflexOptionsCache = {};
 		lastReflexSleepFrame = UINT32_MAX;
 		logger::info("[Streamline {}] Successfully initialized Streamline", instanceTag);
+
+		if (renderAPI == sl::RenderAPI::eD3D12 && MfgUnlock::IsEnabled()) {
+			// slInit loaded sl.dlss_g.dll; the NGX provider is loaded lazily by Streamline, so the
+			// unlock pulls it in now to get its patch in before the first feature creation.
+			MfgUnlock::PreloadProvider(pluginDirAbsoluteW);
+			MfgUnlock::Rescan(true);
+		}
 	}
 }
 
@@ -323,12 +336,26 @@ void Streamline::PostDevice()
 			} else {
 				logger::info("[Streamline DX12] DLSS-G runtime controls are available");
 
+				if (MfgUnlock::IsEnabled()) {
+					// The module owning this pointer is the live DLSS-G wrapper the unlock has to patch.
+					MfgUnlock::ObserveDlssgFunction(reinterpret_cast<void*>(slDLSSGSetOptions));
+					MfgUnlock::Rescan(true);
+				}
+
 				sl::DLSSGState state{};
 				if (SL_FAILED(result, slDLSSGGetState(viewport, state, nullptr))) {
 					logger::warn("[Streamline DX12] slDLSSGGetState failed querying numFramesToGenerateMax: {}", magic_enum::enum_name(result));
 					dlssgMaxFramesToGenerate = 1;
 				} else {
 					dlssgMaxFramesToGenerate = std::max<uint32_t>(1, state.numFramesToGenerateMax);
+					if (MfgUnlock::IsEnabled()) {
+						// The wrapper's compiled limit (1, 3 or 5) caps what the runtime may be asked
+						// for, whatever the patched state query advertises.
+						const uint32_t unlockMaxFrames = MfgUnlock::MaximumGeneratedFrames();
+						if (unlockMaxFrames)
+							dlssgMaxFramesToGenerate = std::min(dlssgMaxFramesToGenerate, unlockMaxFrames);
+						logger::info("[Streamline DX12] RTX 40 MFG unlock: {}", MfgUnlock::Describe());
+					}
 					dlssgVSyncSupported = state.bIsVsyncSupportAvailable == sl::Boolean::eTrue;
 					logger::info("[Streamline DX12] DLSS-G supports up to {}x frame generation", dlssgMaxFramesToGenerate + 1);
 					logger::info("[Streamline DX12] DLSS-G V-Sync support {} available", dlssgVSyncSupported ? "is" : "is not");
@@ -366,6 +393,13 @@ void Streamline::SetD3DDevice12(ID3D12Device* a_device)
 {
 	if (!initialized || !slSetD3DDevice || !a_device)
 		return;
+	// The unlock verifies the adapter (Ada only) from this device and must patch sl.dlss_g.dll and
+	// nvngx_dlssg.dll BEFORE Streamline binds it: the wrapper computes and caches
+	// numFramesToGenerateMax while binding, so a patch applied afterwards changes nothing this session.
+	if (MfgUnlock::IsEnabled()) {
+		MfgUnlock::ObserveD3D12Device(a_device);
+		MfgUnlock::Rescan(true);
+	}
 	if (SL_FAILED(result, slSetD3DDevice(static_cast<void*>(a_device))))
 		logger::error("[Streamline DX12] slSetD3DDevice(device) failed: {}", magic_enum::enum_name(result));
 	else
@@ -657,7 +691,12 @@ void Streamline::EvaluateDLSS(sl::ViewportHandle vp,
 		{ &transparencyMaskRes, sl::kBufferTypeTransparencyHint, sl::ResourceLifecycle::eValidUntilPresent, &extentIn }
 	};
 
-	slSetTag(vp, tags, _countof(tags), context);
+	// The two hint masks are the last tags; without them DLSS works from colour, depth and motion only.
+	uint32_t numTags = _countof(tags);
+	if (!reactiveMask || !transparencyMask)
+		numTags -= 2;
+
+	slSetTag(vp, tags, numTags, context);
 
 	sl::ViewportHandle view(vp);
 	const sl::BaseStructure* inputs[] = { &view };
@@ -766,8 +805,17 @@ void Streamline::UpdateReflex()
 		settings.reflexFPSLimit = reflexFPSLimit;
 		logger::warn("[Streamline {}] reflexFPSLimit is not finite ({}), using {}", instanceTag, originalReflexFPSLimit, reflexFPSLimit);
 	}
-	const float fpsLimit = std::clamp(reflexFPSLimit, 20.0f, 240.0f);
-	options.frameLimitUs = settings.reflexUseFPSLimit ? static_cast<uint32_t>(std::lround(1000000.0 / static_cast<double>(fpsLimit))) : 0u;
+	float fpsLimit = settings.reflexUseFPSLimit ? std::clamp(reflexFPSLimit, 20.0f, 240.0f) : 0.0f;
+	// The frame generation FPS limit caps the presented rate while DLSS-G presents: the rendered
+	// rate is that limit divided by the multiplier, and Reflex applies it before input. The host
+	// frame limiter stands down for DLSS-G, so this is the only place the cap can go.
+	if (renderAPI == sl::RenderAPI::eD3D12 && settings.frameGenerationFPSLimitEnabled && std::isfinite(settings.frameGenerationFPSLimit) &&
+		upscaling.UsesDLSSGFrameGen() && upscaling.ShouldPrepareFrameGeneration()) {
+		const float presentedCap = std::clamp(settings.frameGenerationFPSLimit, 30.0f, 480.0f);
+		const float renderedCap = presentedCap / static_cast<float>(std::max<uint>(2, upscaling.GetFrameGenerationMultiplier()));
+		fpsLimit = fpsLimit > 0.0f ? std::min(fpsLimit, renderedCap) : renderedCap;
+	}
+	options.frameLimitUs = fpsLimit > 0.0f ? static_cast<uint32_t>(std::lround(1000000.0 / static_cast<double>(fpsLimit))) : 0u;
 	options.useMarkersToOptimize = settings.reflexUseMarkersToOptimize && featurePCL;
 
 	applyReflexOptionsIfChanged(options, "Failed to apply Reflex options");
@@ -817,6 +865,9 @@ void Streamline::ConfigureDLSSG(bool enabled)
 {
 	if (!initialized || !slDLSSGSetOptions)
 		return;
+
+	if (MfgUnlock::IsEnabled())
+		MfgUnlock::Rescan();
 
 	sl::DLSSGOptions options{};
 	options.mode = enabled ? sl::DLSSGMode::eOn : sl::DLSSGMode::eOff;

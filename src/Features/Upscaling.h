@@ -2,12 +2,15 @@
 
 #include "Feature.h"
 #include "Upscaling/DX12SwapChain.h"
+#include "Upscaling/DlssD3D12Bridge.h"
+#include "Upscaling/DlssNR.h"
 #include "Upscaling/FidelityFX.h"
 #include "Upscaling/FrameGenStats.h"
 #include "Upscaling/RCAS/RCAS.h"
 #include "Upscaling/Streamline.h"
 #include <d3d11_4.h>
 #include <d3d12.h>
+#include <atomic>
 #include <winrt/base.h>
 
 /**
@@ -74,11 +77,21 @@ public:
 		bool dlssgDisableVSync = true;
 		bool dlssgWorldCameraConstants = true;
 		bool dlssgHudLessCapture = false;
+		// Patches DLSS-G in memory so RTX 40 (Ada) cards accept more than one generated frame. Restart to apply.
+		bool rtx40MFGUnlock = false;
+		// Caps the presented rate while frame generation is on; the rendered rate is this divided by the multiplier.
+		bool frameGenerationFPSLimitEnabled = false;
+		float frameGenerationFPSLimit = 120.0f;
 		uint streamlineLogLevel = 0;  // 0=Off, 1=Default, 2=Verbose
 		float sharpnessFSR = 0.0f;
 		bool sharpnessEnabledDLSS = false;
 		float sharpnessDLSS = 0.0f;
 		uint presetDLSS = 0;  // 0=Default, 1=J, 2=K, 3=L, 4=M
+		// Tag the TAA-derived bias and transparency hints for DLSS. Turn off if skin and eyes speckle below Native AA.
+		bool dlssHintMasks = true;
+		// DLSS 5 Neural Rendering on the render-resolution colour before DLSS (needs nvngx_dlssnr.dll in the Streamline folder)
+		bool neuralRenderingEnabled = false;
+		DlssNR::Settings neuralRendering;
 		bool reflexLowLatencyMode = false;
 		bool reflexLowLatencyBoost = false;
 		bool reflexUseMarkersToOptimize = false;
@@ -127,6 +140,9 @@ public:
 	bool d3d12SwapChainActive = false;
 	// Set by Main_PostProcessing when frame-generation inputs were copied; cleared after Present.
 	bool frameGenerationPrepared = false;
+	bool rtx40MFGUnlockBoot = false;          ///< Unlock setting as read at device creation (the setting needs a restart)
+	std::atomic<bool> windowFocused{ true };  ///< False while the window is minimised; DLSS-G pauses
+	std::atomic<bool> windowActive{ true };   ///< False while another application is in the foreground (WM_ACTIVATEAPP); the DLSS-G presenter rejects presents then
 
 	globals::FrameBufferCache worldCameraFrame{};
 	bool worldCameraFrameValid = false;
@@ -150,6 +166,9 @@ public:
 
 	// Feature interface overrides
 	virtual void DrawSettings() override;
+	void DrawNeuralRenderingSettings();
+	/** @brief Pushes the neural rendering settings and enable flag to the pass. */
+	void SyncNeuralRenderingSettings();
 	virtual void SaveSettings(json& o_json) override;
 	virtual void LoadSettings(json& o_json) override;
 	virtual void RestoreDefaultSettings() override;
@@ -186,6 +205,7 @@ public:
 
 	winrt::com_ptr<ID3D11ComputeShader> encodeTexturesCS[4];          // One for each UpscaleMethod (kNONE, kTAA, kFSR, kDLSS)
 	winrt::com_ptr<ID3D11ComputeShader> encodeTexturesCSDepthOutput;  // FSR: converts R24G8_TYPELESS depth to R32_FLOAT
+	winrt::com_ptr<ID3D11ComputeShader> encodeTexturesCSDepthOutputDLSS;  // DLSS + neural rendering: typed depth for the D3D12 bridge
 	ID3D11ComputeShader* GetEncodeTexturesCS();
 
 	winrt::com_ptr<ID3D11PixelShader> depthRefractionUpscalePS;
@@ -215,6 +235,10 @@ public:
 	Texture2D* motionVectorCopyTexture = nullptr;
 	Texture2D* sharpenerTexture = nullptr;
 	Texture2D* runtimeFsrDepthTexture = nullptr;
+	Texture2D* neuralDepthTexture = nullptr;  ///< Typed R32_FLOAT depth, shareable with D3D12, for neural rendering
+
+	float2 neuralPreviousJitter = { 0, 0 };  ///< Last frame's jitter, for the neural rendering model's motion input
+	uint32_t neuralPreviousJitterFrame = UINT32_MAX;
 
 	virtual void ClearShaderCache() override;
 
@@ -223,6 +247,7 @@ public:
 	static inline Streamline streamlineDX12;  ///< DLSS-G frame generation
 	static inline FidelityFX fidelityFX;      ///< AMD FSR frame generation
 	static inline DX12SwapChain dx12SwapChain;
+	static inline DlssD3D12Bridge dlssBridge;  ///< D3D12 bridge for DLSS 5 neural rendering
 	static inline RCAS rcas;  ///< Standalone RCAS sharpening for DLSS
 
 	winrt::com_ptr<ID3D11PixelShader> copyDepthToSharedBufferPS;

@@ -145,6 +145,13 @@ public:
 	bool tearingSupported = false;
 	bool hudLessCaptured = false;
 
+	// The DLSS-G presenter rejects presents (DXGI_ERROR_INVALID_CALL) in states it does not like,
+	// notably while another application is in the foreground. Generation is held off for a while
+	// after one, doubling each time, and the count resets after a run of good presents.
+	uint32_t dlssgRejectedPresents = 0;
+	uint32_t dlssgHoldoffFrames = 0;
+	uint32_t dlssgGoodPresents = 0;
+
 	// Actual buffer count the live swap chain was created/resized with (<= kMaxBackBuffers).
 	UINT backBufferCount = 2;
 

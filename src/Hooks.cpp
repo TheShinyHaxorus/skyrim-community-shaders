@@ -659,6 +659,15 @@ namespace Hooks
 			if (a_msg == WM_CLOSE) {
 				globals::OnGameWindowClose();
 			}
+			// DLSS-G pauses while the window is minimised or another application is in the
+			// foreground: its presenter rejects presents in both states.
+			if (a_msg == WM_SIZE) {
+				globals::features::upscaling.windowFocused.store(a_wParam != SIZE_MINIMIZED, std::memory_order_relaxed);
+			} else if (a_msg == WM_ACTIVATEAPP) {
+				globals::features::upscaling.windowActive.store(a_wParam != 0, std::memory_order_relaxed);
+				if (a_wParam != 0)
+					globals::features::upscaling.windowFocused.store(true, std::memory_order_relaxed);
+			}
 			return func(a_hwnd, a_msg, a_wParam, a_lParam);
 		}
 		static inline REL::Relocation<decltype(thunk)> func;

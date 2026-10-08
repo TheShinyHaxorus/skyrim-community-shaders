@@ -9,6 +9,7 @@
 #include "State.h"
 #include "Upscaling/DX12SwapChain.h"
 #include "Upscaling/FidelityFX.h"
+#include "Upscaling/RTX40MFG/MfgUnlock.h"
 #include "Upscaling/Streamline.h"
 #include "Utils/Game.h"
 #include "Utils/UI.h"
@@ -37,11 +38,17 @@ NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(
 	dlssgDisableVSync,
 	dlssgWorldCameraConstants,
 	dlssgHudLessCapture,
+	rtx40MFGUnlock,
+	frameGenerationFPSLimitEnabled,
+	frameGenerationFPSLimit,
 	streamlineLogLevel,
 	sharpnessFSR,
 	sharpnessEnabledDLSS,
 	sharpnessDLSS,
 	presetDLSS,
+	dlssHintMasks,
+	neuralRenderingEnabled,
+	neuralRendering,
 	reflexLowLatencyMode,
 	reflexLowLatencyBoost,
 	reflexUseMarkersToOptimize,
@@ -105,6 +112,10 @@ HRESULT WINAPI hk_D3D11CreateDeviceAndSwapChainUpscaling(
 		globals::state->SetAdapterDescription(adapterDesc.Description);
 		ApplyLegacyFsr4RuntimeSelectionMigration(upscaling.settings, FidelityFX::GetFsr4AdapterSupport(adapterDesc));
 	}
+
+	// The unlock patches the DLSS-G runtime as it loads, so it is decided before the SDKs load.
+	upscaling.rtx40MFGUnlockBoot = upscaling.settings.rtx40MFGUnlock;
+	MfgUnlock::SetEnabled(upscaling.settings.rtx40MFGUnlock && upscaling.settings.enableDLSSFrameGen && upscaling.settings.frameGenerationMode != 0);
 
 	upscaling.LoadUpscalingSDKs();
 
@@ -358,6 +369,11 @@ void Upscaling::DrawSettings()
 				}
 			}
 		} else if (upscaleMethod == UpscaleMethod::kDLSS) {
+			ImGui::Checkbox(T(TKEY("dlss_hint_masks"), "DLSS Hint Masks"), &settings.dlssHintMasks);
+			if (auto _tt = Util::HoverTooltipWrapper()) {
+				ImGui::TextUnformatted(T(TKEY("dlss_hint_masks_tooltip_1"), "Sends the game's TAA mask and the transparency mask to DLSS as bias and transparency hints."));
+				ImGui::TextUnformatted(T(TKEY("dlss_hint_masks_tooltip_2"), "On by default. Turn off if skin and eyes show dark speckles below Native AA; turn back on if particles or water ghost."));
+			}
 			ImGui::Checkbox(T(TKEY("enable_sharpening"), "Enable Sharpening"), &settings.sharpnessEnabledDLSS);
 			if (auto _tt = Util::HoverTooltipWrapper()) {
 				ImGui::Text("%s", T(TKEY("enable_sharpening_tooltip"),
@@ -448,6 +464,16 @@ void Upscaling::DrawSettings()
 			if (auto _tt = Util::HoverTooltipWrapper())
 				ImGui::Text("%s", T(TKEY("dlssg_frame_multiplier_tooltip"), "How many total frames are shown per rendered frame. Higher values generate more frames."));
 
+			ImGui::Checkbox(T(TKEY("rtx40_mfg_unlock"), "RTX 40 Multi Frame Generation Unlock"), &settings.rtx40MFGUnlock);
+			if (auto _tt = Util::HoverTooltipWrapper()) {
+				ImGui::TextUnformatted(T(TKEY("rtx40_mfg_unlock_tooltip_1"), "Patches DLSS-G in memory so RTX 40 (Ada) cards accept more than 2x."));
+				ImGui::TextUnformatted(T(TKEY("rtx40_mfg_unlock_tooltip_2"), "Only activates on an Ada GPU with a DLSS-G runtime the unlock recognises. Takes effect after a restart."));
+			}
+			if (settings.rtx40MFGUnlock != rtx40MFGUnlockBoot)
+				Util::Text::WrappedWarning("%s", T(TKEY("rtx40_mfg_unlock_restart"), "Unlock change takes effect after a restart."));
+			if (rtx40MFGUnlockBoot)
+				ImGui::TextDisabled("%s: %s", T(TKEY("rtx40_mfg_unlock_status"), "Unlock"), MfgUnlock::Describe().c_str());
+
 			ImGui::Checkbox(T(TKEY("dlssg_disable_vsync"), "Present Without V-Sync"), &settings.dlssgDisableVSync);
 			if (auto _tt = Util::HoverTooltipWrapper())
 				ImGui::Text("%s", T(TKEY("dlssg_disable_vsync_tooltip"),
@@ -491,6 +517,18 @@ void Upscaling::DrawSettings()
 				ImGui::TextUnformatted(T(TKEY("frame_generation_in_menus_tooltip_1"), "Keeps frame generation active while game menus are open."));
 				ImGui::TextUnformatted(T(TKEY("frame_generation_in_menus_tooltip_2"), "May feel smoother, but increases menu input latency."));
 			}
+
+			ImGui::Checkbox(T(TKEY("frame_generation_fps_limit"), "Frame Generation FPS Limit"), &settings.frameGenerationFPSLimitEnabled);
+			if (auto _tt = Util::HoverTooltipWrapper()) {
+				ImGui::TextUnformatted(T(TKEY("frame_generation_fps_limit_tooltip_1"), "A limit on the presented frame rate that only applies while frame generation is on."));
+				ImGui::TextUnformatted(T(TKEY("frame_generation_fps_limit_tooltip_2"), "The rendered rate is capped at this value divided by the multiplier (3x at 120 renders 40). With DLSS-G the cap goes through Reflex; the lowest enabled limit wins."));
+			}
+			if (settings.frameGenerationFPSLimitEnabled) {
+				if (!std::isfinite(settings.frameGenerationFPSLimit))
+					settings.frameGenerationFPSLimit = 120.0f;
+				settings.frameGenerationFPSLimit = std::clamp(settings.frameGenerationFPSLimit, 30.0f, 480.0f);
+				ImGui::SliderFloat(T(TKEY("frame_generation_fps_limit_value"), "Presented FPS"), &settings.frameGenerationFPSLimit, 30.0f, 480.0f, "%.0f");
+			}
 		}
 
 		if (fgMethod == FrameGenMethod::kDLSSG && ImGui::TreeNodeEx(T(TKEY("fg_statistics"), "Frame Generation Statistics"))) {
@@ -515,6 +553,13 @@ void Upscaling::DrawSettings()
 			ImGui::TreePop();
 		}
 
+		ImGui::PopTextWrapPos();
+		ImGui::TreePop();
+	}
+
+	if (upscaleMethod == UpscaleMethod::kDLSS && ImGui::TreeNodeEx(T(TKEY("neural_rendering_section"), "DLSS 5 Neural Rendering"))) {
+		ImGui::PushTextWrapPos(0.0f);
+		DrawNeuralRenderingSettings();
 		ImGui::PopTextWrapPos();
 		ImGui::TreePop();
 	}
@@ -617,6 +662,131 @@ void Upscaling::DrawSettings()
 	}
 }
 
+void Upscaling::DrawNeuralRenderingSettings()
+{
+	auto& nr = settings.neuralRendering;
+	bool changed = false;
+
+	if (ImGui::Checkbox(T(TKEY("neural_rendering_enable"), "Enable DLSS 5 Neural Rendering"), &settings.neuralRenderingEnabled))
+		changed = true;
+	if (auto _tt = Util::HoverTooltipWrapper()) {
+		ImGui::TextUnformatted(T(TKEY("neural_rendering_enable_tooltip_1"), "DLSS 5 detail synthesis on the render-resolution frame, before DLSS upscales it."));
+		ImGui::TextUnformatted(T(TKEY("neural_rendering_enable_tooltip_2"), "Needs nvngx_dlssnr.dll next to sl.interposer.dll in the Streamline folder. Runs on a D3D12 device beside the game's D3D11 one."));
+	}
+
+	ImGui::TextWrapped("%s", T(TKEY("nr_intro"), "DLSS 5 Neural Rendering runs NVIDIA's neural detail model over the render-resolution frame, before DLSS upscales it. The model always sees the full picture at render resolution, and DLSS's temporal accumulation then runs over its result."));
+	ImGui::TextDisabled("%s: %s", T(TKEY("neural_rendering_status"), "Status"), DlssNR::Describe().c_str());
+	if (!DlssNR::FailureReason().empty()) {
+		if (ImGui::SmallButton(T(TKEY("neural_rendering_retry"), "Retry")))
+			DlssNR::RetryAfterFailure();
+	}
+	if (dlssBridge.IsQuarantined())
+		Util::Text::WrappedWarning("%s", T(TKEY("dlss_bridge_quarantined"), "The D3D12 bridge failed this session; neural rendering is off until restart."));
+
+	ImGui::SeparatorText(T(TKEY("nr_blend_section"), "Blend"));
+	uint32_t modelWidth = 0, modelHeight = 0;
+	DlssNR::GetModelSize(modelWidth, modelHeight);
+	if (modelWidth && modelHeight)
+		ImGui::TextDisabled("%s: %ux%u", T(TKEY("nr_model_size"), "Model size"), modelWidth, modelHeight);
+
+	changed |= ImGui::SliderFloat(T(TKEY("nr_detail_strength"), "Detail Strength"), &nr.detailStrength, 0.0f, 3.0f, "%.2f");
+	if (auto _tt = Util::HoverTooltipWrapper())
+		ImGui::TextUnformatted(T(TKEY("nr_detail_strength_tooltip"), "How far the frame moves toward the model's picture. 0 is a true bypass, 1 is the model's picture, above 1 pushes past it."));
+	changed |= ImGui::SliderFloat(T(TKEY("nr_colour_strength"), "Colour Strength"), &nr.colourStrength, 0.0f, 1.0f, "%.2f");
+	if (auto _tt = Util::HoverTooltipWrapper())
+		ImGui::TextUnformatted(T(TKEY("nr_colour_strength_tooltip"), "0 keeps the game's colour and takes only the model's light; 1 takes the model's colour too."));
+	changed |= ImGui::SliderFloat(T(TKEY("nr_highlight_guard"), "Highlight Guard"), &nr.maxRatio, 1.0f, 16.0f, "%.1fx");
+	if (auto _tt = Util::HoverTooltipWrapper())
+		ImGui::TextUnformatted(T(TKEY("nr_highlight_guard_tooltip"), "The most the pass may brighten or darken any pixel."));
+	changed |= ImGui::SliderFloat(T(TKEY("nr_motion_scale"), "Motion Scale"), &nr.motionScale, 0.0f, 4.0f, "%.2f");
+	if (auto _tt = Util::HoverTooltipWrapper())
+		ImGui::TextUnformatted(T(TKEY("nr_motion_scale_tooltip"), "Multiplier on the motion vector scale given to the model. 1 assumes normalised screen units. Try 0.5 if moving scenes ghost or smear."));
+	bool hdrEncode = nr.hdrEncode != 0;
+	if (ImGui::Checkbox(T(TKEY("nr_hdr_encode"), "Tone Map Frame For Model"), &hdrEncode)) {
+		nr.hdrEncode = hdrEncode ? 1u : 0u;
+		changed = true;
+	}
+	if (auto _tt = Util::HoverTooltipWrapper()) {
+		ImGui::TextUnformatted(T(TKEY("nr_hdr_encode_tooltip_1"), "Off (default): the model is handed the raw scene-linear frame at render resolution, as the reference implementation does."));
+		ImGui::TextUnformatted(T(TKEY("nr_hdr_encode_tooltip_2"), "On: the frame is tone mapped with a soft knee at the white point below and sRGB-encoded for the model, then decoded back. Try it if sunlit scenes wash out."));
+	}
+	{
+		auto disabled = Util::DisableGuard(!hdrEncode);
+		changed |= ImGui::SliderFloat(T(TKEY("nr_hdr_white_point"), "HDR White Point"), &nr.hdrWhitePoint, 0.1f, 8.0f, "%.2f", ImGuiSliderFlags_Logarithmic);
+		if (auto _tt = Util::HoverTooltipWrapper())
+			ImGui::TextUnformatted(T(TKEY("nr_hdr_white_point_tooltip"), "Scene value shown to the model as white when tone mapping is on. Raise it if skies look flat, lower it if the model ignores shadow detail."));
+	}
+	if (DlssNR::IsEncodingHdr())
+		ImGui::TextDisabled("%s", T(TKEY("nr_hdr_active"), "Tone mapping the scene-linear frame for the model."));
+
+	ImGui::SeparatorText(T(TKEY("nr_nvidia_section"), "NVIDIA model parameters (rebuild the model when changed)"));
+
+	const char* nrPresets[] = {
+		T(TKEY("nr_preset_default"), "Default (model decides)"),
+		T(TKEY("nr_preset_1"), "Preset 1"),
+		T(TKEY("nr_preset_2"), "Preset 2"),
+		T(TKEY("nr_preset_3"), "Preset 3")
+	};
+	int presetIndex = static_cast<int>(std::min(nr.preset, 3u));
+	if (ImGui::Combo(T(TKEY("nr_preset"), "Model Preset"), &presetIndex, nrPresets, IM_ARRAYSIZE(nrPresets))) {
+		nr.preset = static_cast<uint32_t>(presetIndex);
+		changed = true;
+	}
+	if (auto _tt = Util::HoverTooltipWrapper())
+		ImGui::TextUnformatted(T(TKEY("nr_preset_tooltip"), "NVIDIA's Neural Rendering model presets. Undocumented; the numbering is not the DLSS super resolution preset scale. Default leaves the choice to the model."));
+
+	const char* nrStyles[] = {
+		T(TKEY("nr_style_standard"), "Standard (strongest)"),
+		T(TKEY("nr_style_natural"), "Natural"),
+		T(TKEY("nr_style_cinematic"), "Cinematic")
+	};
+	int styleIndex = static_cast<int>(std::min(nr.style, 2u));
+	if (ImGui::Combo(T(TKEY("nr_style"), "Style"), &styleIndex, nrStyles, IM_ARRAYSIZE(nrStyles))) {
+		nr.style = static_cast<uint32_t>(styleIndex);
+		changed = true;
+	}
+	if (auto _tt = Util::HoverTooltipWrapper()) {
+		ImGui::TextUnformatted(T(TKEY("nr_style_tooltip_1"), "Standard boosts local contrast and deepens lighting, and can oversaturate or look stylised."));
+		ImGui::TextUnformatted(T(TKEY("nr_style_tooltip_2"), "Natural does the same detail work with a gentler hand and keeps skin tones closer to the game. Cinematic tones down the shine for a film-like look."));
+	}
+
+	changed |= ImGui::SliderFloat(T(TKEY("nr_intensity"), "Intensity"), &nr.intensity, 0.0f, 4.0f, "%.2f");
+	changed |= ImGui::SliderFloat(T(TKEY("nr_local_structure"), "Local Structure"), &nr.localStructureStrength, 0.0f, 4.0f, "%.2f");
+	changed |= ImGui::SliderFloat(T(TKEY("nr_local_tone"), "Local Tone"), &nr.localToneStrength, 0.0f, 4.0f, "%.2f");
+	changed |= ImGui::SliderFloat(T(TKEY("nr_skin_structure"), "Skin Structure"), &nr.skinStructureStrength, -1.0f, 4.0f, "%.2f");
+	if (auto _tt = Util::HoverTooltipWrapper())
+		ImGui::TextUnformatted(T(TKEY("nr_skin_structure_tooltip"), "Detail the model adds to skin. 1 is the reference default; below 0 follows Local Structure."));
+	bool autoMask = nr.useAutoMask != 0;
+	if (ImGui::Checkbox(T(TKEY("nr_auto_mask"), "Auto Skin Mask"), &autoMask)) {
+		nr.useAutoMask = autoMask ? 1u : 0u;
+		changed = true;
+	}
+
+	ImGui::SeparatorText(T(TKEY("nr_debug_section"), "Debug"));
+	const char* debugViews[] = {
+		T(TKEY("nr_debug_off"), "Off"),
+		T(TKEY("nr_debug_input"), "Model input"),
+		T(TKEY("nr_debug_output"), "Model output"),
+		T(TKEY("nr_debug_difference"), "Difference x20")
+	};
+	int debugIndex = static_cast<int>(std::min(nr.debugView, 3u));
+	if (ImGui::Combo(T(TKEY("nr_debug_view"), "Debug View"), &debugIndex, debugViews, IM_ARRAYSIZE(debugViews))) {
+		nr.debugView = static_cast<uint32_t>(debugIndex);
+		changed = true;
+	}
+	if (auto _tt = Util::HoverTooltipWrapper())
+		ImGui::TextUnformatted(T(TKEY("nr_debug_view_tooltip"), "A flat grey difference view means the model is doing nothing."));
+
+	if (changed)
+		SyncNeuralRenderingSettings();
+}
+
+void Upscaling::SyncNeuralRenderingSettings()
+{
+	DlssNR::SetSettings(settings.neuralRendering);
+	DlssNR::SetEnabled(settings.neuralRenderingEnabled);
+}
+
 void Upscaling::SaveSettings(json& o_json)
 {
 	o_json = settings;
@@ -674,6 +844,10 @@ void Upscaling::LoadSettings(json& o_json)
 			clampedReflexFPSLimit);
 	}
 	settings.reflexFPSLimit = clampedReflexFPSLimit;
+	if (!std::isfinite(settings.frameGenerationFPSLimit))
+		settings.frameGenerationFPSLimit = 120.0f;
+	settings.frameGenerationFPSLimit = std::clamp(settings.frameGenerationFPSLimit, 30.0f, 480.0f);
+	SyncNeuralRenderingSettings();
 	auto iniSettingCollection = globals::game::iniPrefSettingCollection;
 	if (iniSettingCollection) {
 		auto setting = iniSettingCollection->GetSetting("bUseTAA:Display");
@@ -686,6 +860,7 @@ void Upscaling::LoadSettings(json& o_json)
 void Upscaling::RestoreDefaultSettings()
 {
 	settings = {};
+	SyncNeuralRenderingSettings();
 }
 
 void Upscaling::DataLoaded()
@@ -812,6 +987,35 @@ void Upscaling::CreateUpscalingTextureResources(UpscaleMethod a_upscalemethod)
 
 	// Motion vector copy texture is only needed for DLSS
 	if (a_upscalemethod == UpscaleMethod::kDLSS) {
+		// Typed R32_FLOAT depth for neural rendering: the pass reads depth across the D3D11/D3D12
+		// share, which cannot carry the game's depth-stencil allocation. Created shareable so the
+		// bridge opens it in place instead of copying it every frame.
+		if (!neuralDepthTexture) {
+			D3D11_TEXTURE2D_DESC depthDesc{};
+			depthDesc.Width = texDesc.Width;
+			depthDesc.Height = texDesc.Height;
+			depthDesc.MipLevels = 1;
+			depthDesc.ArraySize = 1;
+			depthDesc.Format = DXGI_FORMAT_R32_FLOAT;
+			depthDesc.SampleDesc.Count = 1;
+			depthDesc.Usage = D3D11_USAGE_DEFAULT;
+			depthDesc.BindFlags = D3D11_BIND_SHADER_RESOURCE | D3D11_BIND_UNORDERED_ACCESS;
+			depthDesc.MiscFlags = D3D11_RESOURCE_MISC_SHARED | D3D11_RESOURCE_MISC_SHARED_NTHANDLE;
+
+			D3D11_SHADER_RESOURCE_VIEW_DESC depthSrvDesc{};
+			depthSrvDesc.Format = depthDesc.Format;
+			depthSrvDesc.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D;
+			depthSrvDesc.Texture2D.MipLevels = 1;
+
+			D3D11_UNORDERED_ACCESS_VIEW_DESC depthUavDesc{};
+			depthUavDesc.Format = depthDesc.Format;
+			depthUavDesc.ViewDimension = D3D11_UAV_DIMENSION_TEXTURE2D;
+
+			neuralDepthTexture = new Texture2D(depthDesc, "Upscaling::NeuralRenderingDepth");
+			neuralDepthTexture->CreateSRV(depthSrvDesc);
+			neuralDepthTexture->CreateUAV(depthUavDesc);
+		}
+
 		if (!motionVectorCopyTexture) {
 			auto& motionVector = renderer->GetRuntimeData().renderTargets[RE::RENDER_TARGETS::kMOTION_VECTOR];
 
@@ -887,6 +1091,16 @@ void Upscaling::DestroyUpscalingTextureResources(UpscaleMethod a_upscalemethod)
 
 	// Motion vector copy texture is only needed for DLSS - destroy when switching away from DLSS
 	if (a_upscalemethod != UpscaleMethod::kDLSS) {
+		// The bridge holds D3D12 views of these textures; drop them first.
+		dlssBridge.ReleaseSharedResources();
+		if (neuralDepthTexture) {
+			neuralDepthTexture->srv = nullptr;
+			neuralDepthTexture->uav = nullptr;
+			neuralDepthTexture->resource = nullptr;
+
+			delete neuralDepthTexture;
+			neuralDepthTexture = nullptr;
+		}
 		if (motionVectorCopyTexture) {
 			motionVectorCopyTexture->srv = nullptr;
 			motionVectorCopyTexture->uav = nullptr;
@@ -962,6 +1176,20 @@ ID3D11ComputeShader* Upscaling::GetEncodeTexturesCS()
 			encodeTexturesCSDepthOutput.attach((ID3D11ComputeShader*)Util::CompileShader(L"Data/Shaders/Upscaling/EncodeTexturesCS.hlsl", defines, "cs_5_0"));
 		}
 		return encodeTexturesCSDepthOutput.get();
+	}
+
+	// Neural rendering needs typed R32_FLOAT depth as well; only compiled and used while it is on.
+	if (upscaleMethod == UpscaleMethod::kDLSS && neuralDepthTexture && settings.neuralRenderingEnabled) {
+		if (!encodeTexturesCSDepthOutputDLSS) {
+			logger::debug("Compiling EncodeTexturesCS.hlsl for DLSS typed depth output");
+			std::vector<std::pair<const char*, const char*>> defines = {
+				{ "DLSS", "" },
+				{ "DEPTH_OUTPUT", "" }
+			};
+			encodeTexturesCSDepthOutputDLSS.attach((ID3D11ComputeShader*)Util::CompileShader(L"Data/Shaders/Upscaling/EncodeTexturesCS.hlsl", defines, "cs_5_0"));
+		}
+		if (encodeTexturesCSDepthOutputDLSS)
+			return encodeTexturesCSDepthOutputDLSS.get();
 	}
 
 	if (!encodeTexturesCS[methodIndex]) {
@@ -1232,6 +1460,7 @@ void Upscaling::ClearShaderCache()
 		encodeTexturesCS[i] = nullptr;  // com_ptr automatically releases
 	}
 	encodeTexturesCSDepthOutput = nullptr;  // com_ptr automatically releases
+	encodeTexturesCSDepthOutputDLSS = nullptr;
 
 	depthRefractionUpscalePS = nullptr;  // com_ptr automatically releases
 	underwaterMaskUpscalePS = nullptr;   // com_ptr automatically releases
@@ -1365,14 +1594,23 @@ void Upscaling::FrameLimiter()
 		static constexpr DWORD kFrameLatencyWaitTimeoutMs = 1000;
 		WaitForSingleObject(waitableObject, kFrameLatencyWaitTimeoutMs);
 
-		if (settings.frameLimitMode) {
+		// The frame generation FPS limit is a second cap on the presented rate that only applies
+		// while generation runs; the lower of it and the refresh-rate cap wins.
+		const bool generating = ShouldUseFrameGenerationThisFrame();
+		const bool fgLimit = generating && settings.frameGenerationFPSLimitEnabled && std::isfinite(settings.frameGenerationFPSLimit);
+		if (settings.frameLimitMode || fgLimit) {
 			static constexpr int64_t kNanosecondsPerSecond = 1000000000LL;
 			// The real-frame target must scale with the active multiplier or every
 			// configuration paces identically to 2x.
-			const double frameRateScale = ShouldUseFrameGenerationThisFrame() ?
+			const double frameRateScale = generating ?
 			                                  1.0 / static_cast<double>(GetFrameGenerationMultiplier()) :
 			                                  1.0;
-			int64_t targetFrameTimeNS = int64_t(static_cast<double>(kNanosecondsPerSecond) / (refreshRate * frameRateScale));
+			double presentedCap = settings.frameLimitMode ? refreshRate : 0.0;
+			if (fgLimit) {
+				const double fgCap = std::clamp(settings.frameGenerationFPSLimit, 30.0f, 480.0f);
+				presentedCap = presentedCap > 0.0 ? std::min(presentedCap, fgCap) : fgCap;
+			}
+			int64_t targetFrameTimeNS = int64_t(static_cast<double>(kNanosecondsPerSecond) / (presentedCap * frameRateScale));
 			int64_t targetFrameTicks = (targetFrameTimeNS * qpf.QuadPart) / kNanosecondsPerSecond;
 
 			static LARGE_INTEGER lastFrame = {};
@@ -1463,6 +1701,10 @@ bool Upscaling::IsFrameGenerationActive() const
 
 bool Upscaling::ShouldPrepareFrameGeneration() const
 {
+	// The DLSS-G presenter rejects every present while the game is minimised or another application
+	// is in the foreground, so generation pauses there and resumes when the window comes back.
+	if (dx12SwapChain.useDLSSG && (!windowFocused.load(std::memory_order_relaxed) || !windowActive.load(std::memory_order_relaxed)))
+		return false;
 	auto* state = globals::state;
 	const bool menuOpen = state && state->IsPausedOrMenuOpen(globals::game::ui);
 	return IsFrameGenerationDx12PathActive() && settings.frameGenerationMode && (settings.frameGenerationAllowInMenus || !menuOpen);
@@ -1494,6 +1736,13 @@ void Upscaling::LoadUpscalingSDKs()
 	// Initialize upscaling SDK components during plugin startup
 	// This ensures all SDKs are available before any D3D device creation
 	streamline.LoadInterposer();
+
+	// The neural rendering model and its forwarder sit beside the D3D11 Streamline runtime.
+	{
+		std::error_code ec;
+		auto runtimeDir = std::filesystem::absolute(std::filesystem::path(streamline.pluginDir), ec);
+		DlssNR::SetRuntimeDirectory(ec ? streamline.pluginDir : runtimeDir.wstring());
+	}
 
 	streamlineDX12.renderAPI = sl::RenderAPI::eD3D12;
 	streamlineDX12.pluginDir = L"Data\\Shaders\\Upscaling\\StreamlineDX12";
@@ -1782,11 +2031,17 @@ void Upscaling::Upscale()
 
 		// u2 (MotionVectorOutput): DLSS only — 5x5 dilated MVec for ghosting reduction.
 		// u3 (DepthOutput): runtime FSR only — typed R32_FLOAT copy for the DX11/DX12 bridge.
+		// u3 is also the typed depth for DLSS 5 neural rendering while that is on.
+		ID3D11UnorderedAccessView* depthOutputUAV = nullptr;
+		if (upscaleMethod == UpscaleMethod::kFSR && runtimeFsrDepthTexture)
+			depthOutputUAV = runtimeFsrDepthTexture->uav.get();
+		else if (upscaleMethod == UpscaleMethod::kDLSS && neuralDepthTexture && settings.neuralRenderingEnabled)
+			depthOutputUAV = neuralDepthTexture->uav.get();
 		ID3D11UnorderedAccessView* uavs[4] = {
 			reactiveMaskTexture->uav.get(),
 			transparencyCompositionMaskTexture->uav.get(),
 			(upscaleMethod == UpscaleMethod::kDLSS) ? motionVectorCopyTexture->uav.get() : nullptr,
-			(upscaleMethod == UpscaleMethod::kFSR && runtimeFsrDepthTexture) ? runtimeFsrDepthTexture->uav.get() : nullptr
+			depthOutputUAV
 		};
 		context->CSSetUnorderedAccessViews(0, ARRAYSIZE(uavs), uavs, nullptr);
 
@@ -1814,7 +2069,33 @@ void Upscaling::Upscale()
 		TracyD3D11Zone(globals::state->tracyCtx, "Upscaling Dispatch");
 
 		if (upscaleMethod == UpscaleMethod::kDLSS) {
-			streamline.Upscale(main.texture, reactiveMaskTexture->resource.get(), transparencyCompositionMaskTexture->resource.get(), motionVectorCopyTexture->resource.get());
+			if (settings.neuralRenderingEnabled && neuralDepthTexture && !dlssBridge.IsQuarantined()) {
+				// DLSS 5 neural rendering first, at render resolution on D3D12: the model rewrites the
+				// render-resolution rectangle of kMAIN in place, and DLSS then upscales it on D3D11.
+				auto renderSize = Util::ConvertToDynamic(float2{ (float)globals::game::graphicsState->screenWidth, (float)globals::game::graphicsState->screenHeight });
+				DlssD3D12Bridge::Inputs bridgeInputs{};
+				bridgeInputs.dlssInput = main.texture;
+				bridgeInputs.depth = neuralDepthTexture->resource.get();
+				bridgeInputs.motionVectors = motionVectorCopyTexture->resource.get();
+				bridgeInputs.renderWidth = std::max(1u, (uint32_t)renderSize.x);
+				bridgeInputs.renderHeight = std::max(1u, (uint32_t)renderSize.y);
+				bridgeInputs.resetHistory = state->IsMainOrLoadingMenuOpen();
+				// The model wants motion in pixels with the change in jitter since last frame; a gap
+				// in the frame sequence means the history does not belong to this frame.
+				if (neuralPreviousJitterFrame + 1 == state->frameCount) {
+					bridgeInputs.jitterDeltaX = jitter.x - neuralPreviousJitter.x;
+					bridgeInputs.jitterDeltaY = jitter.y - neuralPreviousJitter.y;
+				} else {
+					bridgeInputs.resetHistory = true;
+				}
+				neuralPreviousJitter = jitter;
+				neuralPreviousJitterFrame = state->frameCount;
+				dlssBridge.Dispatch(bridgeInputs);
+			}
+			streamline.Upscale(main.texture,
+				settings.dlssHintMasks ? reactiveMaskTexture->resource.get() : nullptr,
+				settings.dlssHintMasks ? transparencyCompositionMaskTexture->resource.get() : nullptr,
+				motionVectorCopyTexture->resource.get());
 		} else if (upscaleMethod == UpscaleMethod::kFSR) {
 			auto& depthStencil = renderer->GetDepthStencilData().depthStencils[RE::RENDER_TARGETS_DEPTHSTENCIL::kMAIN];
 			ID3D11Resource* fsrDepth = runtimeFsrDepthTexture ? runtimeFsrDepthTexture->resource.get() : depthStencil.texture;

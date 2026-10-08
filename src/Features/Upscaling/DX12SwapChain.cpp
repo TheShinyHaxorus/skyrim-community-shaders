@@ -406,7 +406,9 @@ HRESULT DX12SwapChain::Present(UINT SyncInterval, UINT Flags)
 				hudLess ? hudLessBufferWrapped->resource.get() : (swapChainBufferWrapped ? swapChainBufferWrapped->resource.get() : nullptr),
 				hudLess ? nullptr : (uiBufferWrapped ? uiBufferWrapped->resource.get() : nullptr),
 				swapChainDesc.Width, swapChainDesc.Height);
-			streamlineDX12.ConfigureDLSSG(upscaling.ShouldUseFrameGenerationThisFrame());
+			if (dlssgHoldoffFrames)
+				--dlssgHoldoffFrames;
+			streamlineDX12.ConfigureDLSSG(upscaling.ShouldUseFrameGenerationThisFrame() && dlssgHoldoffFrames == 0);
 		} else {
 			streamlineDX12.ConfigureDLSSG(false);
 		}
@@ -440,6 +442,25 @@ HRESULT DX12SwapChain::Present(UINT SyncInterval, UINT Flags)
 		tearingSupported = false;
 		presentFlags &= ~DXGI_PRESENT_ALLOW_TEARING;
 		presentResult = swapChain->Present(presentSyncInterval, presentFlags);
+	}
+	if (useDLSSG && presentResult == DXGI_ERROR_INVALID_CALL && SUCCEEDED(d3d12Device->GetDeviceRemovedReason())) {
+		// The presenter refused this frame (alt-tabbed away, or a state change it is still
+		// digesting). Turn generation off, hold it off for a while, and retry once with the game's
+		// own interval. A refusal is a dropped frame, not a reason to take the game down.
+		++dlssgRejectedPresents;
+		dlssgGoodPresents = 0;
+		dlssgHoldoffFrames = std::min<uint32_t>(600u, 30u << std::min<uint32_t>(dlssgRejectedPresents, 4u));
+		upscaling.streamlineDX12.ConfigureDLSSG(false);
+		if (dlssgRejectedPresents <= 5 || (dlssgRejectedPresents % 300) == 0)
+			logger::warn("[DX12SwapChain] DLSS-G present rejected (sync {}, flags {:#x}, window {}); frame generation held off for {} frames (rejection {})",
+				presentSyncInterval, presentFlags, upscaling.windowActive.load(std::memory_order_relaxed) ? "active" : "in the background", dlssgHoldoffFrames, dlssgRejectedPresents);
+		presentResult = swapChain->Present(SyncInterval, Flags & ~DXGI_PRESENT_ALLOW_TEARING);
+		if (presentResult == DXGI_ERROR_INVALID_CALL && SUCCEEDED(d3d12Device->GetDeviceRemovedReason()))
+			presentResult = S_OK;
+	} else if (useDLSSG && SUCCEEDED(presentResult) && dlssgRejectedPresents && ++dlssgGoodPresents >= 300) {
+		logger::info("[DX12SwapChain] DLSS-G presents recovered after {} rejections", dlssgRejectedPresents);
+		dlssgRejectedPresents = 0;
+		dlssgGoodPresents = 0;
 	}
 	DX::ThrowIfFailed(presentResult);
 	const double presentMs = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - presentStart).count();
