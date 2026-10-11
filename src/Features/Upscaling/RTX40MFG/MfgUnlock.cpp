@@ -361,11 +361,31 @@ namespace MfgUnlock
 			}
 		}
 
+		ModuleRecord InspectPinnedModule(HMODULE a_module, const std::wstring& a_suppliedPath);
+
 		ModuleRecord InspectLoadedModule(HMODULE a_module, const std::wstring& a_suppliedPath)
 		{
 			if (!a_module) {
 				return {};
 			}
+			// A module from the toolhelp snapshot can be unloaded before its headers are read
+			// (D3D10Warp.dll during startup did exactly that), so hold a reference for the inspection.
+			// A failed pin, or a different module now mapped at that address, means it is gone.
+			HMODULE pinned = nullptr;
+			if (!GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS, reinterpret_cast<LPCWSTR>(a_module), &pinned) || !pinned) {
+				return {};
+			}
+			ModuleRecord record{};
+			if (pinned == a_module)
+				record = InspectPinnedModule(a_module, a_suppliedPath);
+			// Released outside gModuleMutex: dropping the last reference can run the unload
+			// notification, and RemoveLoadedModule takes the same mutex.
+			FreeLibrary(pinned);
+			return record;
+		}
+
+		ModuleRecord InspectPinnedModule(HMODULE a_module, const std::wstring& a_suppliedPath)
+		{
 			const std::wstring path = a_suppliedPath.empty() ? LoadedModulePath(a_module) : a_suppliedPath;
 
 			std::lock_guard lock(gModuleMutex);
