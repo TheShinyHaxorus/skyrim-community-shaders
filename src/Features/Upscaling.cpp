@@ -689,6 +689,26 @@ void Upscaling::DrawNeuralRenderingSettings()
 	if (modelWidth && modelHeight)
 		ImGui::TextDisabled("%s: %ux%u", T(TKEY("nr_model_size"), "Model size"), modelWidth, modelHeight);
 
+	const char* nrResolutions[] = {
+		T(TKEY("nr_model_resolution_full"), "Full (100%)"),
+		T(TKEY("nr_model_resolution_three_quarters"), "Three quarters (75%)"),
+		T(TKEY("nr_model_resolution_half"), "Half (50%)"),
+		T(TKEY("nr_model_resolution_third"), "One third (33%)")
+	};
+	int resolutionIndex = static_cast<int>(std::min(nr.modelResolution, 3u));
+	if (ImGui::Combo(T(TKEY("nr_model_resolution"), "Model Resolution"), &resolutionIndex, nrResolutions, IM_ARRAYSIZE(nrResolutions))) {
+		nr.modelResolution = static_cast<uint32_t>(resolutionIndex);
+		changed = true;
+	}
+	if (auto _tt = Util::HoverTooltipWrapper())
+		ImGui::TextUnformatted(T(TKEY("nr_model_resolution_tooltip"), "Size the model runs at, as a share of the render-resolution frame. Lower is cheaper on the GPU and softer; its edit is scaled back up over the full frame."));
+	{
+		auto disabled = Util::DisableGuard(nr.modelResolution == 0);
+		changed |= ImGui::SliderFloat(T(TKEY("nr_edit_stability"), "Edit Stability"), &nr.editStability, 0.0f, 0.95f, "%.2f");
+		if (auto _tt = Util::HoverTooltipWrapper())
+			ImGui::TextUnformatted(T(TKEY("nr_edit_stability_tooltip"), "Below full model resolution only. How much of last frame's reprojected edit is kept, which steadies shimmer from the smaller model. 0 turns it off."));
+	}
+
 	changed |= ImGui::SliderFloat(T(TKEY("nr_detail_strength"), "Detail Strength"), &nr.detailStrength, 0.0f, 3.0f, "%.2f");
 	if (auto _tt = Util::HoverTooltipWrapper())
 		ImGui::TextUnformatted(T(TKEY("nr_detail_strength_tooltip"), "How far the frame moves toward the model's picture. 0 is a true bypass, 1 is the model's picture, above 1 pushes past it."));

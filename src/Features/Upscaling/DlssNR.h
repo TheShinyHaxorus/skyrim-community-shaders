@@ -25,7 +25,7 @@ namespace DlssNR
 {
 	struct Settings
 	{
-		uint32_t performanceMode = 2;         ///< 0 full resolution model, 1 three quarters, 2 half (default), 3 one third
+		uint32_t modelResolution = 0;         ///< model size relative to the render-resolution frame: 0 full (default), 1 three quarters, 2 half, 3 one third
 		uint32_t preset = 0;                  ///< DLSSNR.Hint.Render.Preset: 0 default (model decides), 1..3 presets; not the DLSS SR scale
 		uint32_t style = 1;                   ///< DLSSNR.Style: 0 standard (strongest), 1 natural (default), 2 cinematic
 		float intensity = 1.0f;               ///< DLSSNR.Intensity
@@ -37,7 +37,7 @@ namespace DlssNR
 		float colourStrength = 1.0f;          ///< whether the model's colour arrives with its light
 		float maxRatio = 2.0f;                ///< cap on per-pixel brightening/darkening ratio
 		uint32_t debugView = 0;               ///< 0 off, 1 model input, 2 model output, 3 difference x20
-		float editStability = 0.5f;           ///< reduced model only: how much of last frame's reprojected edit is kept (0 off .. 0.95)
+		float editStability = 0.5f;           ///< below full model resolution only: how much of last frame's reprojected edit is kept (0 off .. 0.95)
 		float motionScale = 1.0f;             ///< multiplier on the motion vector scale handed to the model and the stabiliser; 1 = normalised screen units
 		uint32_t hdrEncode = 0;               ///< scene-linear (float) frames: 1 = tone map to an sRGB proxy for the model and decode back; 0 = hand the frame over as is (default, as the reference implementation does)
 		float hdrWhitePoint = 1.0f;           ///< with hdrEncode: value shown to the model as white before the soft knee
@@ -45,7 +45,7 @@ namespace DlssNR
 
 	NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(
 		Settings,
-		performanceMode,
+		modelResolution,
 		preset,
 		style,
 		intensity,

@@ -758,9 +758,9 @@ namespace DlssNR
 			return a_settings.skinStructureStrength < 0.0f ? a_settings.localStructureStrength : a_settings.skinStructureStrength;
 		}
 
-		[[maybe_unused]] float WorkScale(uint32_t a_performanceMode)
+		float WorkScale(uint32_t a_modelResolution)
 		{
-			switch (a_performanceMode) {
+			switch (a_modelResolution) {
 			case 1:
 				return 0.75f;
 			case 2:
@@ -830,9 +830,9 @@ namespace DlssNR
 		if (!EnsurePass(a_device) || !EnsureForwarder() || !EnsureCapabilityParams(a_device) || !EnsureDataPath())
 			return;
 
-		// The pass runs at render resolution before super resolution, so the model always sees the
-		// full picture; the reduced-model path is kept in the shader but no longer selected.
-		const float workScale = 1.0f;
+		// The pass runs on the render-resolution frame before super resolution. The model can be run
+		// smaller than that frame to save GPU time; the composition pass then scales its edit back up.
+		const float workScale = WorkScale(settings.modelResolution);
 		const auto workWidth = static_cast<uint32_t>(static_cast<float>(width) * workScale + 0.5f);
 		const auto workHeight = static_cast<uint32_t>(static_cast<float>(height) * workScale + 0.5f);
 		const bool reduced = workWidth != width || workHeight != height;
