@@ -1,6 +1,6 @@
 # DLSS 5 neural rendering model
 
-`nvngx_dlssnr.dll` (NGX feature 18; currently NVIDIA's signed 310.9.16.0 build) is 266 MB, over GitHub's 100 MB file limit, and this repository does not use LFS. It is stored here as a multi-volume 7-Zip archive, each volume under 50 MB.
+`nvngx_dlssnr.dll` (NGX feature 18) is the community "compat-fp16 310.9.16 (CUDA 13.4.3)" build: NVIDIA's 310.9.16 with the architecture check lowered and the RTX 50-only GPU code replaced by a `.nrcubin` section, so it runs on RTX 40. NVIDIA's signed 310.9.16 refuses RTX 40 (0xBAD00001). It is 276 MB, over GitHub's 100 MB file limit, and this repository does not use LFS. It is stored here as a multi-volume 7-Zip archive, each volume under 50 MB.
 
 `cmake/DlssNRModel.cmake` extracts it at configure time into `features/Upscaling/Shaders/Upscaling/Streamline/`, where packaging picks it up. The extracted DLL is git-ignored.
 
