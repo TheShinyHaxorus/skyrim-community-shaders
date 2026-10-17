@@ -17,7 +17,7 @@ struct VersionTriplet
 // Only provider builds which passed the complete immutable layout and payload
 // contract belong here. The fourth file-version component is intentionally not
 // part of eligibility because it did not change the validated provider layout.
-inline constexpr std::array<VersionTriplet, 15> kSupportedVersions{{
+inline constexpr std::array<VersionTriplet, 16> kSupportedVersions{{
     {310, 1, 0},
     {310, 2, 0},
     {310, 2, 1},
@@ -33,6 +33,8 @@ inline constexpr std::array<VersionTriplet, 15> kSupportedVersions{{
     {310, 8, 0},
     {310, 9, 0},
     {310, 9, 1},
+    // NVIDIA app beta (13 Oct 2026): Frame Generation Preset C (unlocker v1.5.0).
+    {310, 9, 16},
 }};
 
 inline constexpr char kD3d12ImplementationExport[] =
@@ -68,6 +70,13 @@ constexpr bool IsSupportedVersion(VersionTriplet version) noexcept
     return false;
 }
 
+// The provider maps driver preset value 3 to Preset C from 310.9.16; earlier builds ignore the value.
+constexpr bool ImplementsPresetC(VersionTriplet version) noexcept
+{
+    return version.major == 310 && version.minor == 9 && version.build == 16;
+}
+
+static_assert(IsSupportedVersion({310, 9, 16}) && ImplementsPresetC({310, 9, 16}) && !ImplementsPresetC({310, 9, 1}));
 static_assert(IsSupportedVersion({310, 1, 0}));
 static_assert(IsSupportedVersion({310, 2, 0}));
 static_assert(IsSupportedVersion({310, 2, 1}));

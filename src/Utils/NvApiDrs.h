@@ -44,6 +44,11 @@ namespace Util::NvApiDrs
 	// DRS master switch for the driver's own frame-generation layer (NVIDIA App's
 	// "Smooth Motion" panel; NvPresent64.dll). Driver default is 0 (off); 1 = on.
 	inline constexpr uint32_t kKeySmoothMotionEnable = 0xB0D384C0;
+	// DRS key the NVIDIA App's DLSS override writes for the Frame Generation model preset
+	// ("Override DLSS-FG preset"): 0 game/driver default, 1 A, 2 B, 3 C. DLSS-G 310.9.16 and newer
+	// read 3 as Preset C (the lighter "performance" model); earlier builds ignore it.
+	inline constexpr uint32_t kKeyDLSSGPreset = 0x10E41DF1;
+	inline constexpr uint32_t kDLSSGPresetC = 3;
 	inline constexpr wchar_t kSkyrimSEProfileName[] = L"The Elder Scrolls V: Skyrim Special Edition";
 
 	struct Api
@@ -134,6 +139,37 @@ namespace Util::NvApiDrs
 
 			DestroySession(session);
 			return found;
+		}
+
+		/** @brief Writes a DWORD setting on the Skyrim SE driver profile and saves; false on any failure. */
+		bool TrySetSkyrimSetting(uint32_t a_settingId, uint32_t a_value)
+		{
+			SessionHandle session{};
+			ProfileHandle profile{};
+			if (!TryOpenSkyrimProfile(session, profile))
+				return false;
+
+			Setting setting{};
+			setting.version = kSettingVersion;
+			setting.settingId = a_settingId;
+			setting.settingType = 0;
+			setting.u32CurrentValue = a_value;
+			const bool saved = SetSetting(session, profile, &setting) == 0 && SaveSettings(session) == 0;
+			DestroySession(session);
+			return saved;
+		}
+
+		/** @brief Removes a setting from the Skyrim SE driver profile (back to the driver default) and saves. */
+		bool TryDeleteSkyrimSetting(uint32_t a_settingId)
+		{
+			SessionHandle session{};
+			ProfileHandle profile{};
+			if (!TryOpenSkyrimProfile(session, profile))
+				return false;
+
+			const bool saved = DeleteProfileSetting(session, profile, a_settingId) == 0 && SaveSettings(session) == 0;
+			DestroySession(session);
+			return saved;
 		}
 	};
 }

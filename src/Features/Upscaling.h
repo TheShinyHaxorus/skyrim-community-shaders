@@ -79,6 +79,8 @@ public:
 		bool dlssgHudLessCapture = false;
 		// Patches DLSS-G in memory so RTX 40 (Ada) cards accept more than one generated frame. Restart to apply.
 		bool rtx40MFGUnlock = false;
+		// DLSS-G Preset C: NVIDIA's lighter frame generation model (310.9.16). Off = the regular model. Restart to apply.
+		bool dlssgPresetC = false;
 		// Caps the presented rate while frame generation is on; the rendered rate is this divided by the multiplier.
 		bool frameGenerationFPSLimitEnabled = false;
 		float frameGenerationFPSLimit = 120.0f;
@@ -140,6 +142,7 @@ public:
 	bool d3d12SwapChainActive = false;
 	// Set by Main_PostProcessing when frame-generation inputs were copied; cleared after Present.
 	bool frameGenerationPrepared = false;
+	bool dlssgPresetCBoot = false;            ///< Preset C setting as written to the driver profile at device creation
 	bool rtx40MFGUnlockBoot = false;          ///< Unlock setting as read at device creation (the setting needs a restart)
 	std::atomic<bool> windowFocused{ true };  ///< False while the window is minimised; DLSS-G pauses
 	std::atomic<bool> windowActive{ true };   ///< False while another application is in the foreground (WM_ACTIVATEAPP); the DLSS-G presenter rejects presents then

@@ -136,6 +136,9 @@ public:
 	void SetD3DDevice12(ID3D12Device* a_device);
 	static void EnsureDriverProfileAllowsDLSSG();
 	static bool IsSmoothMotionEnabledForProfile();
+	/// Writes or clears the driver profile's DLSS-FG preset key so DLSS-G uses Preset C (the lighter
+	/// model in 310.9.16) or the regular model. Read when the DLSS-G feature is created.
+	static void ApplyDLSSGPresetC(bool a_presetC);
 
 	/** @brief Binds DLSS and Reflex feature functions after the D3D device is created. */
 	void PostDevice();

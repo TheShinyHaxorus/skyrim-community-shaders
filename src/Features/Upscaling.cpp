@@ -39,6 +39,7 @@ NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(
 	dlssgWorldCameraConstants,
 	dlssgHudLessCapture,
 	rtx40MFGUnlock,
+	dlssgPresetC,
 	frameGenerationFPSLimitEnabled,
 	frameGenerationFPSLimit,
 	streamlineLogLevel,
@@ -116,6 +117,11 @@ HRESULT WINAPI hk_D3D11CreateDeviceAndSwapChainUpscaling(
 	// The unlock patches the DLSS-G runtime as it loads, so it is decided before the SDKs load.
 	upscaling.rtx40MFGUnlockBoot = upscaling.settings.rtx40MFGUnlock;
 	MfgUnlock::SetEnabled(upscaling.settings.rtx40MFGUnlock && upscaling.settings.enableDLSSFrameGen && upscaling.settings.frameGenerationMode != 0);
+
+	// The DLSS-G provider reads the preset from the driver profile when it creates the feature.
+	upscaling.dlssgPresetCBoot = upscaling.settings.dlssgPresetC;
+	if (upscaling.settings.enableDLSSFrameGen || upscaling.settings.dlssgPresetC)
+		Streamline::ApplyDLSSGPresetC(upscaling.settings.dlssgPresetC);
 
 	upscaling.LoadUpscalingSDKs();
 
@@ -463,6 +469,14 @@ void Upscaling::DrawSettings()
 				settings.dlssgFramesToGenerate = static_cast<uint>(multiplier - 1);
 			if (auto _tt = Util::HoverTooltipWrapper())
 				ImGui::Text("%s", T(TKEY("dlssg_frame_multiplier_tooltip"), "How many total frames are shown per rendered frame. Higher values generate more frames."));
+
+			ImGui::Checkbox(T(TKEY("dlssg_preset_c"), "Frame Generation Preset C (Performance)"), &settings.dlssgPresetC);
+			if (auto _tt = Util::HoverTooltipWrapper()) {
+				ImGui::TextUnformatted(T(TKEY("dlssg_preset_c_tooltip_1"), "Off: the regular DLSS-G model. On: Preset C, NVIDIA's lighter model, which swaps the UI and ray-traced optical flow for a cheaper algorithm. Faster, with small UI and text glitches possible."));
+				ImGui::TextUnformatted(T(TKEY("dlssg_preset_c_tooltip_2"), "Needs DLSS-G 310.9.16 or newer. Written to the Skyrim driver profile, as the NVIDIA App's DLSS override does. Takes effect after a restart."));
+			}
+			if (settings.dlssgPresetC != dlssgPresetCBoot)
+				Util::Text::WrappedWarning("%s", T(TKEY("dlssg_preset_c_restart"), "Preset change takes effect after a restart."));
 
 			ImGui::Checkbox(T(TKEY("rtx40_mfg_unlock"), "RTX 40 Multi Frame Generation Unlock"), &settings.rtx40MFGUnlock);
 			if (auto _tt = Util::HoverTooltipWrapper()) {

@@ -437,6 +437,36 @@ void Streamline::EnsureDriverProfileAllowsDLSSG()
 	drs.DestroySession(session);
 }
 
+void Streamline::ApplyDLSSGPresetC(bool a_presetC)
+{
+	Util::NvApiDrs::Api drs{};
+	uint32_t current = 0;
+	const bool present = drs.TryGetSkyrimSetting(Util::NvApiDrs::kKeyDLSSGPreset, current);
+
+	if (a_presetC) {
+		if (present && current == Util::NvApiDrs::kDLSSGPresetC) {
+			logger::info("[Streamline DX12] DLSS-G Preset C already selected in the driver profile");
+			return;
+		}
+		if (drs.TrySetSkyrimSetting(Util::NvApiDrs::kKeyDLSSGPreset, Util::NvApiDrs::kDLSSGPresetC))
+			logger::info("[Streamline DX12] DLSS-G Preset C selected in the driver profile (DRS key {:#x}, was {})",
+				Util::NvApiDrs::kKeyDLSSGPreset, present ? std::to_string(current) : std::string("unset"));
+		else
+			logger::warn("[Streamline DX12] Could not write DLSS-G Preset C to the driver profile (DRS key {:#x}); the regular model stays in use",
+				Util::NvApiDrs::kKeyDLSSGPreset);
+		return;
+	}
+
+	// Back to the regular model: only clear the key when it holds Preset C. A or B chosen in the
+	// NVIDIA App is the user's own override and stays.
+	if (!present || current != Util::NvApiDrs::kDLSSGPresetC)
+		return;
+	if (drs.TryDeleteSkyrimSetting(Util::NvApiDrs::kKeyDLSSGPreset))
+		logger::info("[Streamline DX12] DLSS-G Preset C cleared from the driver profile; the regular model is back");
+	else
+		logger::warn("[Streamline DX12] Could not clear DLSS-G Preset C from the driver profile (DRS key {:#x})", Util::NvApiDrs::kKeyDLSSGPreset);
+}
+
 bool Streamline::IsSmoothMotionEnabledForProfile()
 {
 	Util::NvApiDrs::Api drs{};
