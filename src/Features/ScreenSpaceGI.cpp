@@ -3,6 +3,7 @@
 #include <DirectXTex.h>
 
 #include "../I18n/I18n.h"
+#include "CSEditor/SceneManager/SceneWidgetInterceptor.h"
 #include "Deferred.h"
 #include "Features/ReverseZ.h"
 #include "State.h"
@@ -91,7 +92,9 @@ void ScreenSpaceGI::DrawSettings()
 	{
 		auto qualityGuard = Util::DisableGuard(!settings.Enabled);
 
-		if (ImGui::BeginTable("Presets", 5)) {
+		// A preset button writes several settings at once, which the per-control override system
+		// cannot represent, so hide it while a Scene Manager replica is borrowing this panel.
+		if (!SceneWidgetInterceptor::IsArmed() && ImGui::BeginTable("Presets", 5)) {
 			ImGui::TableNextColumn();
 			if (ImGui::Button(T(TKEY("ao_only"), "AO only"), { -1, 0 })) {
 				settings.NumSlices = 1;
@@ -169,7 +172,7 @@ void ScreenSpaceGI::DrawSettings()
 									  "Controls accuracy of lighting, and noise when effect radius is large."));
 		}
 
-		if (ImGui::BeginTable("Less Work", 3)) {
+		if (ImGui::BeginTable("Less Work", 3, ImGuiTableFlags_SizingStretchSame)) {
 			ImGui::TableNextColumn();
 			recompileFlag |= ImGui::RadioButton(T(TKEY("full_res"), "Full Res"), &settings.ResolutionMode, 0);
 			ImGui::TableNextColumn();
@@ -320,6 +323,11 @@ void ScreenSpaceGI::DrawSettings()
 		}
 	}
 
+	// The buffer viewer has no scene-context meaning, so hide it while a Scene Manager replica
+	// is borrowing this panel to author overrides.
+	if (SceneWidgetInterceptor::IsArmed())
+		return;
+
 	///////////////////////////////
 	ImGui::SeparatorText(T(TKEY("debug"), "Debug"));
 
@@ -344,12 +352,20 @@ void ScreenSpaceGI::DrawSettings()
 
 void ScreenSpaceGI::LoadSettings(json& o_json)
 {
+	const auto previous = settings;
+
 	settings = o_json;
 	settings.ResolutionMode = std::clamp(settings.ResolutionMode, 0, 2);
 	settings.NumSlices = std::clamp(settings.NumSlices, 1u, 10u);
 	settings.NumSteps = std::clamp(settings.NumSteps, 1u, 20u);
 
-	recompileFlag = true;
+	// Scene overrides reload settings on every value change, so recompile only when a setting
+	// CompileComputeShaders turns into a define changed.
+	recompileFlag = recompileFlag ||
+	                settings.ResolutionMode != previous.ResolutionMode ||
+	                settings.EnableTemporalDenoiser != previous.EnableTemporalDenoiser ||
+	                settings.EnableGI != previous.EnableGI ||
+	                settings.EnableExperimentalSpecularGI != previous.EnableExperimentalSpecularGI;
 }
 
 void ScreenSpaceGI::SaveSettings(json& o_json)
@@ -506,13 +522,8 @@ void ScreenSpaceGI::SetupResources()
 			texIlY[1]->CreateSRV(srvDesc);
 			texIlY[1]->CreateUAV(uavDesc);
 
-			texGiSpecular[0] = eastl::make_unique<Texture2D>(texDesc, "SSGI::GiSpecular[0]");
-			texGiSpecular[0]->CreateSRV(srvDesc);
-			texGiSpecular[0]->CreateUAV(uavDesc);
-
-			texGiSpecular[1] = eastl::make_unique<Texture2D>(texDesc, "SSGI::GiSpecular[1]");
-			texGiSpecular[1]->CreateSRV(srvDesc);
-			texGiSpecular[1]->CreateUAV(uavDesc);
+			if (settings.EnableExperimentalSpecularGI)
+				EnsureGiSpecularTextures();
 		}
 		srvDesc.Format = uavDesc.Format = texDesc.Format = DXGI_FORMAT_R16G16_FLOAT;
 		{
@@ -525,8 +536,12 @@ void ScreenSpaceGI::SetupResources()
 			texIlCoCg[1]->CreateUAV(uavDesc);
 		}
 
-		srvDesc.Format = uavDesc.Format = texDesc.Format = DXGI_FORMAT_R8_UNORM;
 		{
+			UINT aoFormatSupport = 0;
+			const bool aoHighPrecision = SUCCEEDED(device->CheckFormatSupport(DXGI_FORMAT_R16_UNORM, &aoFormatSupport)) &&
+			                             (aoFormatSupport & D3D11_FORMAT_SUPPORT_TYPED_UNORDERED_ACCESS_VIEW);
+			srvDesc.Format = uavDesc.Format = texDesc.Format = aoHighPrecision ? DXGI_FORMAT_R16_UNORM : DXGI_FORMAT_R8_UNORM;
+
 			texAo[0] = eastl::make_unique<Texture2D>(texDesc, "SSGI::AO[0]");
 			texAo[0]->CreateSRV(srvDesc);
 			texAo[0]->CreateUAV(uavDesc);
@@ -534,7 +549,10 @@ void ScreenSpaceGI::SetupResources()
 			texAo[1] = eastl::make_unique<Texture2D>(texDesc, "SSGI::AO[1]");
 			texAo[1]->CreateSRV(srvDesc);
 			texAo[1]->CreateUAV(uavDesc);
+		}
 
+		srvDesc.Format = uavDesc.Format = texDesc.Format = DXGI_FORMAT_R8_UNORM;
+		{
 			texAccumFrames[0] = eastl::make_unique<Texture2D>(texDesc, "SSGI::AccumFrames[0]");
 			texAccumFrames[0]->CreateSRV(srvDesc);
 			texAccumFrames[0]->CreateUAV(uavDesc);
@@ -610,6 +628,7 @@ void ScreenSpaceGI::SetupResources()
 
 void ScreenSpaceGI::ClearShaderCache()
 {
+	queuedResetHistory = true;
 	static const std::vector<winrt::com_ptr<ID3D11ComputeShader>*> shaderPtrs = {
 		&prefilterDepthsCompute, &prefilterRadianceCompute, &prefilterNormalCompute, &radianceDisoccCompute, &giCompute, &blurCompute, &upsampleCompute
 	};
@@ -631,7 +650,7 @@ void ScreenSpaceGI::CompileComputeShaders()
 
 	std::vector<ShaderCompileInfo>
 		shaderInfos = {
-			{ &prefilterDepthsCompute, "prefilterDepths.cs.hlsl", { { "LINEAR_FILTER", "" } } },
+			{ &prefilterDepthsCompute, "prefilterDepths.cs.hlsl", { { "WEIGHTED_FILTER", "" } } },
 			{ &prefilterRadianceCompute, "prefilterRadiance.cs.hlsl", {} },
 			{ &prefilterNormalCompute, "prefilterNormal.cs.hlsl", {} },
 			{ &radianceDisoccCompute, "radianceDisocc.cs.hlsl", {} },
@@ -721,6 +740,36 @@ void ScreenSpaceGI::UpdateSB()
 	ssgiCB->Update(data);
 }
 
+void ScreenSpaceGI::EnsureGiSpecularTextures()
+{
+	if (texGiSpecular[0] || !texIlY[0])
+		return;
+
+	D3D11_TEXTURE2D_DESC texDesc = texIlY[0]->desc;
+	D3D11_SHADER_RESOURCE_VIEW_DESC srvDesc = {
+		.Format = texDesc.Format,
+		.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D,
+		.Texture2D = { .MostDetailedMip = 0, .MipLevels = 1 }
+	};
+	D3D11_UNORDERED_ACCESS_VIEW_DESC uavDesc = {
+		.Format = texDesc.Format,
+		.ViewDimension = D3D11_UAV_DIMENSION_TEXTURE2D,
+		.Texture2D = { .MipSlice = 0 }
+	};
+
+	texGiSpecular[0] = eastl::make_unique<Texture2D>(texDesc, "SSGI::GiSpecular[0]");
+	texGiSpecular[0]->CreateSRV(srvDesc);
+	texGiSpecular[0]->CreateUAV(uavDesc);
+
+	texGiSpecular[1] = eastl::make_unique<Texture2D>(texDesc, "SSGI::GiSpecular[1]");
+	texGiSpecular[1]->CreateSRV(srvDesc);
+	texGiSpecular[1]->CreateUAV(uavDesc);
+
+	const FLOAT clr[4] = { 0.f, 0.f, 0.f, 0.f };
+	globals::d3d::context->ClearUnorderedAccessViewFloat(texGiSpecular[0]->uav.get(), clr);
+	globals::d3d::context->ClearUnorderedAccessViewFloat(texGiSpecular[1]->uav.get(), clr);
+}
+
 void ScreenSpaceGI::DrawSSGI()
 {
 	auto context = globals::d3d::context;
@@ -731,6 +780,9 @@ void ScreenSpaceGI::DrawSSGI()
 	// Toggle vanilla SSAO
 	if (BSImagespaceShaderISSAOBlurH)
 		BSImagespaceShaderISSAOBlurH->enableSAO = settings.EnableVanillaSSAO;
+
+	if (settings.Enabled && settings.EnableExperimentalSpecularGI)
+		EnsureGiSpecularTextures();
 
 	if (!(settings.Enabled && ShadersOK())) {
 		FLOAT clr[4] = { 0.f, 0.f, 0.f, 0.f };
@@ -751,6 +803,15 @@ void ScreenSpaceGI::DrawSSGI()
 
 	// Zeroing the accumulation count drives the denoiser's lerp factor to 1, dropping stale
 	// history in one frame instead of fading it over MaxAccumFrames.
+	{
+		float2 frameDim = Util::ConvertToDynamic(float2{ (float)texRadiance->desc.Width, (float)texRadiance->desc.Height });
+		frameDim = { floor(frameDim.x), floor(frameDim.y) };
+		static float2 previousFrameDim = { 0.0f, 0.0f };
+		if (previousFrameDim.x != frameDim.x || previousFrameDim.y != frameDim.y) {
+			previousFrameDim = frameDim;
+			queuedResetHistory = true;
+		}
+	}
 	if (queuedResetHistory.exchange(false)) {
 		FLOAT clr[4] = { 0.f, 0.f, 0.f, 0.f };
 		for (auto& tex : texAccumFrames)
@@ -827,7 +888,7 @@ void ScreenSpaceGI::DrawSSGI()
 		srvs.at(6) = texAo[inputAoTexIdx]->srv.get();
 		srvs.at(7) = texIlY[inputGITexIdx]->srv.get();
 		srvs.at(8) = texIlCoCg[inputGITexIdx]->srv.get();
-		srvs.at(9) = texGiSpecular[inputAoTexIdx]->srv.get();
+		srvs.at(9) = GiSpecularSRV(inputAoTexIdx);
 		srvs.at(10) = nullptr;
 
 		uavs.at(0) = texRadianceTemp->uav.get();
@@ -835,7 +896,7 @@ void ScreenSpaceGI::DrawSSGI()
 		uavs.at(2) = texAo[!inputAoTexIdx]->uav.get();
 		uavs.at(3) = texIlY[!inputGITexIdx]->uav.get();
 		uavs.at(4) = texIlCoCg[!inputGITexIdx]->uav.get();
-		uavs.at(5) = texGiSpecular[!inputAoTexIdx]->uav.get();
+		uavs.at(5) = GiSpecularUAV(!inputAoTexIdx);
 
 		context->CSSetShaderResources(0, (uint)srvs.size(), srvs.data());
 		context->CSSetUnorderedAccessViews(0, (uint)uavs.size(), uavs.data(), nullptr);
@@ -903,13 +964,14 @@ void ScreenSpaceGI::DrawSSGI()
 		srvs.at(4) = texAccumFrames[lastFrameAccumTexIdx]->srv.get();
 		srvs.at(5) = texIlY[inputGITexIdx]->srv.get();
 		srvs.at(6) = texIlCoCg[inputGITexIdx]->srv.get();
-		srvs.at(7) = texGiSpecular[inputAoTexIdx]->srv.get();
+		srvs.at(7) = GiSpecularSRV(inputAoTexIdx);
 		srvs.at(8) = texNormal->srv.get();
+		srvs.at(9) = texAo[inputAoTexIdx]->srv.get();
 
 		uavs.at(0) = texAo[!inputAoTexIdx]->uav.get();
 		uavs.at(1) = texIlY[!inputGITexIdx]->uav.get();
 		uavs.at(2) = texIlCoCg[!inputGITexIdx]->uav.get();
-		uavs.at(3) = texGiSpecular[!inputAoTexIdx]->uav.get();
+		uavs.at(3) = GiSpecularUAV(!inputAoTexIdx);
 		uavs.at(4) = texPrevGeo->uav.get();
 
 		context->CSSetShaderResources(0, (uint)srvs.size(), srvs.data());
@@ -959,12 +1021,12 @@ void ScreenSpaceGI::DrawSSGI()
 		srvs.at(1) = texAo[inputAoTexIdx]->srv.get();
 		srvs.at(2) = texIlY[inputGITexIdx]->srv.get();
 		srvs.at(3) = texIlCoCg[inputGITexIdx]->srv.get();
-		srvs.at(4) = texGiSpecular[inputAoTexIdx]->srv.get();
+		srvs.at(4) = GiSpecularSRV(inputAoTexIdx);
 
 		uavs.at(0) = texAo[!inputAoTexIdx]->uav.get();
 		uavs.at(1) = texIlY[!inputGITexIdx]->uav.get();
 		uavs.at(2) = texIlCoCg[!inputGITexIdx]->uav.get();
-		uavs.at(3) = texGiSpecular[!inputAoTexIdx]->uav.get();
+		uavs.at(3) = GiSpecularUAV(!inputAoTexIdx);
 
 		context->CSSetShaderResources(0, (uint)srvs.size(), srvs.data());
 		context->CSSetUnorderedAccessViews(0, (uint)uavs.size(), uavs.data(), nullptr);

@@ -5,7 +5,9 @@
 #include "ShaderCache.h"
 #include "State.h"
 #include "Utils/D3D.h"
+#include "VanillaBinding.h"
 
+#include "Features/CSEditor.h"
 #include "Features/DynamicCubemaps.h"
 #include "Features/Effects11.h"
 #include "Features/FurShells.h"
@@ -13,11 +15,10 @@
 #include "Features/ReverseZ.h"
 #include "Features/ScreenSpaceGI.h"
 #include "Features/Skylighting.h"
+#include "Features/SnowDeformation.h"
 #include "Features/SubsurfaceScattering.h"
 #include "Features/TerrainBlending.h"
-#include "Features/TerrainShadows.h"
 #include "Features/Upscaling.h"
-#include "Features/CSEditor.h"
 
 #include "Hooks.h"
 
@@ -365,15 +366,15 @@ void Deferred::DeferredPasses()
 			albedo.SRV,                                                                                      // t1  AlbedoTexture
 			normalRoughness.SRV,                                                                             // t2  NormalRoughnessTexture
 			masks.SRV,                                                                                       // t3  MasksTexture
-			dynamicCubemaps.loaded ? Util::GetCurrentSceneDepthSRV(false) : nullptr,                         // t4  DepthTexture (24/32-bit; HLSL type baked at compile via TERRAIN_BLENDING)
+			Util::GetCurrentSceneDepthSRV(false),                                                            // t4  DepthTexture (24/32-bit; HLSL type baked at compile via TERRAIN_BLENDING)
 			dynamicCubemaps.loaded ? reflectance.SRV : nullptr,                                              // t5  ReflectanceTexture
 			dynamicCubemaps.loaded ? dynamicCubemaps.envTexture->srv.get() : nullptr,                        // t6  EnvTexture
 			dynamicCubemaps.loaded ? dynamicCubemaps.envReflectionsTexture->srv.get() : nullptr,             // t7  EnvReflectionsTexture
 			dynamicCubemaps.loaded && skylighting.loaded ? skylighting.texProbeArray->srv.get() : nullptr,   // t8  SkylightingProbeArray
 			masks2.SRV,                                                                                      // t9  Masks2Texture (vertexAO in .x)
 			ssgi_ao,                                                                                         // t10 SsgiAoTexture
-			ssgi_hq_spec ? nullptr : ssgi_y,                                                                 // t11 SsgiYTexture
-			ssgi_hq_spec ? nullptr : ssgi_cocg,                                                              // t12 SsgiCoCgTexture
+			ssgi_y,                                                                                          // t11 SsgiYTexture
+			ssgi_cocg,                                                                                       // t12 SsgiCoCgTexture
 			ssgi_hq_spec ? ssgi_gi_spec : nullptr,                                                           // t13 SsgiSpecularTexture
 			ibl.loaded ? ibl.envIBLTexture->srv.get() : nullptr,                                             // t14 EnvIBLTexture
 			ibl.loaded ? ibl.skyIBLTexture->srv.get() : nullptr,                                             // t15 SkyIBLTexture
@@ -656,6 +657,8 @@ ID3D11ComputeShader* Deferred::GetComputeMainCompositeInterior()
 
 void Deferred::Hooks::Main_RenderShadowMaps::thunk()
 {
+	if (globals::features::snowDeformation.loaded)
+		globals::features::snowDeformation.UpdateFieldOnce();
 	func();
 	globals::deferred->EarlyPrepasses();
 };
@@ -731,15 +734,9 @@ void Deferred::Hooks::BSCubeMapCamera_RenderCubemap::thunk(RE::NiAVObject* camer
 	static uint32_t nextFace = 0;
 
 	const auto render = [&](int a_faces, bool a_last) {
-		auto& terrainShadows = globals::features::terrainShadows;
-
 		deferred->ReflectionsPrepasses();
 		state->permutationData.ExtraShaderDescriptor |= static_cast<uint32_t>(State::ExtraShaderDescriptors::IsReflections);
-		if (terrainShadows.loaded)
-			terrainShadows.lodShadowMap.BeginFace(camera, static_cast<uint32_t>(a_faces));
 		func(camera, a_faces, a3, a_last, a5);
-		if (terrainShadows.loaded)
-			terrainShadows.lodShadowMap.EndFace();
 		state->permutationData.ExtraShaderDescriptor &= ~static_cast<uint32_t>(State::ExtraShaderDescriptors::IsReflections);
 	};
 
@@ -774,11 +771,5 @@ void Deferred::Hooks::Main_RenderFirstPersonView::thunk(bool a1, bool a2)
 void Deferred::Hooks::Renderer_ResetState::thunk(void* This)
 {
 	func(This);
-
-	auto* const state = globals::state;
-	auto* const context = globals::d3d::context;
-
-	ID3D11Buffer* buffers[3] = { state->permutationCB->CB(), state->sharedDataCB->CB(), state->featureDataCB->CB() };
-	context->PSSetConstantBuffers(4, 3, buffers);
-	context->CSSetConstantBuffers(5, 2, buffers + 1);
+	VanillaBinding::BindSharedConstantBuffers();
 }

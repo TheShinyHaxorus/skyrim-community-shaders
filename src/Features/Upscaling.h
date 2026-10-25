@@ -5,7 +5,6 @@
 #include "Upscaling/DlssD3D12Bridge.h"
 #include "Upscaling/DlssNR.h"
 #include "Upscaling/FidelityFX.h"
-#include "Upscaling/FrameGenStats.h"
 #include "Upscaling/RCAS/RCAS.h"
 #include "Upscaling/Streamline.h"
 #include <d3d11_4.h>
@@ -44,13 +43,6 @@ public:
 
 	float2 jitter = { 0, 0 };
 
-	enum class FrameGenMethod
-	{
-		kNone,
-		kFSR,
-		kDLSSG
-	};
-
 	enum class UpscaleMethod
 	{
 		kNONE,
@@ -70,18 +62,7 @@ public:
 		uint frameGenerationMode = 1;
 		uint frameGenerationForceEnable = 0;
 		bool frameGenerationAllowInMenus = false;
-		bool enableDLSSFrameGen = false;
-		// Generated frames per real frame (1=2x). Clamped at apply time to the
-		// hardware-reported DLSSGState::numFramesToGenerateMax.
-		uint dlssgFramesToGenerate = 1;
-		bool dlssgDisableVSync = true;
-		bool dlssgWorldCameraConstants = true;
-		bool dlssgHudLessCapture = false;
-		// Patches DLSS-G in memory so RTX 40 (Ada) cards accept more than one generated frame. Restart to apply.
-		bool rtx40MFGUnlock = false;
-		// DLSS-G Preset C: NVIDIA's lighter frame generation model (310.9.16). Off = the regular model. Restart to apply.
-		bool dlssgPresetC = false;
-		// Caps the presented rate while frame generation is on; the rendered rate is this divided by the multiplier.
+		// Caps the presented rate while frame generation is on; the rendered rate is half of it (FSR is 2x).
 		bool frameGenerationFPSLimitEnabled = false;
 		float frameGenerationFPSLimit = 120.0f;
 		uint streamlineLogLevel = 0;  // 0=Off, 1=Default, 2=Verbose
@@ -142,16 +123,9 @@ public:
 	bool d3d12SwapChainActive = false;
 	// Set by Main_PostProcessing when frame-generation inputs were copied; cleared after Present.
 	bool frameGenerationPrepared = false;
-	bool dlssgPresetCBoot = false;            ///< Preset C setting as written to the driver profile at device creation
-	bool rtx40MFGUnlockBoot = false;          ///< Unlock setting as read at device creation (the setting needs a restart)
-	std::atomic<bool> windowFocused{ true };  ///< False while the window is minimised; DLSS-G pauses
-	std::atomic<bool> windowActive{ true };   ///< False while another application is in the foreground (WM_ACTIVATEAPP); the DLSS-G presenter rejects presents then
 
 	globals::FrameBufferCache worldCameraFrame{};
 	bool worldCameraFrameValid = false;
-	bool constantsUsedWorldCamera = false;
-
-	FrameGenStats frameGenStats;
 
 	// Timing and scaling
 	double refreshRate = 0.0f;
@@ -173,6 +147,7 @@ public:
 	/** @brief Pushes the neural rendering settings and enable flag to the pass. */
 	void SyncNeuralRenderingSettings();
 	virtual void SaveSettings(json& o_json) override;
+	void WriteGameIniSettings();
 	virtual void LoadSettings(json& o_json) override;
 	virtual void RestoreDefaultSettings() override;
 	virtual void DataLoaded() override;
@@ -187,20 +162,9 @@ public:
 	virtual void SetupResources() override;
 
 	UpscaleMethod GetUpscaleMethod() const;
-	FrameGenMethod GetFrameGenMethod() const;
-	bool UsesDLSSGFrameGen() const;
 
-	/** @brief Real:generated frame ratio for the active FG backend -- the single source
-	 * of truth for pacing (FrameLimiter) and reporting (PerformanceOverlay). */
-	uint GetFrameGenerationMultiplier() const;
-
-	json GetFrameGenDiagnostics();
 	void CaptureWorldCamera();
-	const globals::FrameBufferCache& GetConstantsCamera(bool* a_usedWorldCamera = nullptr) const;
-	bool IsForeignCameraPublished() const;
-	void CaptureHudLessColor();
-	void RecordFrameGenPresent(double a_presentMs, UINT a_syncInterval, bool a_tearing, bool a_hudLess);
-	void LogFrameGenStats();
+	const globals::FrameBufferCache& GetConstantsCamera() const;
 
 	void CheckResources(UpscaleMethod a_upscalemethod);
 	void CreateUpscalingTextureResources(UpscaleMethod a_upscalemethod);
@@ -247,8 +211,7 @@ public:
 
 	// Static instances instead of singletons
 	static inline Streamline streamline;
-	static inline Streamline streamlineDX12;  ///< DLSS-G frame generation
-	static inline FidelityFX fidelityFX;      ///< AMD FSR frame generation
+	static inline FidelityFX fidelityFX;  ///< AMD FSR frame generation
 	static inline DX12SwapChain dx12SwapChain;
 	static inline DlssD3D12Bridge dlssBridge;  ///< D3D12 bridge for DLSS 5 neural rendering
 	static inline RCAS rcas;  ///< Standalone RCAS sharpening for DLSS
@@ -263,13 +226,6 @@ public:
 
 	bool previousUpscalingWasActive = false;
 	bool depthUpscaleUseWideKernel = false;
-
-	/**
-	 * Set by MenuOpenCloseEventHandler when LoadingMenu closes (cell/worldspace transitions,
-	 * initial load). Consumed at the start of Upscale() to force a one-frame DLSS feature
-	 * rebuild.
-	 */
-	std::atomic<bool> pendingDLSSReset{ false };
 
 	/** @brief Copies depth and motion vectors for frame generation; returns false if its shaders or shared buffers are unavailable. */
 	bool CopySharedD3D12Resources();
@@ -293,7 +249,6 @@ public:
 	// Unified interface methods - external code should use these instead of direct access
 	void LoadUpscalingSDKs();  // Loads all SDKs at once
 	HANDLE GetFrameLatencyWaitableObject() const;
-	float GetFrameTime() const;
 
 	// Backend interface methods
 	bool IsBackendInitialized() const;
@@ -309,7 +264,6 @@ public:
 	void SetProxyD3D11Device(ID3D11Device* device);
 	void SetProxyD3D11DeviceContext(ID3D11DeviceContext* context);
 	void CreateProxySwapChain(IDXGIAdapter* adapter, DXGI_SWAP_CHAIN_DESC swapChainDesc);
-	void CreateProxySwapChainDirect(IDXGIAdapter* adapter, DXGI_SWAP_CHAIN_DESC swapChainDesc);
 	void CreateProxyInterop();
 	IDXGISwapChain* GetProxySwapChain();
 
@@ -347,12 +301,5 @@ private:
 	{
 		static void thunk();
 		static inline REL::Relocation<decltype(thunk)> func;
-	};
-
-	class MenuOpenCloseEventHandler : public RE::BSTEventSink<RE::MenuOpenCloseEvent>
-	{
-	public:
-		virtual RE::BSEventNotifyControl ProcessEvent(const RE::MenuOpenCloseEvent* a_event, RE::BSTEventSource<RE::MenuOpenCloseEvent>*) override;
-		static bool Register();
 	};
 };

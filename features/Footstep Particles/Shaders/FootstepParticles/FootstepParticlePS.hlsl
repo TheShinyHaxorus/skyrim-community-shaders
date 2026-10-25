@@ -1,4 +1,4 @@
-#include "Common/Color.hlsli"
+#include "Common/ColorManagement.hlsli"
 #include "Common/FrameBuffer.hlsli"
 #include "Common/Math.hlsli"
 #include "Common/Random.hlsli"
@@ -34,10 +34,6 @@ Texture2D<float4> ShadowMaskTexture : register(t1);
 #	include "LightLimitFix/LightLimitFix.hlsli"
 #endif
 
-#if defined(ISL) && defined(LIGHT_LIMIT_FIX)
-#	include "InverseSquareLighting/InverseSquareLighting.hlsli"
-#endif
-
 struct PS_INPUT
 {
 	float4 Position : SV_POSITION;
@@ -49,6 +45,7 @@ struct PS_INPUT
 	nointerpolation float Seed : TEXCOORD2;
 	nointerpolation float Softness : TEXCOORD3;
 	float ViewDepth : TEXCOORD4;
+	float2 SphereCoord : TEXCOORD5;
 };
 
 float3 GetPointLighting(float3 positionWS)
@@ -67,14 +64,8 @@ float3 GetPointLighting(float3 positionWS)
 			if (light.lightFlags & LightLimitFix::LightFlags::ShadowCaster)
 				continue;
 			float lightDistance = length(light.positionWS.xyz - positionWS);
-#	if defined(ISL)
-			float attenuation = InverseSquareLighting::GetAttenuation(lightDistance, light);
-#	else
-			float intensityFactor = saturate(lightDistance / light.radius);
-			float attenuation = 1.0 - intensityFactor * intensityFactor;
-#	endif
-			const bool isLinear = light.lightFlags & LightLimitFix::LightFlags::Linear;
-			lighting += Color::PointLight(light.color.xyz, isLinear) * attenuation * 0.5 * light.fade * Color::EffectLightingMult();
+			float attenuation = LightLimitFix::GetAttenuation(lightDistance, light);
+			lighting += Color::PointLight(light.color.xyz) * attenuation * 0.5 * light.fade * Color::EffectLightingScale;
 		}
 	}
 #endif
@@ -134,7 +125,7 @@ float4 main(PS_INPUT input) : SV_Target
 		if (!SharedData::iblSettings.EnableIBL)
 #	endif
 		{
-			ambient = Color::IrradianceToGamma(Color::IrradianceToLinear(ambient) * skylightingDiffuse);
+			ambient = ColorManagement::SceneColor::ScaleByLinear(ambient, skylightingDiffuse);
 		}
 	}
 #endif
@@ -150,7 +141,7 @@ float4 main(PS_INPUT input) : SV_Target
 
 	float3 right = FrameBuffer::ViewToWorld(float3(1.0, 0.0, 0.0), false);
 	float3 up = FrameBuffer::ViewToWorld(float3(0.0, 1.0, 0.0), false);
-	float3 sphereNormal = normalize(right * uv.x + up * uv.y - viewDirection * sqrt(saturate(1.0 - radiusSquared)));
+	float3 sphereNormal = normalize(right * input.SphereCoord.x + up * input.SphereCoord.y - viewDirection * sqrt(saturate(1.0 - radiusSquared)));
 
 	float3 pointLighting = GetPointLighting(positionWS);
 	float3 color;
@@ -184,8 +175,8 @@ float4 main(PS_INPUT input) : SV_Target
 	float fogFactor = 0.0;
 	float3 fogColor = 0.0;
 	if (FootstepParticles::FrameFlags & FootstepParticles::FrameFlagFog) {
-		fogFactor = Color::FogAlpha(input.FogParam.w);
-		fogColor = Color::Fog(input.FogParam.xyz);
+		fogFactor = input.FogParam.w;
+		fogColor = input.FogParam.xyz;
 #if defined(IBL)
 		if (SharedData::iblSettings.EnableIBL)
 			fogColor = ImageBasedLighting::GetFogIBLColor(fogColor);

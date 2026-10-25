@@ -6,6 +6,7 @@
 #include "Utils/PerfUtils.h"
 #include <nlohmann/json.hpp>
 #include <optional>
+#include <string_view>
 #include <unordered_map>
 #include <variant>
 
@@ -117,6 +118,8 @@ public:
 
 struct PerformanceOverlay : OverlayFeature
 {
+	static constexpr std::string_view kWindowId = "###PerformanceOverlay";
+
 	// ============================================================================
 	// VIRTUAL OVERRIDES (Feature.h interface)
 	// ============================================================================
@@ -215,6 +218,7 @@ struct PerformanceOverlay : OverlayFeature
 		// Frame time history buffers
 		CircularBuffer<float> frameTimeHistory;
 		CircularBuffer<float> postFGFrameTimeHistory;
+		Util::GraphSampleGate graphSampleGate;
 
 		// State flags
 		bool isFrameGenerationActive = false;
@@ -265,6 +269,7 @@ struct PerformanceOverlay : OverlayFeature
 		static constexpr float kGraphSpreadMultiplier = 2.0f;        // Standard deviation multiplier for graph range
 		static constexpr float kGraphMinSpread = 2.0f;               // ms - Minimum graph spread
 		static constexpr float kGraphMaxSpread = 20.0f;              // ms - Maximum graph spread
+		static constexpr float kFrameGenerationMultiplier = 2.0f;    // Frame generation doubles frame rate
 		static constexpr float kMaxUpdateInterval = 2.0f;            // seconds - Maximum update interval
 		static constexpr float kDefaultWindowPadding = 10.0f;        // pixels - Default window padding
 		static constexpr float kLabelPadding = 100.0f;               // pixels - Padding for labels
@@ -275,7 +280,8 @@ struct PerformanceOverlay : OverlayFeature
 		static constexpr int kMinFrameHistorySize = 120;             // 2s @ 60fps, 0.5s @ 240fps
 		static constexpr int kMaxFrameHistorySize = 1800;            // 30s @ 60fps, 7.5s @ 240fps
 
-		bool ShowInOverlay = true;  // was: Enabled
+		bool ShowInOverlay = true;       // was: Enabled
+		bool ShowWeatherPicker = false;  // standalone weather picker window, independent of the overlay above
 		bool ShowDrawCalls = true;
 		bool ShowCSPasses = true;
 		bool ShowVRAM = true;

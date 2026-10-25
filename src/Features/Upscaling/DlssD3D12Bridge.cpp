@@ -359,7 +359,6 @@ bool DlssD3D12Bridge::Dispatch(const Inputs& a_inputs)
 		return false;
 
 	auto& swapChain = globals::features::upscaling.dx12SwapChain;
-	auto& streamlineDX12 = globals::features::upscaling.streamlineDX12;
 
 	auto* commandContext = AcquireCommandContext();
 	if (!commandContext)
@@ -392,24 +391,10 @@ bool DlssD3D12Bridge::Dispatch(const Inputs& a_inputs)
 		DX::ThrowIfFailed(commandAllocator->Reset());
 		DX::ThrowIfFailed(commandList->Reset(commandAllocator, nullptr));
 
-		// NGX needs the native device and list, not Streamline's proxies. With DLSS-G active the
-		// swap chain's device is Streamline's wrapper and so are the lists it creates;
-		// slGetNativeInterface hands back the object itself (with a reference) when it is not one.
+		// The swap chain's D3D12 device comes straight from D3D12CreateDevice (no Streamline D3D12
+		// instance since DLSS-G left), so the device and the lists it creates are native already.
 		ID3D12Device* nativeDevice = swapChain.d3d12Device.get();
 		ID3D12GraphicsCommandList* nativeList = commandList;
-		winrt::com_ptr<IUnknown> nativeDeviceOwner, nativeListOwner;
-		if (streamlineDX12.initialized && streamlineDX12.slGetNativeInterface) {
-			void* native = nullptr;
-			if (streamlineDX12.slGetNativeInterface(swapChain.d3d12Device.get(), &native) == sl::Result::eOk && native) {
-				nativeDeviceOwner.attach(static_cast<IUnknown*>(native));
-				nativeDevice = static_cast<ID3D12Device*>(native);
-			}
-			native = nullptr;
-			if (streamlineDX12.slGetNativeInterface(commandList, &native) == sl::Result::eOk && native) {
-				nativeListOwner.attach(static_cast<IUnknown*>(native));
-				nativeList = static_cast<ID3D12GraphicsCommandList*>(native);
-			}
-		}
 		DlssNR::Run(nativeDevice, nativeList,
 			colorInShared->resource.get(), depth12, motion12,
 			colorInDesc.Width, colorInDesc.Height, a_inputs.resetHistory, 1.0f, 1.0f, a_inputs.jitterDeltaX, a_inputs.jitterDeltaY);

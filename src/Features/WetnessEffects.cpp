@@ -1,7 +1,12 @@
 #include "WetnessEffects.h"
 #include "CSEditor.h"
+#include "CSEditor/SceneManager/SceneWidgetInterceptor.h"
 #include "I18n/I18n.h"
 #include "Menu.h"
+#include "ShaderCache.h"
+#include "Skin.h"
+#include "PerformanceOverlay.h"
+#include "State.h"
 
 #define I18N_KEY_PREFIX "feature.wetness_effects."
 
@@ -11,7 +16,6 @@ NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(
 	MaxRainWetness,
 	MaxPuddleWetness,
 	MaxShoreWetness,
-	GrassWetnessRoughness,
 	ShoreRange,
 	PuddleRadius,
 	PuddleMaxAngle,
@@ -467,11 +471,6 @@ void WetnessEffects::DrawSettings()
 		if (ImGui::IsItemDeactivatedAfterEdit())
 			DetectCurrentPreset();
 
-		ImGui::SliderFloat(T(TKEY("grass_wet_roughness"), "Grass Wet Roughness"), &settings.GrassWetnessRoughness, 0.05f, 0.5f, "%.2f");
-		if (auto _tt = Util::HoverTooltipWrapper()) {
-			ImGui::Text("%s", T(TKEY("grass_wet_roughness_tooltip"), "Roughness wet grass blades fall to in rain. Lower values give a sharper, wetter sheen."));
-		}
-
 		ImGui::SliderFloat(T(TKEY("puddle_wetness"), "Puddle Wetness"), &settings.MaxPuddleWetness, 0.0f, 6.0f);
 		if (ImGui::IsItemDeactivatedAfterEdit())
 			DetectCurrentPreset();
@@ -624,20 +623,26 @@ void WetnessEffects::DrawSettings()
 		ImGui::TreePop();
 	}
 
+	// The weather picker and debug overrides have no scene-context meaning, so hide them while a
+	// Scene Manager replica is borrowing this panel to author overrides.
+	if (SceneWidgetInterceptor::IsArmed())
+		return;
+
 	ImGui::Spacing();
 	ImGui::Spacing();
 	auto& csEditor = globals::features::csEditor;
 	if (csEditor.loaded) {
+		// The picker is a standalone widget now; the CS Editor feature has no menu page to open.
 		if (ImGui::SmallButton(T(TKEY("open_weather_picker"), "Open Weather Picker"))) {
-			// Navigate to the replacement feature in the menu
-			Menu::GetSingleton()->SelectFeatureMenu(csEditor.GetShortName());
+			globals::features::performanceOverlay.settings.ShowWeatherPicker = true;
+			globals::state->MarkSettingsChanged();
 		}
 		if (auto _tt = Util::HoverTooltipWrapper()) {
-			ImGui::Text("%s", T(TKEY("open_weather_picker_tooltip"), "Open the Weather Picker in CS Utility"));
+			ImGui::Text("%s", T(TKEY("open_weather_picker_tooltip"), "Open the Weather Picker widget, which stays open when the main menu is closed"));
 		}
 	}
 
-	if (ImGui::TreeNodeEx(T(TKEY("debug"), "Debug"), ImGuiTreeNodeFlags_DefaultOpen)) {
+	if (Util::ShowDebugSections() && ImGui::TreeNodeEx(T(TKEY("debug"), "Debug"), ImGuiTreeNodeFlags_DefaultOpen)) {
 		ImGui::Checkbox(T(TKEY("enable_wetness_override"), "Enable Wetness Override"), &debugSettings.EnableWetnessOverride);
 		ImGui::Checkbox(T(TKEY("enable_puddle_override"), "Enable Puddle Override"), &debugSettings.EnablePuddleOverride);
 		ImGui::Checkbox(T(TKEY("enable_rain_override"), "Enable Rain Override"), &debugSettings.EnableRainOverride);
@@ -847,6 +852,13 @@ void WetnessEffects::ApplyClimatePreset(ClimatePreset preset)
 	// Removed clamping for all settings to allow full preset range
 }
 
+void WetnessEffects::Reset()
+{
+	// Not in GetCommonBufferData: the feature buffer is rebuilt several times per frame (see Deferred).
+	if (globals::game::ui && !globals::game::ui->GameIsPaused())
+		rainTimer += (size_t)(RE::GetSecondsSinceLastFrame() * 1000);  // BSTimer::delta is always 0 for some reason
+}
+
 WetnessEffects::PerFrame WetnessEffects::GetCommonBufferData() const
 {
 	PerFrame data{};
@@ -931,13 +943,6 @@ WetnessEffects::PerFrame WetnessEffects::GetCommonBufferData() const
 		}
 	}
 
-	static size_t rainTimer = 0;  // size_t for precision
-	static uint rainTimerFrame = UINT_MAX;
-	if (rainTimerFrame != globals::state->frameCount) {
-		rainTimerFrame = globals::state->frameCount;
-		if (!globals::game::ui->GameIsPaused())
-			rainTimer += (size_t)(RE::GetSecondsSinceLastFrame() * 1000);  // BSTimer::delta is always 0 for some reason
-	}
 	data.Time = rainTimer / 1000.f;
 
 	data.settings = settings;
@@ -947,7 +952,47 @@ WetnessEffects::PerFrame WetnessEffects::GetCommonBufferData() const
 	data.settings.RaindropInterval = 1.0f / settings.RaindropInterval;
 	data.settings.RippleLifetime = settings.RaindropInterval / settings.RippleLifetime;
 
+	lastPerFrame = data;
 	return data;
+}
+
+bool WetnessEffects::IsDry(RE::BSRenderPass* a_pass, uint32_t a_descriptor) const
+{
+	using Flags = SIE::ShaderCache::LightingShaderFlags;
+	using Techniques = SIE::ShaderCache::LightingShaderTechniques;
+	if (!a_pass || !a_pass->geometry)
+		return false;
+	if ((a_descriptor & (static_cast<uint32_t>(Flags::Skinned) | static_cast<uint32_t>(Flags::Reflections) | static_cast<uint32_t>(Flags::WorldMap))) != 0)
+		return false;
+	switch (static_cast<Techniques>(0x3F & (a_descriptor >> 24))) {
+	case Techniques::TreeAnim:
+	case Techniques::Eye:
+	case Techniques::Hair:
+	case Techniques::Facegen:
+	case Techniques::FacegenRGBTint:
+	case Techniques::LODLand:
+	case Techniques::LODLandNoise:
+	case Techniques::LODObjects:
+	case Techniques::LODObjectHD:
+		return false;
+	default:
+		break;
+	}
+
+	if (lastPerFrame.Raining > 0.0f || lastPerFrame.Wetness > 0.0f || lastPerFrame.PuddleWetness > 0.0f)
+		return false;
+
+	auto& skin = globals::features::skin;
+	if (skin.loaded && skin.settings.EnableSkin && (skin.currentWetness.x != 0.0f || skin.currentWetness.y != 0.0f))
+		return false;
+
+	if (lastPerFrame.settings.MaxShoreWetness > 0.0f) {
+		const auto& bound = a_pass->geometry->worldBound;
+		const float bottom = bound.center.z - std::max(0.0f, bound.radius);
+		if (!(bottom > globals::state->waterGridTop + static_cast<float>(lastPerFrame.settings.ShoreRange) + 64.0f))
+			return false;
+	}
+	return true;
 }
 
 void WetnessEffects::Prepass()

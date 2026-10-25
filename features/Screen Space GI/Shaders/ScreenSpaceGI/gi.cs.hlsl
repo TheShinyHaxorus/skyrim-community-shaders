@@ -42,6 +42,7 @@ Texture2D<float4> srcPrevY : register(t5);             // maybe half-res
 Texture2D<float2> srcPrevCoCg : register(t6);          // maybe half-res
 Texture2D<float4> srcPrevGISpecular : register(t7);    // maybe half-res
 Texture2D<float2> srcNormal : register(t8);
+Texture2D<float> srcPrevAo : register(t9);  // maybe half-res
 
 RWTexture2D<unorm float> outAo : register(u0);
 RWTexture2D<float4> outY : register(u1);
@@ -80,6 +81,12 @@ float GetVisibilityFunctionSmithJointApprox(float roughness, float NdotV, float 
 	float visSmithL = NdotV * (NdotL * (1 - a) + a);
 	float vis = visSmithV + visSmithL;
 	return vis > 0 ? (0.5 / vis) : 0;
+}
+
+uint HorizonBitmask(float2 angleRange)
+{
+	uint2 bitsRange = uint2(round(angleRange.x * 32u), round((angleRange.y - angleRange.x) * 32u));
+	return (bitsRange.y >= 32u ? 0xFFFFFFFFu : ((1u << bitsRange.y) - 1u)) << bitsRange.x;
 }
 
 void CalculateGI(
@@ -218,8 +225,7 @@ void CalculateGI(
 				// Using smoothstep for cos: https://discord.com/channels/586242553746030596/586245736413528082/1102228968247144570
 				angleRange = smoothstep(0, 1, (angleRange + n) * Math::INV_PI + .5);
 
-				uint2 bitsRange = uint2(round(angleRange.x * 32u), round((angleRange.y - angleRange.x) * 32u));
-				uint maskedBits = s < AORadius ? ((1 << bitsRange.y) - 1) << bitsRange.x : 0;
+				uint maskedBits = s < AORadius ? HorizonBitmask(angleRange) : 0;
 
 #ifdef GI
 				// Back-side horizon vector for GI-radius sampling depth (~300 units).
@@ -231,16 +237,14 @@ void CalculateGI(
 				float coneHalfAngles = max(5e-2, specularLobeHalfAngle(roughness));  // not too small
 				float2 angleRangeSpecular = clamp((angleRangeGI + nDom) * 0.5 / coneHalfAngles, -1, 1) * 0.5 + 0.5;
 
-				uint2 bitsRangeGISpecular = uint2(round(angleRangeSpecular.x * 32u), round((angleRangeSpecular.y - angleRangeSpecular.x) * 32u));
-				uint maskedBitsGISpecular = s < GIRadius ? ((1 << bitsRangeGISpecular.y) - 1) << bitsRangeGISpecular.x : 0;
+				uint maskedBitsGISpecular = s < GIRadius ? HorizonBitmask(angleRangeSpecular) : 0;
 #	endif
 
 				// The math: https://www.desmos.com/calculator/je4y5ved2j
 				// Using smoothstep for cos: https://discord.com/channels/586242553746030596/586245736413528082/1102228968247144570
 				angleRangeGI = smoothstep(0, 1, (angleRangeGI + n) * Math::INV_PI + .5);
 
-				uint2 bitsRangeGI = uint2(round(angleRangeGI.x * 32u), round((angleRangeGI.y - angleRangeGI.x) * 32u));
-				uint maskedBitsGI = s < GIRadius ? ((1 << bitsRangeGI.y) - 1) << bitsRangeGI.x : 0;
+				uint maskedBitsGI = s < GIRadius ? HorizonBitmask(angleRangeGI) : 0;
 
 				uint validBits = maskedBitsGI & ~bitmaskGI;
 				bool checkGI = validBits;
@@ -326,7 +330,11 @@ void CalculateGI(
 	o_currGIAOSpecular = float4(radianceSpecular, visibilitySpecular);
 }
 
-[numthreads(8, 8, 1)] void main(const uint2 dtid : SV_DispatchThreadID) {
+#ifdef TEMPORAL_DENOISER
+groupshared float gsCurrAo[8][8];
+#endif
+
+[numthreads(8, 8, 1)] void main(const uint2 dtid : SV_DispatchThreadID, const uint2 gtid : SV_GroupThreadID) {
 	const float2 frameScale = FrameDim * RcpTexDim;
 
 	uint2 pxCoord = dtid;
@@ -358,12 +366,33 @@ void CalculateGI(
 		CalculateGI(
 			pxCoord, uv, viewspaceZ, viewspaceNormal,
 			currAo, currY, currCoCg, currGIAOSpecular);
+	}
 
 #ifdef TEMPORAL_DENOISER
+	gsCurrAo[gtid.y][gtid.x] = needGI ? currAo : -1.0;
+	GroupMemoryBarrierWithGroupSync();
+
+	if (needGI) {
 		float lerpFactor = rcp(srcAccumFrames[pxCoord] * 255);
 
 		float4 prevY = srcPrevY[pxCoord];
 		float2 prevCoCg = srcPrevCoCg[pxCoord];
+
+		float aoMin = currAo;
+		float aoMax = currAo;
+		[unroll] for (int y = -1; y <= 1; y++)
+		{
+			[unroll] for (int x = -1; x <= 1; x++)
+			{
+				int2 neighbour = clamp(int2(gtid) + int2(x, y), 0, 7);
+				float neighbourAo = gsCurrAo[neighbour.y][neighbour.x];
+				if (neighbourAo >= 0.0) {
+					aoMin = min(aoMin, neighbourAo);
+					aoMax = max(aoMax, neighbourAo);
+				}
+			}
+		}
+		float prevAo = clamp(srcPrevAo[pxCoord], aoMin, aoMax);
 
 		// Clamp history to the local color neighbourhood to prevent ghosting
 		// and reduce pops when disocclusion fires (SVGF, Schied 2017).
@@ -390,13 +419,14 @@ void CalculateGI(
 			prevCoCg = clamp(prevCoCg, nMinCoCg, nMaxCoCg);
 		}
 
+		currAo = lerp(prevAo, currAo, lerpFactor);
 		currY = lerp(prevY, currY, lerpFactor);
 		currCoCg = lerp(prevCoCg, currCoCg, lerpFactor);
 #	ifdef GI_SPECULAR
 		currGIAOSpecular = lerp(srcPrevGISpecular[pxCoord], currGIAOSpecular, lerpFactor);
 #	endif
-#endif
 	}
+#endif
 	currY = filterNaN(currY);
 	currCoCg = filterNaN(currCoCg);
 	currGIAOSpecular = filterNaN(currGIAOSpecular);

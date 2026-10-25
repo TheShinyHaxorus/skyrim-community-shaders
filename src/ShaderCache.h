@@ -5,10 +5,12 @@
 #include <deque>
 #include <efsw/efsw.hpp>
 #include <functional>
+#include <span>
 #include <string_view>
 #include <unordered_set>
 #include <variant>
 #include <vector>
+#include <winrt/base.h>
 
 #include "Utils/WinApi.h"
 
@@ -115,6 +117,8 @@ namespace ShaderConstants
 		const int32_t PBRFlags = 14;
 		const int32_t PBRParams1 = 15;
 		const int32_t PBRParams2 = 16;
+		const int32_t PBRParams3 = 17;
+		const int32_t PBRParams4 = 18;
 	};
 
 	struct EffectPS
@@ -332,6 +336,8 @@ namespace SIE
 	private:
 		/** Tasks awaiting dispatch, ordered by cached priority and task id. */
 		std::set<ShaderCompilationTask, TaskPriorityLess> availableTasks;
+		/** Queued tasks the game asked for during background compilation; dispatched before availableTasks. */
+		std::set<ShaderCompilationTask, TaskPriorityLess> demandedTasks;
 		std::set<ShaderCompilationTask, TaskPriorityLess> tasksInProgress;
 		std::set<ShaderCompilationTask, TaskPriorityLess> processedTasks;  // completed or failed
 		std::deque<std::function<void()>> pendingAuxTasks;                 // see EnqueueAux/TryTakeNext
@@ -340,12 +346,26 @@ namespace SIE
 
 	struct ShaderCacheResult
 	{
-		ID3DBlob* blob;
+		winrt::com_ptr<ID3DBlob> blob;
 		ShaderCompilationTask::Status status;
 		system_clock::time_point compileTime = system_clock::now();
 		bool loadedFromDisk = false;  /**< true when the shader blob was read from the disk cache rather than compiled */
 		std::wstring diskPath;
 	};
+
+	namespace SShaderCache
+	{
+		struct VertexShaderDeleter
+		{
+			void operator()(RE::BSGraphics::VertexShader* shader) const noexcept
+			{
+				std::destroy_at(shader);
+				delete[] reinterpret_cast<uint8_t*>(shader);
+			}
+		};
+
+		using VertexShaderPtr = std::unique_ptr<RE::BSGraphics::VertexShader, VertexShaderDeleter>;
+	}
 
 	class UpdateListener;
 
@@ -412,6 +432,9 @@ namespace SIE
 		void RemoveLegacyDiskCache();
 		void TrimDiskCache();
 		void InvalidateShaderSources();
+		void SetPrecompiling(bool value);
+		static uint32_t GetLiteLightingDescriptor(uint32_t descriptor);
+		static bool IsReflectionsCandidate(uint32_t descriptor);
 		/** Gets whether the filesystem watcher for hot-reload is active. */
 		bool UseFileWatcher() const;
 		/** Sets whether the filesystem watcher for hot-reload is active. */
@@ -447,6 +470,7 @@ namespace SIE
 		bool ShaderModifiedSince(const std::string& a_type, system_clock::time_point a_current);
 
 		void Clear();
+		void Reload(const std::function<void()>& activate);
 		void Clear(RE::BSShader::Type a_type);
 		/**
    		* @brief Clears and marks shaders for recompilation based on the given path.
@@ -470,7 +494,7 @@ namespace SIE
 		*/
 		bool Clear(const std::string& a_path);
 
-		bool AddCompletedShader(ShaderClass shaderClass, const RE::BSShader& shader, uint32_t descriptor, ID3DBlob* a_blob, bool fromDisk = false, std::wstring diskPath = {});
+		bool AddCompletedShader(ShaderClass shaderClass, const RE::BSShader& shader, uint32_t descriptor, winrt::com_ptr<ID3DBlob> a_blob, bool fromDisk = false, std::wstring diskPath = {});
 
 		enum class ClaimResult
 		{
@@ -478,12 +502,12 @@ namespace SIE
 			Claimed,   // Claimed as Pending; caller must compile and call AddCompletedShader
 			Failed     // Previous attempt failed; skipped until invalidation drops the entry
 		};
-		std::pair<ClaimResult, ID3DBlob*> ClaimCompilation(const std::string& key);
+		std::pair<ClaimResult, winrt::com_ptr<ID3DBlob>> ClaimCompilation(const std::string& key);
 		void ResolvePendingFailure(const std::string& key);
 
-		ID3DBlob* GetCompletedShader(const std::string& a_key);
-		ID3DBlob* GetCompletedShader(const SIE::ShaderCompilationTask& a_task);
-		ID3DBlob* GetCompletedShader(ShaderClass shaderClass, const RE::BSShader& shader, uint32_t descriptor);
+		winrt::com_ptr<ID3DBlob> GetCompletedShader(const std::string& a_key);
+		winrt::com_ptr<ID3DBlob> GetCompletedShader(const SIE::ShaderCompilationTask& a_task);
+		winrt::com_ptr<ID3DBlob> GetCompletedShader(ShaderClass shaderClass, const RE::BSShader& shader, uint32_t descriptor);
 		bool IsShaderLoadedFromDisk(const std::string& a_key);
 		std::wstring GetShaderDiskPath(ShaderClass shaderClass, const RE::BSShader& shader, uint32_t descriptor);
 		ShaderCompilationTask::Status GetShaderStatus(const std::string& a_key);
@@ -492,6 +516,8 @@ namespace SIE
 		RE::BSGraphics::VertexShader* GetVertexShader(const RE::BSShader& shader, uint32_t descriptor);
 		RE::BSGraphics::PixelShader* GetPixelShader(const RE::BSShader& shader,
 			uint32_t descriptor);
+		RE::BSGraphics::PixelShader* FindPixelShader(const RE::BSShader& shader, uint32_t descriptor);
+		bool HasPixelShaders(RE::BSShader::Type type, std::span<const uint32_t> descriptors);
 		RE::BSGraphics::ComputeShader* GetComputeShader(const RE::BSShader& shader,
 			uint32_t descriptor);
 
@@ -643,7 +669,7 @@ namespace SIE
 			MTLandLODBlend = 19,
 		};
 
-		enum class LightingShaderFlags
+		enum class LightingShaderFlags : uint32_t
 		{
 			VC = 1 << 0,
 			Skinned = 1 << 1,
@@ -671,7 +697,9 @@ namespace SIE
 			DoAlphaTest = 1 << 20,
 			Snow = 1 << 21,
 			CharacterLight = 1 << 22,
-			AdditionalAlphaMask = 1 << 23
+			AdditionalAlphaMask = 1 << 23,
+			NoWetness = 1u << 29,
+			NoSnowCover = 1u << 30
 		};
 
 		enum class BloodSplatterShaderTechniques
@@ -813,6 +841,7 @@ namespace SIE
 			LodObject = 1 << 27,
 			LocalMapFogOfWar = 1 << 28,
 			OpaqueEffect = 1 << 29,
+			TruePbr = 1 << 30,
 		};
 
 		// Shader blocking data for developer mode
@@ -863,15 +892,16 @@ namespace SIE
 		ShaderCache();
 		void ManageCompilationSet(std::stop_token stoken);
 		void ProcessCompilationSet(std::stop_token stoken, SIE::ShaderCompilationTask task);
+		void QueueLightingDerivatives(const RE::BSShader& shader, uint32_t descriptor);
 
 		~ShaderCache();
 
-		template <typename ShaderType>
+		template <typename ShaderType, typename Deleter = std::default_delete<ShaderType>>
 		using ShaderMapArray = std::array<
-			ankerl::unordered_dense::map<uint32_t, std::unique_ptr<ShaderType>>,
+			ankerl::unordered_dense::map<uint32_t, std::unique_ptr<ShaderType, Deleter>>,
 			RE::BSShader::Type::Total>;
 
-		ShaderMapArray<RE::BSGraphics::VertexShader> vertexShaders;
+		ShaderMapArray<RE::BSGraphics::VertexShader, SShaderCache::VertexShaderDeleter> vertexShaders;
 		ShaderMapArray<RE::BSGraphics::PixelShader> pixelShaders;
 		ShaderMapArray<RE::BSGraphics::ComputeShader> computeShaders;
 
@@ -902,6 +932,8 @@ namespace SIE
 		UpdateListener* listener = nullptr;
 
 		std::unique_ptr<ShaderFileDependencyTracker> dependencyTracker;
+
+		std::atomic_bool precompiling = false;
 	};
 
 	// Inherits from the abstract listener class, and implements the the file action handler
@@ -930,8 +962,6 @@ namespace SIE
 		void processQueue();
 		void handleFileAction(efsw::WatchID, const std::string& dir, const std::string& filename, efsw::Action action, std::string) override;
 
-		std::jthread fileWatcherThread;  // dedicated thread for processQueue (not in pool)
-
 	private:
 		ShaderFileDependencyTracker* deps;
 		struct fileAction
@@ -944,5 +974,8 @@ namespace SIE
 		};
 		std::mutex actionMutex;
 		std::vector<fileAction> queue{};
+
+	public:
+		std::jthread fileWatcherThread;
 	};
 }

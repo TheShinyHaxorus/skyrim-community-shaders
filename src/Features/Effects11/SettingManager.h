@@ -59,7 +59,6 @@ struct TimeOfDayValue
 	{
 		return std::equal(std::begin(values), std::end(values), std::begin(other.values));
 	}
-
 };
 
 struct ColorTimeOfDayValue
@@ -94,7 +93,6 @@ struct ColorTimeOfDayValue
 		}
 		return true;
 	}
-
 };
 
 static_assert(TimeOfDayValue::Total <= 8 && ColorTimeOfDayValue::Total <= 8, "periods must fit the uint8_t mask");
@@ -119,6 +117,7 @@ struct Setting
 	std::string dependsOnKey;
 	std::string dependsOnCategory;
 	std::vector<std::string> legacyKeys;
+	uint32_t hdrWeightingID = 0xFFFFFFFF;  ///< Colour time-of-day only: ID of its ENB "<key>HDRWeighting" bool
 };
 
 class SettingManager
@@ -150,6 +149,8 @@ public:
 	uint32_t GetSettingID(std::string_view key, std::string_view category) const;
 
 	float GetInterpolatedTimeOfDayValue(std::string_view key, std::string_view category);
+	/** @brief Like GetInterpolatedTimeOfDayValue, but at the given weather blend: 0 is the last weather, 1 the current one. */
+	float GetInterpolatedTimeOfDayValueAtWeatherBlend(std::string_view key, std::string_view category, float weatherBlend);
 	float3 GetInterpolatedColorTimeOfDayValue(std::string_view key, std::string_view category);
 
 	const Setting* GetSettingInfo(std::string_view key, std::string_view category) const;
@@ -238,14 +239,15 @@ private:
 	SettingValue ResolveWeatherValue(uint32_t weatherID, uint32_t settingID) const;
 
 	template <typename T>
-	T GetValueInternal(uint32_t id, bool rawValue = false) const;
+	T GetValueInternal(uint32_t id, bool rawValue = false, float weatherBlendOverride = -1.0f) const;
 	template <typename T>
 	void SetValueInternal(uint32_t id, const T& value);
 	uint32_t GetSettingIDInternal(std::string_view key, std::string_view category) const;
 
 	SettingValue InterpolateValues(const SettingValue& a, const SettingValue& b, float t) const;
 	float ComputeTimeOfDayInterpolation(const TimeOfDayValue& value) const;
-	float3 ComputeColorTimeOfDayInterpolation(const ColorTimeOfDayValue& value) const;
+	/** @brief Blends the periods by time-of-day weight; hdrWeighting also scales each weight by the period colour's luminance. */
+	float3 ComputeColorTimeOfDayInterpolation(const ColorTimeOfDayValue& value, bool hdrWeighting) const;
 	/** @return Bitmask of the periods the file set under any of its keys; scalars set every bit. */
 	uint8_t LoadSettingFromFile(const std::string& filePath, const std::string& section, const std::string& key, Setting& setting);
 	/** @brief Writes the setting; time-of-day types write only the periods in periodMask. */

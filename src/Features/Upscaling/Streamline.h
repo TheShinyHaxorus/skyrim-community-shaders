@@ -14,7 +14,6 @@
 #include <sl.h>
 #include <sl_consts.h>
 #include <sl_dlss.h>
-#include <sl_dlss_g.h>
 #include <sl_matrix_helpers.h>
 #include <sl_reflex.h>
 #include <sl_version.h>
@@ -24,6 +23,8 @@
 class Streamline
 {
 public:
+	static constexpr const wchar_t* PluginDir = L"Data\\Shaders\\Upscaling\\Streamline";
+
 	Streamline() = default;
 
 	/** @brief Returns the short identifier used for logging. */
@@ -31,22 +32,10 @@ public:
 
 	static constexpr UINT kNvidiaVendorId = 0x10DE;
 
-	sl::RenderAPI renderAPI = sl::RenderAPI::eD3D11;
-	std::wstring pluginDir = L"Data\\Shaders\\Upscaling\\Streamline";
-	std::wstring interposerDllName = L"sl.interposer.dll";
-	std::string instanceTag = "DX11";
-
 	bool initialized = false;
 	bool triedInitialization = false;
 
 	bool featureDLSS = false;
-	bool featureDLSSG = false;
-	bool dlssgResourcesRetained = false;
-	uint32_t dlssgMaxFramesToGenerate = 1;
-	sl::DLSSGStatus lastDLSSGStatus = sl::DLSSGStatus::eOk;
-	uint32_t lastDLSSGFramesPresented = 0;
-	bool dlssgVSyncSupported = false;
-	double lastReflexSleepMs = 0.0;
 	bool featureReflex = false;
 	bool featurePCL = false;
 	bool reflexSupportedOnCurrentAdapter = false;
@@ -65,7 +54,6 @@ public:
 	PFun_slAllocateResources* slAllocateResources{};
 	PFun_slFreeResources* slFreeResources{};
 	PFun_slSetTag* slSetTag{};
-	PFun_slSetTagForFrame* slSetTagForFrame{};
 	PFun_slGetFeatureRequirements* slGetFeatureRequirements{};
 	PFun_slGetFeatureVersion* slGetFeatureVersion{};
 	PFun_slUpgradeInterface* slUpgradeInterface{};
@@ -80,9 +68,6 @@ public:
 	PFun_slDLSSGetState* slDLSSGetState{};
 	PFun_slDLSSSetOptions* slDLSSSetOptions{};
 
-	PFun_slDLSSGGetState* slDLSSGGetState{};
-	PFun_slDLSSGSetOptions* slDLSSGSetOptions{};
-
 	// Reflex specific functions
 	PFun_slReflexGetState* slReflexGetState{};
 	PFun_slReflexSleep* slReflexSleep{};
@@ -91,6 +76,7 @@ public:
 
 	Util::FrameChecker frameChecker;
 	sl::FrameToken* frameToken = nullptr;
+
 	bool isRTXBelow40series = false;
 
 	struct ReflexOptionsCache
@@ -102,6 +88,8 @@ public:
 	};
 	ReflexOptionsCache reflexOptionsCache{};
 	uint32_t lastReflexSleepFrame = UINT32_MAX;
+	uint32_t lastConstantsFrame = UINT32_MAX;
+	bool constantsResetPending = false;
 
 	/**
 	 * @brief Executes DLSS evaluation for a single viewport with the given resources.
@@ -116,7 +104,7 @@ public:
 	 * @param extentOut Output resolution extent.
 	 * @param outputWidth Target output width for DLSS options.
 	 */
-	void EvaluateDLSS(sl::ViewportHandle vp,
+	bool EvaluateDLSS(sl::ViewportHandle vp,
 		ID3D11Resource* colorIn, ID3D11Resource* colorOut, ID3D11Resource* depth,
 		ID3D11Resource* mvec, ID3D11Resource* reactiveMask, ID3D11Resource* transparencyMask,
 		const sl::Extent& extentIn, const sl::Extent& extentOut, uint32_t outputWidth);
@@ -133,30 +121,17 @@ public:
 	 */
 	void CheckFeatures(IDXGIAdapter* a_adapter);
 
-	void SetD3DDevice12(ID3D12Device* a_device);
-	static void EnsureDriverProfileAllowsDLSSG();
 	static bool IsSmoothMotionEnabledForProfile();
-	/// Writes or clears the driver profile's DLSS-FG preset key so DLSS-G uses Preset C (the lighter
-	/// model in 310.9.16) or the regular model. Read when the DLSS-G feature is created.
-	static void ApplyDLSSGPresetC(bool a_presetC);
 
 	/** @brief Binds DLSS and Reflex feature functions after the D3D device is created. */
 	void PostDevice();
 
 	bool BindFeatureFunction(sl::Feature a_feature, const char* a_functionName, void*& a_function);
 	void RequestFeatureLoad(sl::Feature a_feature, const char* a_featureName);
-	void BindReflexAndPCL();
-
-	void ConfigureDLSSG(bool enabled);
-	void EmitPCLMarker(sl::PCLMarker a_marker);
-	void TagDX12Resources(ID3D12GraphicsCommandList* cmdList,
-		ID3D12Resource* depth, ID3D12Resource* mvec, ID3D12Resource* hudLessColor,
-		ID3D12Resource* uiColorAndAlpha, uint32_t width, uint32_t height);
+	void BindReflexAndPCL(bool a_reflexSupported, bool a_pclSupported);
 
 	/** @brief Acquires a new frame token from Streamline for the current frame. */
 	bool EnsureFrameToken();
-	/** @brief Acquires the frame token for an explicit frame index; reuses the cached token when the index is unchanged. */
-	bool EnsureFrameToken(uint32_t a_frameIndex);
 	/**
 	 * @brief Sets camera and jitter constants on the Streamline viewport for the current frame.
 	 * @param p_viewport The viewport handle to configure.
@@ -185,7 +160,7 @@ public:
 	 * @param a_transparencyCompositionMask Mask for transparency handling.
 	 * @param a_motionVectors Per-pixel motion vectors for temporal reprojection.
 	 */
-	void Upscale(ID3D11Resource* a_upscalingTexture, ID3D11Resource* a_reactiveMask, ID3D11Resource* a_transparencyCompositionMask, ID3D11Resource* a_motionVectors);
+	bool Upscale(ID3D11Resource* a_upscalingTexture, ID3D11Resource* a_reactiveMask, ID3D11Resource* a_transparencyCompositionMask, ID3D11Resource* a_motionVectors);
 	/** @brief Updates Reflex latency reduction state and performs the Reflex sleep call. */
 	void UpdateReflex();
 

@@ -17,6 +17,7 @@ enum class HiZStatus : uint8_t
 	ResourcesReady,    // All resources initialized and valid
 	Running,           // Actively processing occlusion tests
 	ValidationFailed,  // Resource validation failed
+	Unsupported,       // Culling hook not installed on this game version
 	Error              // Error state - check statusMessage for details
 };
 
@@ -36,6 +37,8 @@ inline const char* HiZStatusToString(HiZStatus status)
 		return "Running";
 	case HiZStatus::ValidationFailed:
 		return "Validation Failed";
+	case HiZStatus::Unsupported:
+		return "Unsupported Game Version";
 	case HiZStatus::Error:
 		return "Error";
 	default:
@@ -98,6 +101,7 @@ struct HiZOcclusion : OverlayFeature
 	std::string statusMessage;           // Detailed error/info message for debugging
 	bool resourcesSetup = false;         // whether resources have been initialized
 	bool resourcesValid = false;         // whether current resources are valid and safe to use
+	bool cullingHookInstalled = false;   // set by Hooks; the registration hook only exists on AE before 1.7.99
 
 	// Per-frame tracking to verify build/draw order and availability
 	uint32_t lastBuiltFrame = 0;           // frame index when the pyramid was last built
@@ -138,11 +142,11 @@ struct HiZOcclusion : OverlayFeature
 		bool cullNoEarlyOut = true;  // cull depth-test-failed objects (red)
 
 		uint32_t consecutiveOccludedThreshold = 1;  // 1-100, cull after N consecutive occluded tests
-		float shadowSweepDistance = 128.0f;
+		float shadowSweepDistance = 2048.0f;
 		float guardAngle = 10.0f;
 		float motionMarginFrames = 10.0f;
 
-		std::array<bool, 30> cullRenderMode = { true, false, false, false, false, false, false, false, false, false, false, false, true, false, true };  // Whether each culling type should be allowed
+		std::array<bool, 30> cullRenderMode = { true };  // Whether each culling type should be allowed
 	};
 
 	Settings settings;
@@ -201,6 +205,7 @@ struct HiZOcclusion : OverlayFeature
 
 	// Hi-Z occlusion culling functionality
 	bool SetupGPUCullingResources();
+	void ReleaseGPUCullingResources();
 
 	void DispatchComputeShader();
 	void ProcessVisibilityResults(uint32_t bufferIndex);
@@ -218,6 +223,7 @@ struct HiZOcclusion : OverlayFeature
 	};
 
 	static uint8_t GetPassKind(uint32_t renderMode);
+	static bool IsAdvancedRenderMode(uint32_t renderMode);
 	static const char* GetRenderModeName(uint32_t renderMode);
 	static bool IsMainViewRegistration(uint32_t renderMode, const RE::BSGraphics::BSShaderAccumulator* accum);
 	void CaptureSunShadowDirection(const RE::NiCamera* camera);
@@ -402,6 +408,7 @@ struct HiZOcclusion : OverlayFeature
 	static void SetOccludedFlag(RE::BSGeometry* geometry, bool occluded);
 	void ClearOcclusionState();
 	void ClearShadowOcclusionState();
+	void ReleaseGeometryReferences();
 	void UpdateCameraMotion();
 	bool IsReadbackReady(uint32_t bufferIndex);
 	void ReleaseReadbackSlot(uint32_t bufferIndex);

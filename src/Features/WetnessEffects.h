@@ -2,6 +2,9 @@
 
 #include "Buffer.h"
 
+#pragma warning(push)
+#pragma warning(disable: 4324)
+
 /** @brief Adds dynamic weather-driven wetness, puddle formation, shore wetness, and raindrop effects. */
 struct WetnessEffects : Feature
 {
@@ -36,7 +39,6 @@ public:
 		float MaxRainWetness = 1.0f;
 		float MaxPuddleWetness = 1.5f;
 		float MaxShoreWetness = 1.0f;
-		float GrassWetnessRoughness = 0.12f;
 		uint ShoreRange = 32;
 		float PuddleRadius = 1.0f;
 		float PuddleMaxAngle = 0.95f;
@@ -72,6 +74,7 @@ public:
 		float Wetness;
 		float PuddleWetness;
 		Settings settings;
+		uint pad0;
 	};
 	STATIC_ASSERT_ALIGNAS_16(PerFrame);
 
@@ -111,6 +114,12 @@ public:
 
 	/** @brief Builds the per-frame constant buffer data including weather state and settings. */
 	PerFrame GetCommonBufferData() const;
+
+	mutable PerFrame lastPerFrame{};
+	bool IsDry(RE::BSRenderPass* a_pass, uint32_t a_descriptor) const;
+
+	/** @brief Advances the rain animation clock; runs once per frame, however often the feature buffer is rebuilt. */
+	virtual void Reset() override;
 
 	/** @brief Updates wetness state and binds the per-frame constant buffer. */
 	virtual void Prepass() override;
@@ -175,6 +184,7 @@ public:
 private:
 	void DrawWeatherAnalysis() const;
 
+	size_t rainTimer = 0;  // milliseconds; size_t for precision
 	bool splashesOfStormsLoaded = false;
 
 	// Weather wetness calculation result for debug display
@@ -186,3 +196,5 @@ private:
 
 	WeatherWetnessResult CalculateWeatherWetness(RE::TESWeather* weather, float weatherPct, bool isCurrentWeather) const;
 };
+
+#pragma warning(pop)

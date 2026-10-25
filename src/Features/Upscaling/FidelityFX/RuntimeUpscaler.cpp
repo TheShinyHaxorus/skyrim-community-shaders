@@ -194,7 +194,9 @@ namespace
 
 		// Pre-RDNA "HD"-branded GCN cards (e.g. "Radeon HD 7970") fall in the same 7000-7999
 		// numeric range as RX 7000 without being FSR 4.1.1-capable; reject them before the scan.
-		if (description.find("RADEON HD") != std::string::npos)
+		if (description.find("RADEON HD") != std::string::npos ||
+			description.find("PRO WX") != std::string::npos ||
+			description.find("FIREPRO") != std::string::npos)
 			return FidelityFX::Fsr4AdapterSupport::Unsupported;
 
 		// Only accept explicit discrete RDNA3 dies here, never a bare "RDNA 3"/"RDNA3" marker --
@@ -549,12 +551,12 @@ bool FidelityFX::IsRuntimeUpscalerProviderMatchingRequestedVersion() const
 
 bool FidelityFX::IsRuntimeUpscalerFailureLatched() const
 {
-	return runtimeUpscalerFailureLatched;
+	return runtimeUpscalerFailureLatched || runtimeUpscalerQuarantined;
 }
 
 bool FidelityFX::IsRuntimeFsr4FailureLatched() const
 {
-	return runtimeFsr4FailureLatched;
+	return runtimeFsr4FailureLatched || runtimeUpscalerQuarantined;
 }
 
 const std::string& FidelityFX::GetHostFsrSdkLabel()
@@ -782,7 +784,7 @@ bool FidelityFX::IsRuntimeFsr4Available() const
 
 bool FidelityFX::ShouldUseRuntimeUpscalerForFSR() const
 {
-	return IsRuntimeUpscalerPresent() && IsAmdAdapterDetected();
+	return globals::features::upscaling.fsr4RuntimeEnableBoot && IsRuntimeUpscalerPresent() && IsAmdAdapterDetected();
 }
 
 bool FidelityFX::CanUseRuntimeUpscalerPath()
@@ -831,6 +833,8 @@ bool FidelityFX::EnsureRuntimeUpscalerInterop()
 		}
 
 		if (!runtimeD3D12Fence || !runtimeD3D11Fence) {
+			runtimeD3D12Fence = nullptr;
+			runtimeD3D11Fence = nullptr;
 			winrt::handle sharedFenceHandle;
 			DX::ThrowIfFailed(swapChain.d3d12Device->CreateFence(0, D3D12_FENCE_FLAG_SHARED, IID_PPV_ARGS(&runtimeD3D12Fence)));
 			DX::ThrowIfFailed(swapChain.d3d12Device->CreateSharedHandle(runtimeD3D12Fence.get(), nullptr, GENERIC_ALL, nullptr, sharedFenceHandle.put()));
@@ -1002,7 +1006,7 @@ void FidelityFX::DestroyRuntimeUpscalerContexts(bool a_waitForIdle)
 		WaitForRuntimeUpscalerIdle();
 
 	for (uint32_t i = 0; i < std::size(runtimeUpscalerContexts); ++i) {
-		if (runtimeUpscalerContexts[i])
+		if (runtimeUpscalerContexts[i] && !runtimeUpscalerQuarantined)
 			(void)ffx::DestroyContext(runtimeUpscalerContexts[i]);
 		runtimeUpscalerContexts[i] = nullptr;
 	}
@@ -1538,16 +1542,19 @@ bool FidelityFX::DispatchRuntimeUpscalerSingle(uint32_t a_contextIndex, ID3D11Re
 			return true;
 		};
 
-		if (!copyIntoShared(a_color, runtimeColorShared[a_contextIndex], colorDesc.Width, colorDesc.Height, runtimeColorSharedDesc.Width, runtimeColorSharedDesc.Height) ||
-			!copyIntoShared(a_depth, runtimeDepthShared[a_contextIndex], depthDesc.Width, depthDesc.Height, runtimeDepthSharedDesc.Width, runtimeDepthSharedDesc.Height) ||
-			!copyIntoShared(a_motionVectors, runtimeMotionShared[a_contextIndex], motionDesc.Width, motionDesc.Height, runtimeMotionSharedDesc.Width, runtimeMotionSharedDesc.Height) ||
-			!copyIntoShared(a_reactiveMask, runtimeReactiveShared[a_contextIndex], reactiveDesc.Width, reactiveDesc.Height, runtimeReactiveSharedDesc.Width, runtimeReactiveSharedDesc.Height) ||
-			!copyIntoShared(a_transparencyCompositionMask, runtimeTransparencyShared[a_contextIndex], transparencyDesc.Width, transparencyDesc.Height, runtimeTransparencySharedDesc.Width, runtimeTransparencySharedDesc.Height)) {
+		const uint32_t inputCopyWidth = a_renderWidth + 1;
+		const uint32_t inputCopyHeight = a_renderHeight + 1;
+		if (!copyIntoShared(a_color, runtimeColorShared[a_contextIndex], std::min(colorDesc.Width, inputCopyWidth), std::min(colorDesc.Height, inputCopyHeight), runtimeColorSharedDesc.Width, runtimeColorSharedDesc.Height) ||
+			!copyIntoShared(a_depth, runtimeDepthShared[a_contextIndex], std::min(depthDesc.Width, inputCopyWidth), std::min(depthDesc.Height, inputCopyHeight), runtimeDepthSharedDesc.Width, runtimeDepthSharedDesc.Height) ||
+			!copyIntoShared(a_motionVectors, runtimeMotionShared[a_contextIndex], std::min(motionDesc.Width, inputCopyWidth), std::min(motionDesc.Height, inputCopyHeight), runtimeMotionSharedDesc.Width, runtimeMotionSharedDesc.Height) ||
+			!copyIntoShared(a_reactiveMask, runtimeReactiveShared[a_contextIndex], std::min(reactiveDesc.Width, inputCopyWidth), std::min(reactiveDesc.Height, inputCopyHeight), runtimeReactiveSharedDesc.Width, runtimeReactiveSharedDesc.Height) ||
+			!copyIntoShared(a_transparencyCompositionMask, runtimeTransparencyShared[a_contextIndex], std::min(transparencyDesc.Width, inputCopyWidth), std::min(transparencyDesc.Height, inputCopyHeight), runtimeTransparencySharedDesc.Width, runtimeTransparencySharedDesc.Height)) {
 			logger::error("[FidelityFX] Runtime upscaler shared-resource copy failed for eye {}", a_contextIndex);
 			dispatchOk = false;
 		} else {
 			const uint64_t d3d11SubmitFence = runtimeFenceValue++;
 			DX::ThrowIfFailed(swapChain.d3d11Context->Signal(runtimeD3D11Fence.get(), d3d11SubmitFence));
+			swapChain.d3d11Context->Flush();
 			DX::ThrowIfFailed(swapChain.commandQueue->Wait(runtimeD3D12Fence.get(), d3d11SubmitFence));
 
 			DX::ThrowIfFailed(commandAllocator->Reset());
@@ -1582,7 +1589,7 @@ bool FidelityFX::DispatchRuntimeUpscalerSingle(uint32_t a_contextIndex, ID3D11Re
 			dispatchParameters.preExposure = 1.0f;
 			// Menus produce no fresh motion vectors or depth; reset the history there
 			// rather than accumulating against stale reprojection data.
-			dispatchParameters.reset = state->IsMainOrLoadingMenuOpen();
+			dispatchParameters.reset = state->IsMainOrLoadingMenuOpen() || state->ShouldResetHistory();
 			dispatchParameters.cameraNear = *globals::game::cameraNear;
 			dispatchParameters.cameraFar = *globals::game::cameraFar;
 			dispatchParameters.cameraFovAngleVertical = Util::GetVerticalFOVRad();
@@ -1702,8 +1709,13 @@ bool FidelityFX::UpscaleRegion(uint32_t a_contextIndex, ID3D11Resource* a_color,
 	// A quarantined provider's contexts/resources are never dispatched into again; release
 	// them at this natural per-call boundary rather than inside the exception handler that
 	// discovered the quarantine, where GPU/command-list state is mid-teardown already.
-	if (runtimeUpscalerQuarantined && HasRuntimeUpscalerResources())
+	if (runtimeUpscalerQuarantined && HasRuntimeUpscalerResources()) {
 		ResetRuntimeUpscalerResources(false);
+	} else if (runtimeUpscalerFailureLatched && !runtimeAlreadyUsedThisFrame && HasRuntimeUpscalerResources()) {
+		WaitForRuntimeUpscalerIdle();
+		DestroyRuntimeUpscalerContexts(false);
+		DestroyRuntimeUpscalerResources(false);
+	}
 
 	const bool runtimeFsr4Requested = ShouldRequestRuntimeFsr4();
 	const bool runtimeRequested = runtimeFsr4Requested || ShouldUseRuntimeUpscalerForFSR();
@@ -1793,6 +1805,8 @@ bool FidelityFX::UpscaleRegion(uint32_t a_contextIndex, ID3D11Resource* a_color,
 	// std::size(fsrContext) is always 2; only fsrContext[0] is initialized in flat mode
 	// (CreateFSRResources' numContexts), so check against the actually-created count.
 	const uint32_t hostContextCount = 1u;
+	if (!fsrScratchBuffer && !hostFsrContextFailed)
+		CreateHostFSRContext();
 	if (!fsrScratchBuffer || a_contextIndex >= hostContextCount)
 		return false;
 
@@ -1835,7 +1849,7 @@ bool FidelityFX::UpscaleRegion(uint32_t a_contextIndex, ID3D11Resource* a_color,
 	const bool runtimeFallbackReset = runtimeRequested && runtimeFallbackResetDispatchesRemaining > 0;
 	if (runtimeFallbackReset)
 		runtimeFallbackResetDispatchesRemaining--;
-	dispatchParameters.reset = state->IsMainOrLoadingMenuOpen() || runtimeFallbackReset;
+	dispatchParameters.reset = state->IsMainOrLoadingMenuOpen() || state->ShouldResetHistory() || runtimeFallbackReset;
 	dispatchParameters.preExposure = 1.0f;
 	dispatchParameters.flags = 0;
 

@@ -38,7 +38,7 @@ float GaussianWeight(float r)
 // http://marc-b-reynolds.github.io/quaternions/2016/07/06/Orthonormal.html
 float3x3 getBasis(float3 N)
 {
-	float sz = sign(N.z);
+	const float sz = N.z >= 0.0 ? 1.0 : -1.0;
 	float a = 1.0 / (sz + N.z);
 	float ya = N.y * a;
 	float b = N.x * ya;
@@ -108,6 +108,8 @@ float2x2 getRotationMatrix(float noise)
 	float2x3 TvBv = getKernelBasis(normal, normal);  // D = N
 	float halfAngle = Math::HALF_PI;
 
+	const float geometryScale = DistanceNormalisation * 0.5 / max(worldRadius, 1e-3);
+
 	TvBv[0] *= worldRadius;
 	TvBv[1] *= worldRadius;
 #ifdef TEMPORAL_DENOISER
@@ -132,7 +134,7 @@ float2x2 getRotationMatrix(float noise)
 		float2 screenPosSample = FrameBuffer::ViewToUV(viewSamplePos);
 
 		if (any(screenPosSample < 0) || any(screenPosSample > 1)) {
-				continue;
+			continue;
 		}
 
 		float2 uvSample = screenPosSample;
@@ -145,7 +147,7 @@ float2x2 getRotationMatrix(float noise)
 		float3 normalSample = GBuffer::DecodeNormal(normalRoughnessSample.xy);
 
 		// geometry weight
-		w *= saturate(1 - abs(dot(normal, posSample - pos)) * DistanceNormalisation);
+		w *= saturate(1 - abs(dot(normal, posSample - pos)) * geometryScale);
 		// normal weight
 		w *= 1 - saturate(FastMath::acosFast4(saturate(dot(normalSample, normal))) / halfAngle);
 

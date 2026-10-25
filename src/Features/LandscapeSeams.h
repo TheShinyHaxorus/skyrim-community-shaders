@@ -46,6 +46,7 @@ struct LandscapeSeams : Feature
 	virtual void RestoreDefaultSettings() override;
 	virtual void PostPostLoad() override;
 	virtual void Prepass() override;
+	virtual void Reset() override;
 
 	struct QuadKey
 	{
@@ -87,12 +88,12 @@ struct LandscapeSeams : Feature
 		winrt::com_ptr<ID3D11ShaderResourceView> weights;
 		winrt::com_ptr<ID3D11ShaderResourceView> data;
 		std::array<std::array<RE::NiSourceTexturePtr, TexturesPerExtra>, MaxExtraLayers> extras;
-		bool hasGlint = false;
 	};
 
 	struct Quad
 	{
 		std::array<RE::TESLandTexture*, EngineLayers> slots{};
+		std::array<RE::TESLandTexture*, MaxLayers> renderable{};
 		Border border{};
 		std::unique_ptr<WeightGrid> grid;
 		RE::BSGeometry* geometry = nullptr;
@@ -113,14 +114,14 @@ struct LandscapeSeams : Feature
 	};
 
 	bool IsRenderable() const { return loaded && settings.Enabled; }
-	bool IsBlended(RE::BSGeometry* a_geometry, bool& a_hasGlint);
+	bool IsBlended(RE::BSGeometry* a_geometry);
 	void Bind(RE::BSGeometry* a_geometry);
 	void TESObjectLAND_SetupMaterial(RE::TESObjectLAND* a_land);
 
 private:
 	struct Hooks;
 
-	void Heal(const QuadKey& a_key, const Quad& a_quad, Healed& a_out) const;
+	void Heal(const QuadKey& a_key, const Quad& a_quad, Healed& a_out, bool a_extrasOnly) const;
 	std::shared_ptr<Resources> CreateResources(const Healed& a_healed) const;
 	void Rebuild(const std::vector<QuadKey>& a_keys);
 	void RebuildAll();
@@ -131,4 +132,5 @@ private:
 	std::unordered_map<RE::BSGeometry*, QuadKey> loadedQuads;
 	std::vector<RE::BSGeometry*> retiredGeometry;
 	std::atomic_bool rebuildRequested = false;
+	uint32_t currentWorldSpace = 0;
 };

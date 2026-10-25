@@ -80,9 +80,17 @@ namespace Permutation
 		static const uint IsEye = (1 << 7);
 		static const uint NoSnow = (1 << 8);
 		static const uint NoFoliageTint = (1 << 9);
-		static const uint IsAurora = (1 << 10);
 		static const uint IsMoon = (1 << 11);
 		static const uint NoSkyScattering = (1 << 12);
+		static const uint SnowRooftop = (1 << 13);
+		static const uint SnowLODTree = (1 << 14);
+		static const uint SourceAlphaBlend = (1 << 15);
+		static const uint NightEyeEyeshine = (1 << 16);
+		static const uint NightEyeMask = (1 << 17);
+		static const uint NightEyeActor = (1 << 18);
+		static const uint NightEyeEnemy = (1 << 19);
+		static const uint NightEyeAlly = (1 << 20);
+		static const uint ProjectedTextureIsSRGB = (1 << 21);
 	}
 
 	namespace ExtraFeatureFlags
@@ -105,6 +113,9 @@ namespace Permutation
 		uint ExtraFeatureDescriptor;
 
 		float EffectRadius;
+		uint BaseTextureIsWorking;
+		uint RenderToUI;
+		float GrassCanopyHeight;  // Model-space height of the grass mesh being drawn
 	};
 
 }

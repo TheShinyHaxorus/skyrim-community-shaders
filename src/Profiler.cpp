@@ -18,11 +18,11 @@ float Profiler::RollingHistory::GetPercentile(float p) const
 	if (count == 0)
 		return lastMs;
 
-	thread_local std::vector<float> sorted;
-	sorted.resize(count);
-	for (uint32_t i = 0; i < count; i++)
-		sorted[i] = history[i];
-	std::sort(sorted.begin(), sorted.end());
+	if (sortedDirty) {
+		std::copy_n(history, count, sorted.begin());
+		std::sort(sorted.begin(), sorted.begin() + count);
+		sortedDirty = false;
+	}
 
 	float idx = (p / 100.0f) * static_cast<float>(count - 1);
 	uint32_t lo = static_cast<uint32_t>(idx);
@@ -44,22 +44,30 @@ void Profiler::Initialize(ID3D11Device* device, ID3D11DeviceContext* a_context)
 	for (auto& frame : frames) {
 		D3D11_QUERY_DESC disjointDesc{};
 		disjointDesc.Query = D3D11_QUERY_TIMESTAMP_DISJOINT;
-		device->CreateQuery(&disjointDesc, frame.disjoint.put());
+		if (FAILED(device->CreateQuery(&disjointDesc, frame.disjoint.put()))) {
+			Release();
+			logger::warn("Profiler disabled: failed to create timestamp disjoint query");
+			return;
+		}
 
 		frame.timers.resize(kMaxTimers);
 		for (auto& timer : frame.timers) {
 			D3D11_QUERY_DESC tsDesc{};
 			tsDesc.Query = D3D11_QUERY_TIMESTAMP;
-			device->CreateQuery(&tsDesc, timer.begin.put());
-			device->CreateQuery(&tsDesc, timer.end.put());
+			if (FAILED(device->CreateQuery(&tsDesc, timer.begin.put())) ||
+				FAILED(device->CreateQuery(&tsDesc, timer.end.put()))) {
+				Release();
+				logger::warn("Profiler disabled: failed to create timestamp query");
+				return;
+			}
 		}
 		frame.activeCount = 0;
-		frame.inFlight = false;
 	}
 
 	writeFrame = 0;
 	readFrame = 0;
-	framesSinceInit = 0;
+	pendingFrames = 0;
+	frameSkipped = false;
 	initialized = true;
 }
 
@@ -69,7 +77,6 @@ void Profiler::Release()
 		frame.disjoint = nullptr;
 		frame.timers.clear();
 		frame.activeCount = 0;
-		frame.inFlight = false;
 	}
 	results.clear();
 	knownTimers.clear();
@@ -78,19 +85,25 @@ void Profiler::Release()
 	totalTimeMs = 0.0f;
 	cpuTotalTimeMs = 0.0f;
 	initialized = false;
+	frameActive = false;
 	context = nullptr;
 }
 
 void Profiler::BeginFrame()
 {
-	if (!initialized || !context || frameActive)
+	if (!initialized || !context || frameActive || frameSkipped)
 		return;
 
 	CollectResults();
 
+	// Reusing a pending slot would discard its results when the GPU lags.
+	if (pendingFrames >= kFrameLatency) {
+		frameSkipped = true;
+		return;
+	}
+
 	auto& frame = frames[writeFrame];
 	frame.activeCount = 0;
-	frame.inFlight = true;
 	frameActive = true;
 	context->Begin(frame.disjoint.get());
 }
@@ -102,6 +115,8 @@ void Profiler::BeginPass(const std::string& name)
 
 	if (!frameActive)
 		BeginFrame();
+	if (!frameActive)
+		return;
 
 	auto& frame = frames[writeFrame];
 	if (frame.activeCount >= kMaxTimers)
@@ -140,33 +155,24 @@ void Profiler::EndPass()
 
 void Profiler::EndFrame()
 {
-	if (!initialized || !context || !frameActive)
+	if (!initialized || !context)
+		return;
+
+	if (frameSkipped) {
+		frameSkipped = false;
+		return;
+	}
+	if (!frameActive)
 		return;
 
 	frameActive = false;
 	context->End(frames[writeFrame].disjoint.get());
 	writeFrame = (writeFrame + 1) % kFrameLatency;
-	framesSinceInit++;
+	pendingFrames++;
 }
 
 void Profiler::CollectResults()
 {
-	if (framesSinceInit < kFrameLatency)
-		return;
-
-	readFrame = writeFrame;
-	auto& frame = frames[readFrame];
-	if (!frame.inFlight)
-		return;
-
-	D3D11_QUERY_DATA_TIMESTAMP_DISJOINT disjointData{};
-	HRESULT hr = context->GetData(frame.disjoint.get(), &disjointData, sizeof(disjointData), D3D11_ASYNC_GETDATA_DONOTFLUSH);
-	if (hr != S_OK)
-		return;
-
-	frame.inFlight = false;
-	collectedFrames++;
-
 	struct ActiveTimerData
 	{
 		float gpuMs = 0.0f;
@@ -175,8 +181,29 @@ void Profiler::CollectResults()
 	std::unordered_map<std::string, ActiveTimerData> activeTimers;
 	float activeTotalMs = 0.0f;
 	float activeCpuTotalMs = 0.0f;
+	bool collected = false;
 
-	if (!disjointData.Disjoint) {
+	// Oldest first; only the newest resolved frame is published.
+	while (pendingFrames > 0) {
+		auto& frame = frames[readFrame];
+
+		D3D11_QUERY_DATA_TIMESTAMP_DISJOINT disjointData{};
+		HRESULT hr = context->GetData(frame.disjoint.get(), &disjointData, sizeof(disjointData), D3D11_ASYNC_GETDATA_DONOTFLUSH);
+		if (hr != S_OK)
+			break;
+
+		readFrame = (readFrame + 1) % kFrameLatency;
+		pendingFrames--;
+		collected = true;
+		collectedFrames++;
+
+		activeTimers.clear();
+		activeTotalMs = 0.0f;
+		activeCpuTotalMs = 0.0f;
+
+		if (disjointData.Disjoint)
+			continue;
+
 		double ticksToMs = 1000.0 / static_cast<double>(disjointData.Frequency);
 
 		for (uint32_t i = 0; i < frame.activeCount; i++) {
@@ -208,6 +235,9 @@ void Profiler::CollectResults()
 		}
 	}
 
+	if (!collected)
+		return;
+
 	RetireStaleTimers();
 
 	totalTimeMs = activeTotalMs;
@@ -226,12 +256,6 @@ void Profiler::CollectResults()
 			result.gpuTimeMs = known.gpu.lastMs;
 			result.cpuTimeMs = known.cpu.lastMs;
 		}
-		result.avgMs = known.gpu.GetAverage();
-		result.p95Ms = known.gpu.GetPercentile(95.0f);
-		result.p99Ms = known.gpu.GetPercentile(99.0f);
-		result.cpuAvgMs = known.cpu.GetAverage();
-		result.cpuP95Ms = known.cpu.GetPercentile(95.0f);
-		result.cpuP99Ms = known.cpu.GetPercentile(99.0f);
 		result.valid = true;
 		result.historyBuffer = known.gpu.history;
 		result.historyHead = known.gpu.head;
@@ -239,6 +263,30 @@ void Profiler::CollectResults()
 		results.push_back(std::move(result));
 	}
 }
+
+std::vector<Profiler::TimerResult> Profiler::GetStatistics(std::string_view timerPrefix) const
+{
+	std::vector<TimerResult> snapshot;
+	snapshot.reserve(results.size());
+	for (const auto& live : results) {
+		if (!live.name.starts_with(timerPrefix))
+			continue;
+		auto it = knownTimerIndex.find(live.name);
+		if (it == knownTimerIndex.end())
+			continue;
+		const auto& known = knownTimers[it->second];
+		auto result = live;
+		result.avgMs = known.gpu.GetAverage();
+		result.p95Ms = known.gpu.GetPercentile(95.0f);
+		result.p99Ms = known.gpu.GetPercentile(99.0f);
+		result.cpuAvgMs = known.cpu.GetAverage();
+		result.cpuP95Ms = known.cpu.GetPercentile(95.0f);
+		result.cpuP99Ms = known.cpu.GetPercentile(99.0f);
+		snapshot.push_back(std::move(result));
+	}
+	return snapshot;
+}
+
 void Profiler::RetireStaleTimers()
 {
 	const size_t before = knownTimers.size();

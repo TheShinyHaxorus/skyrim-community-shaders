@@ -72,15 +72,6 @@ namespace
 		return children.empty() ? nullptr : static_cast<RE::BSGeometry*>(children[0].get());
 	}
 
-	bool IsPbrLandGeometry(RE::BSGeometry* a_geometry)
-	{
-		auto* property = a_geometry->GetGeometryRuntimeData().shaderProperty.get();
-		if (property == nullptr || property->GetRTTI() != globals::rtti::BSLightingShaderPropertyRTTI.get())
-			return false;
-		auto* lightingProperty = static_cast<RE::BSLightingShaderProperty*>(property);
-		return lightingProperty->flags.any(RE::BSShaderProperty::EShaderPropertyFlag::kVertexLighting);
-	}
-
 	void ReadQuad(RE::TESObjectLAND* a_land, uint32_t a_quad, LandscapeSeams::Quad& a_out)
 	{
 		const auto& data = *a_land->loadedData;
@@ -148,18 +139,18 @@ void LandscapeSeams::DrawSettings()
 		ImGui::TextWrapped("%s", T(TKEY("enabled_tooltip"), "Blends landscape textures across quad borders. Turning this off restores the vanilla blend immediately."));
 
 	int blendRadius = static_cast<int>(settings.BlendRadius);
-	if (ImGui::SliderInt(T(TKEY("blend_radius"), "Blend Radius"), &blendRadius, 1, static_cast<int>(MaxBlendRadius), "%d", ImGuiSliderFlags_AlwaysClamp)) {
+	if (ImGui::SliderInt(T(TKEY("blend_radius"), "Blend Radius"), &blendRadius, 1, static_cast<int>(MaxBlendRadius), "%d", ImGuiSliderFlags_AlwaysClamp))
 		settings.BlendRadius = static_cast<uint32_t>(blendRadius);
+	if (ImGui::IsItemDeactivatedAfterEdit())
 		rebuildRequested = true;
-	}
 	if (auto _tt = Util::HoverTooltipWrapper())
 		ImGui::TextWrapped("%s", T(TKEY("blend_radius_tooltip"), "How far from a quad border the blend reaches, in landscape vertices (128 game units each)."));
 
 	int extraLayers = static_cast<int>(settings.ExtraLayers);
-	if (ImGui::SliderInt(T(TKEY("extra_layers"), "Extra Texture Layers"), &extraLayers, 0, static_cast<int>(MaxExtraLayers), "%d", ImGuiSliderFlags_AlwaysClamp)) {
+	if (ImGui::SliderInt(T(TKEY("extra_layers"), "Extra Texture Layers"), &extraLayers, 0, static_cast<int>(MaxExtraLayers), "%d", ImGuiSliderFlags_AlwaysClamp))
 		settings.ExtraLayers = static_cast<uint32_t>(extraLayers);
+	if (ImGui::IsItemDeactivatedAfterEdit())
 		rebuildRequested = true;
-	}
 	if (auto _tt = Util::HoverTooltipWrapper())
 		ImGui::TextWrapped("%s", T(TKEY("extra_layers_tooltip"), "Textures a quad may borrow from its neighbours on top of its own six. Zero keeps the vanilla limit and only blends textures both quads already share."));
 
@@ -189,6 +180,7 @@ void LandscapeSeams::LoadSettings(json& o_json)
 	settings = o_json;
 	settings.BlendRadius = std::clamp(settings.BlendRadius, 1u, MaxBlendRadius);
 	settings.ExtraLayers = std::min(settings.ExtraLayers, MaxExtraLayers);
+	rebuildRequested = true;
 }
 
 void LandscapeSeams::SaveSettings(json& o_json)
@@ -202,7 +194,7 @@ void LandscapeSeams::RestoreDefaultSettings()
 	rebuildRequested = true;
 }
 
-bool LandscapeSeams::IsBlended(RE::BSGeometry* a_geometry, bool& a_hasGlint)
+bool LandscapeSeams::IsBlended(RE::BSGeometry* a_geometry)
 {
 	if (!settings.Enabled)
 		return false;
@@ -212,10 +204,7 @@ bool LandscapeSeams::IsBlended(RE::BSGeometry* a_geometry, bool& a_hasGlint)
 	if (loadedIt == loadedQuads.end())
 		return false;
 	const auto quadIt = quads.find(loadedIt->second);
-	if (quadIt == quads.end() || !quadIt->second.resources)
-		return false;
-	a_hasGlint = quadIt->second.resources->hasGlint;
-	return true;
+	return quadIt != quads.end() && quadIt->second.resources;
 }
 
 void LandscapeSeams::Bind(RE::BSGeometry* a_geometry)
@@ -245,7 +234,7 @@ void LandscapeSeams::Bind(RE::BSGeometry* a_geometry)
 	globals::d3d::context->PSSetShaderResources(FirstPSTexture, NumPSTextures, views.data());
 }
 
-void LandscapeSeams::Heal(const QuadKey& a_key, const Quad& a_quad, Healed& a_out) const
+void LandscapeSeams::Heal(const QuadKey& a_key, const Quad& a_quad, Healed& a_out, bool a_extrasOnly) const
 {
 	a_out.active = false;
 	a_out.extraCount = 0;
@@ -264,91 +253,116 @@ void LandscapeSeams::Heal(const QuadKey& a_key, const Quad& a_quad, Healed& a_ou
 			textures.entries[index].slot = static_cast<int>(slot);
 	}
 
-	float maxDelta = 0.0f;
-	for (int y = 0; y <= GridMax; ++y) {
-		for (int x = 0; x <= GridMax; ++x) {
-			if (x != 0 && x != GridMax && y != 0 && y != GridMax)
-				continue;
+	std::array<int, MaxFieldTextures> layerOf{};
+	layerOf.fill(-1);
 
-			const int perimeter = PerimeterIndex(x, y);
-			const int vertex = VertexIndex(x, y);
+	const auto computeDeltas = [&](bool a_restrict) {
+		float maxDelta = 0.0f;
+		for (int y = 0; y <= GridMax; ++y) {
+			for (int x = 0; x <= GridMax; ++x) {
+				if (x != 0 && x != GridMax && y != 0 && y != GridMax)
+					continue;
 
-			std::array<float, MaxFieldTextures> own{};
-			std::array<float, MaxFieldTextures> sum{};
+				const int perimeter = PerimeterIndex(x, y);
+				const int vertex = VertexIndex(x, y);
 
-			float ownTotal = 0.0f;
-			for (uint32_t slot = 0; slot < EngineLayers; ++slot) {
-				if (slotTexture[slot] >= 0)
-					ownTotal += grid[slot][vertex];
-			}
-			if (ownTotal <= 0.0f)
-				continue;
-			for (uint32_t slot = 0; slot < EngineLayers; ++slot) {
-				if (slotTexture[slot] >= 0)
-					own[slotTexture[slot]] += grid[slot][vertex] / ownTotal;
-			}
-			sum = own;
+				std::array<float, MaxFieldTextures> own{};
+				std::array<float, MaxFieldTextures> sum{};
+				std::array<const Quad*, 3> sharers{};
+				uint32_t sharerCount = 0;
 
-			int sharing = 1;
-			const int dxMin = x == 0 ? -1 : 0;
-			const int dxMax = x == GridMax ? 1 : 0;
-			const int dyMin = y == 0 ? -1 : 0;
-			const int dyMax = y == GridMax ? 1 : 0;
-			for (int dy = dyMin; dy <= dyMax; ++dy) {
-				for (int dx = dxMin; dx <= dxMax; ++dx) {
-					if (dx == 0 && dy == 0)
-						continue;
+				float ownTotal = 0.0f;
+				for (uint32_t slot = 0; slot < EngineLayers; ++slot) {
+					if (slotTexture[slot] >= 0)
+						ownTotal += grid[slot][vertex];
+				}
+				if (ownTotal <= 0.0f)
+					continue;
+				for (uint32_t slot = 0; slot < EngineLayers; ++slot) {
+					if (slotTexture[slot] >= 0)
+						own[slotTexture[slot]] += grid[slot][vertex] / ownTotal;
+				}
+				sum = own;
 
-					const auto neighbourIt = quads.find(QuadKey{ a_key.worldSpace, a_key.x + dx, a_key.y + dy });
-					if (neighbourIt == quads.end())
-						continue;
-					const auto& neighbour = neighbourIt->second;
-
-					const int neighbourX = dx < 0 ? GridMax : (dx > 0 ? 0 : x);
-					const int neighbourY = dy < 0 ? GridMax : (dy > 0 ? 0 : y);
-					const int neighbourPerimeter = PerimeterIndex(neighbourX, neighbourY);
-
-					float neighbourTotal = 0.0f;
-					for (uint32_t slot = 0; slot < EngineLayers; ++slot) {
-						if (neighbour.slots[slot] != nullptr)
-							neighbourTotal += neighbour.border[slot][neighbourPerimeter];
-					}
-					if (neighbourTotal <= 0.0f)
-						continue;
-
-					bool complete = true;
-					std::array<float, MaxFieldTextures> contribution{};
-					for (uint32_t slot = 0; slot < EngineLayers; ++slot) {
-						const auto weight = neighbour.border[slot][neighbourPerimeter];
-						if (neighbour.slots[slot] == nullptr || weight == 0)
+				int sharing = 1;
+				const int dxMin = x == 0 ? -1 : 0;
+				const int dxMax = x == GridMax ? 1 : 0;
+				const int dyMin = y == 0 ? -1 : 0;
+				const int dyMax = y == GridMax ? 1 : 0;
+				for (int dy = dyMin; dy <= dyMax; ++dy) {
+					for (int dx = dxMin; dx <= dxMax; ++dx) {
+						if (dx == 0 && dy == 0)
 							continue;
-						const int index = textures.FindOrAdd(neighbour.slots[slot]);
-						if (index < 0) {
-							complete = false;
-							break;
-						}
-						contribution[index] += weight / neighbourTotal;
-					}
-					if (!complete)
-						continue;
 
-					for (size_t i = 0; i < textures.count; ++i) {
-						sum[i] += contribution[i];
+						const auto neighbourIt = quads.find(QuadKey{ a_key.worldSpace, a_key.x + dx, a_key.y + dy });
+						if (neighbourIt == quads.end())
+							continue;
+						const auto& neighbour = neighbourIt->second;
+
+						const int neighbourX = dx < 0 ? GridMax : (dx > 0 ? 0 : x);
+						const int neighbourY = dy < 0 ? GridMax : (dy > 0 ? 0 : y);
+						const int neighbourPerimeter = PerimeterIndex(neighbourX, neighbourY);
+
+						float neighbourTotal = 0.0f;
+						for (uint32_t slot = 0; slot < EngineLayers; ++slot) {
+							if (neighbour.slots[slot] != nullptr)
+								neighbourTotal += neighbour.border[slot][neighbourPerimeter];
+						}
+						if (neighbourTotal <= 0.0f)
+							continue;
+
+						bool complete = true;
+						std::array<float, MaxFieldTextures> contribution{};
+						for (uint32_t slot = 0; slot < EngineLayers; ++slot) {
+							const auto weight = neighbour.border[slot][neighbourPerimeter];
+							if (neighbour.slots[slot] == nullptr || weight == 0)
+								continue;
+							const int index = textures.FindOrAdd(neighbour.slots[slot]);
+							if (index < 0) {
+								complete = false;
+								break;
+							}
+							contribution[index] += weight / neighbourTotal;
+						}
+						if (!complete)
+							continue;
+
+						for (size_t i = 0; i < textures.count; ++i) {
+							sum[i] += contribution[i];
+						}
+						++sharing;
+						if (neighbour.geometry != nullptr)
+							sharers[sharerCount++] = &neighbour;
 					}
-					++sharing;
+				}
+
+				std::array<bool, MaxFieldTextures> allowed{};
+				float allowedTotal = 0.0f;
+				if (a_restrict) {
+					for (size_t i = 0; i < textures.count; ++i) {
+						allowed[i] = layerOf[i] >= 0;
+						for (uint32_t sharer = 0; sharer < sharerCount && allowed[i]; ++sharer) {
+							const auto& renderable = sharers[sharer]->renderable;
+							allowed[i] = std::find(renderable.begin(), renderable.end(), textures.entries[i].texture) != renderable.end();
+						}
+						if (allowed[i])
+							allowedTotal += sum[i];
+					}
+				}
+
+				const float inverse = 1.0f / static_cast<float>(sharing);
+				for (size_t i = 0; i < textures.count; ++i) {
+					const float target = allowedTotal > 0.0f ? (allowed[i] ? sum[i] / allowedTotal : 0.0f) : sum[i] * inverse;
+					const float delta = target - own[i];
+					textures.entries[i].delta[perimeter] = delta;
+					maxDelta = std::max(maxDelta, std::abs(delta));
 				}
 			}
-
-			const float inverse = 1.0f / static_cast<float>(sharing);
-			for (size_t i = 0; i < textures.count; ++i) {
-				const float delta = sum[i] * inverse - own[i];
-				textures.entries[i].delta[perimeter] = delta;
-				maxDelta = std::max(maxDelta, std::abs(delta));
-			}
 		}
-	}
+		return maxDelta;
+	};
 
-	if (maxDelta < MinDelta)
+	if (computeDeltas(false) < MinDelta)
 		return;
 
 	const float radius = static_cast<float>(std::clamp(settings.BlendRadius, 1u, MaxBlendRadius));
@@ -362,48 +376,50 @@ void LandscapeSeams::Heal(const QuadKey& a_key, const Quad& a_quad, Healed& a_ou
 	std::array<float, MaxFieldTextures> fieldSum{};
 	std::array<float, MaxFieldTextures> fieldMax{};
 
-	for (size_t i = 0; i < textures.count; ++i) {
-		const auto& delta = textures.entries[i].delta;
-		const float corner00 = delta[PerimeterIndex(0, 0)];
-		const float corner10 = delta[PerimeterIndex(GridMax, 0)];
-		const float corner01 = delta[PerimeterIndex(0, GridMax)];
-		const float corner11 = delta[PerimeterIndex(GridMax, GridMax)];
+	const auto buildFields = [&] {
+		fieldSum.fill(0.0f);
+		fieldMax.fill(0.0f);
+		for (size_t i = 0; i < textures.count; ++i) {
+			const auto& delta = textures.entries[i].delta;
+			const float corner00 = delta[PerimeterIndex(0, 0)];
+			const float corner10 = delta[PerimeterIndex(GridMax, 0)];
+			const float corner01 = delta[PerimeterIndex(0, GridMax)];
+			const float corner11 = delta[PerimeterIndex(GridMax, GridMax)];
 
-		auto& field = fields[i];
-		for (int y = 0; y <= GridMax; ++y) {
-			const float fy0 = falloff[y];
-			const float fy1 = falloff[GridMax - y];
-			const float west = delta[PerimeterIndex(0, y)];
-			const float east = delta[PerimeterIndex(GridMax, y)];
-			for (int x = 0; x <= GridMax; ++x) {
-				const float fx0 = falloff[x];
-				const float fx1 = falloff[GridMax - x];
-				const int vertex = VertexIndex(x, y);
+			auto& field = fields[i];
+			for (int y = 0; y <= GridMax; ++y) {
+				const float fy0 = falloff[y];
+				const float fy1 = falloff[GridMax - y];
+				const float west = delta[PerimeterIndex(0, y)];
+				const float east = delta[PerimeterIndex(GridMax, y)];
+				for (int x = 0; x <= GridMax; ++x) {
+					const float fx0 = falloff[x];
+					const float fx1 = falloff[GridMax - x];
+					const int vertex = VertexIndex(x, y);
 
-				float raw = 0.0f;
-				float rawTotal = 0.0f;
-				for (uint32_t slot = 0; slot < EngineLayers; ++slot) {
-					if (slotTexture[slot] < 0)
-						continue;
-					rawTotal += grid[slot][vertex];
-					if (slotTexture[slot] == static_cast<int>(i))
-						raw += grid[slot][vertex];
+					float raw = 0.0f;
+					float rawTotal = 0.0f;
+					for (uint32_t slot = 0; slot < EngineLayers; ++slot) {
+						if (slotTexture[slot] < 0)
+							continue;
+						rawTotal += grid[slot][vertex];
+						if (slotTexture[slot] == static_cast<int>(i))
+							raw += grid[slot][vertex];
+					}
+					raw = rawTotal > 0.0f ? raw / rawTotal : 0.0f;
+
+					float value = fx0 * west + fx1 * east + fy0 * delta[PerimeterIndex(x, 0)] + fy1 * delta[PerimeterIndex(x, GridMax)];
+					value -= fx0 * fy0 * corner00 + fx1 * fy0 * corner10 + fx0 * fy1 * corner01 + fx1 * fy1 * corner11;
+					value = std::max(0.0f, raw + value);
+
+					field[vertex] = value;
+					fieldSum[i] += value;
+					fieldMax[i] = std::max(fieldMax[i], value);
 				}
-				raw = rawTotal > 0.0f ? raw / rawTotal : 0.0f;
-
-				float value = fx0 * west + fx1 * east + fy0 * delta[PerimeterIndex(x, 0)] + fy1 * delta[PerimeterIndex(x, GridMax)];
-				value -= fx0 * fy0 * corner00 + fx1 * fy0 * corner10 + fx0 * fy1 * corner01 + fx1 * fy1 * corner11;
-				value = std::max(0.0f, raw + value);
-
-				field[vertex] = value;
-				fieldSum[i] += value;
-				fieldMax[i] = std::max(fieldMax[i], value);
 			}
 		}
-	}
-
-	std::array<int, MaxFieldTextures> layerOf{};
-	layerOf.fill(-1);
+	};
+	buildFields();
 
 	std::array<int, MaxFieldTextures> candidates{};
 	size_t candidateCount = 0;
@@ -412,6 +428,8 @@ void LandscapeSeams::Heal(const QuadKey& a_key, const Quad& a_quad, Healed& a_ou
 		if (entry.slot >= 0) {
 			layerOf[i] = entry.slot;
 		} else if (fieldMax[i] >= MinLayerWeight && entry.texture->textureSet != nullptr) {
+			if (!a_out.pbr && globals::features::truePBR.IsPBRTextureSet(Util::GetSeasonalSwap(entry.texture->textureSet)))
+				continue;
 			candidates[candidateCount++] = static_cast<int>(i);
 		}
 	}
@@ -422,6 +440,12 @@ void LandscapeSeams::Heal(const QuadKey& a_key, const Quad& a_quad, Healed& a_ou
 		layerOf[candidates[i]] = static_cast<int>(EngineLayers + a_out.extraCount);
 		a_out.extras[a_out.extraCount++] = textures.entries[candidates[i]].texture;
 	}
+
+	if (a_extrasOnly)
+		return;
+
+	computeDeltas(true);
+	buildFields();
 
 	for (auto& layer : a_out.weights) {
 		layer.fill(0);
@@ -480,10 +504,8 @@ std::shared_ptr<LandscapeSeams::Resources> LandscapeSeams::CreateResources(const
 				data.Flags |= FlagPbr << extra;
 				if (layer[3] != nullptr && layer[3] != defaults.defaultTextureBlack)
 					data.Flags |= FlagDisplacement << extra;
-				if (pbrData->glintParameters.enabled) {
+				if (pbrData->glintParameters.enabled)
 					data.Flags |= FlagGlint << extra;
-					resources->hasGlint = true;
-				}
 				data.PBRParams[extra] = { pbrData->roughnessScale, pbrData->displacementScale, pbrData->specularLevel, 0.0f };
 				data.GlintParams[extra] = {
 					pbrData->glintParameters.screenSpaceScale,
@@ -622,7 +644,29 @@ void LandscapeSeams::Rebuild(const std::vector<QuadKey>& a_keys)
 		for (auto& healed : pending) {
 			const auto it = quads.find(healed.key);
 			if (it != quads.end() && it->second.grid && it->second.generation == healed.generation)
-				Heal(healed.key, it->second, healed);
+				Heal(healed.key, it->second, healed, true);
+		}
+	}
+
+	{
+		const std::unique_lock lock(mutex);
+		for (const auto& healed : pending) {
+			const auto it = quads.find(healed.key);
+			if (it == quads.end() || it->second.generation != healed.generation)
+				continue;
+			auto& quad = it->second;
+			quad.renderable.fill(nullptr);
+			std::copy(quad.slots.begin(), quad.slots.end(), quad.renderable.begin());
+			std::copy_n(healed.extras.begin(), healed.extraCount, quad.renderable.begin() + EngineLayers);
+		}
+	}
+
+	{
+		const std::shared_lock lock(mutex);
+		for (auto& healed : pending) {
+			const auto it = quads.find(healed.key);
+			if (it != quads.end() && it->second.grid && it->second.generation == healed.generation)
+				Heal(healed.key, it->second, healed, false);
 		}
 	}
 
@@ -676,6 +720,7 @@ void LandscapeSeams::TESObjectLAND_SetupMaterial(RE::TESObjectLAND* a_land)
 	};
 	std::vector<LoadedQuad> loadedNow;
 	loadedNow.reserve(4);
+	const bool pbr = globals::features::truePBR.IsPBRLand(a_land);
 
 	for (uint32_t quadIndex = 0; quadIndex < 4; ++quadIndex) {
 		auto* geometry = GetQuadGeometry(a_land, quadIndex);
@@ -691,16 +736,23 @@ void LandscapeSeams::TESObjectLAND_SetupMaterial(RE::TESObjectLAND* a_land)
 		ReadQuad(a_land, quadIndex, entry.quad);
 		geometry->IncRefCount();
 		entry.quad.geometry = geometry;
-		entry.quad.pbr = IsPbrLandGeometry(geometry);
+		entry.quad.pbr = pbr;
 	}
 
 	if (loadedNow.empty())
 		return;
 
 	std::vector<QuadKey> keys;
-	keys.reserve(16);
+	keys.reserve(36);
+	std::vector<std::shared_ptr<Resources>> staleResources;
 	{
 		const std::unique_lock lock(mutex);
+
+		const uint32_t worldSpaceID = worldSpace->GetFormID();
+		if (worldSpaceID != currentWorldSpace) {
+			currentWorldSpace = worldSpaceID;
+			std::erase_if(quads, [&](const auto& a_entry) { return a_entry.first.worldSpace != worldSpaceID && a_entry.second.geometry == nullptr; });
+		}
 
 		for (auto& entry : loadedNow) {
 			auto& quad = quads[entry.key];
@@ -711,17 +763,20 @@ void LandscapeSeams::TESObjectLAND_SetupMaterial(RE::TESObjectLAND* a_land)
 			loadedQuads[entry.quad.geometry] = entry.key;
 
 			quad.slots = entry.quad.slots;
+			quad.renderable.fill(nullptr);
+			std::copy(quad.slots.begin(), quad.slots.end(), quad.renderable.begin());
 			quad.border = entry.quad.border;
 			quad.grid = std::move(entry.quad.grid);
 			quad.geometry = entry.quad.geometry;
 			quad.pbr = entry.quad.pbr;
+			staleResources.push_back(std::move(quad.resources));
 
 			keys.push_back(entry.key);
 		}
 
 		for (const auto& entry : loadedNow) {
-			for (int dy = -1; dy <= 1; ++dy) {
-				for (int dx = -1; dx <= 1; ++dx) {
+			for (int dy = -2; dy <= 2; ++dy) {
+				for (int dx = -2; dx <= 2; ++dx) {
 					if (dx == 0 && dy == 0)
 						continue;
 					const QuadKey neighbourKey{ entry.key.worldSpace, entry.key.x + dx, entry.key.y + dy };
@@ -782,10 +837,13 @@ void LandscapeSeams::Sweep()
 
 void LandscapeSeams::Prepass()
 {
-	Sweep();
-
 	if (rebuildRequested.exchange(false))
 		RebuildAll();
+}
+
+void LandscapeSeams::Reset()
+{
+	Sweep();
 }
 
 struct LandscapeSeams::Hooks
@@ -810,8 +868,7 @@ struct LandscapeSeams::Hooks
 			if (renderPasses == nullptr || !a_property->flags.any(RE::BSShaderProperty::EShaderPropertyFlag::kMultiTextureLandscape))
 				return renderPasses;
 
-			bool hasGlint = false;
-			const bool blended = globals::features::landscapeSeams.IsBlended(a_geometry, hasGlint);
+			const bool blended = globals::features::landscapeSeams.IsBlended(a_geometry);
 
 			for (auto* pass = renderPasses->head; pass != nullptr; pass = pass->next) {
 				if (pass->shader->shaderType.get() != RE::BSShader::Type::Lighting)
@@ -822,13 +879,10 @@ struct LandscapeSeams::Hooks
 				if (type != SIE::ShaderCache::LightingShaderTechniques::MTLand && type != SIE::ShaderCache::LightingShaderTechniques::MTLandLODBlend)
 					continue;
 
-				if (blended) {
+				if (blended)
 					technique |= SeamsFlag;
-					if (hasGlint && (technique & static_cast<uint32_t>(SIE::ShaderCache::LightingShaderFlags::TruePbr)) != 0)
-						technique |= static_cast<uint32_t>(SIE::ShaderCache::LightingShaderFlags::AnisoLighting);
-				} else {
+				else
 					technique &= ~SeamsFlag;
-				}
 				pass->passEnum = technique + LightingTechniqueStart;
 			}
 

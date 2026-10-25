@@ -2,10 +2,10 @@
 
 #include <FidelityFX/api/include/dx12/ffx_api_dx12.hpp>
 #include <algorithm>
-#include <chrono>
 #include <dxgi1_6.h>
 
 #include "../HDRDisplay.h"
+#include "../ScreenshotFeature.h"
 #include "../Upscaling.h"
 #include "FidelityFX.h"
 #include "Streamline.h"
@@ -13,8 +13,6 @@
 
 void DX12SwapChain::CreateD3D12Device(IDXGIAdapter* a_adapter)
 {
-	// Idempotent: the DLSS-G probe binds Streamline to this device; a second call from
-	// the FSR path must not replace it out from under that binding.
 	if (d3d12Device)
 		return;
 
@@ -40,8 +38,8 @@ void DX12SwapChain::CreateSwapChain(IDXGIAdapter* adapter, DXGI_SWAP_CHAIN_DESC 
 {
 	CreateD3D12Device(adapter);
 
-	IDXGIFactory4* dxgiFactory;
-	DX::ThrowIfFailed(adapter->GetParent(IID_PPV_ARGS(&dxgiFactory)));
+	winrt::com_ptr<IDXGIFactory4> dxgiFactory;
+	DX::ThrowIfFailed(adapter->GetParent(IID_PPV_ARGS(dxgiFactory.put())));
 
 	// Runtime format negotiation for swap chain
 	DXGI_FORMAT attemptedFormat = DXGI_FORMAT_R10G10B10A2_UNORM;
@@ -81,7 +79,7 @@ void DX12SwapChain::CreateSwapChain(IDXGIAdapter* adapter, DXGI_SWAP_CHAIN_DESC 
 	ffx::CreateContextDescFrameGenerationSwapChainForHwndDX12 ffxSwapChainDesc{};
 
 	ffxSwapChainDesc.desc = &swapChainDesc;
-	ffxSwapChainDesc.dxgiFactory = dxgiFactory;
+	ffxSwapChainDesc.dxgiFactory = dxgiFactory.get();
 	ffxSwapChainDesc.fullscreenDesc = nullptr;
 	ffxSwapChainDesc.gameQueue = commandQueue.get();
 	ffxSwapChainDesc.hwnd = a_swapChainDesc.OutputWindow;
@@ -105,95 +103,6 @@ void DX12SwapChain::CreateSwapChain(IDXGIAdapter* adapter, DXGI_SWAP_CHAIN_DESC 
 	SetColorSpace(enableHDR && !fallbackUsed);
 
 	fidelityFX.SetupFrameGeneration();
-}
-
-void DX12SwapChain::CreateSwapChainDirect(IDXGIAdapter* adapter, DXGI_SWAP_CHAIN_DESC a_swapChainDesc)
-{
-	CreateD3D12Device(adapter);
-
-	IDXGIFactory4* factoryRaw{};
-	DX::ThrowIfFailed(adapter->GetParent(IID_PPV_ARGS(&factoryRaw)));
-
-	BOOL allowTearing = FALSE;
-	if (winrt::com_ptr<IDXGIFactory5> factory5; SUCCEEDED(factoryRaw->QueryInterface(IID_PPV_ARGS(factory5.put()))))
-		if (FAILED(factory5->CheckFeatureSupport(DXGI_FEATURE_PRESENT_ALLOW_TEARING, &allowTearing, sizeof(allowTearing))))
-			allowTearing = FALSE;
-	tearingSupported = allowTearing != FALSE;
-
-	// CreateSwapChainForHwnd must go through the SL-upgraded factory (a mandatory manual
-	// hook), or Streamline never recognizes the swap chain as its own.
-	auto& streamlineDX12 = globals::features::upscaling.streamlineDX12;
-	if (streamlineDX12.slUpgradeInterface)
-		streamlineDX12.slUpgradeInterface((void**)&factoryRaw);
-	winrt::com_ptr<IDXGIFactory4> dxgiFactory;
-	dxgiFactory.attach(factoryRaw);
-
-	DXGI_FORMAT attemptedFormat = DXGI_FORMAT_R10G10B10A2_UNORM;
-	DXGI_FORMAT negotiatedFormat = DXGI_FORMAT_R10G10B10A2_UNORM;
-	bool fallbackUsed = false;
-
-	D3D12_FEATURE_DATA_FORMAT_SUPPORT formatSupport = { DXGI_FORMAT_R10G10B10A2_UNORM, D3D12_FORMAT_SUPPORT1_RENDER_TARGET, D3D12_FORMAT_SUPPORT2_NONE };
-	if (SUCCEEDED(d3d12Device->CheckFeatureSupport(D3D12_FEATURE_FORMAT_SUPPORT, &formatSupport, sizeof(formatSupport)))) {
-		if ((formatSupport.Support1 & D3D12_FORMAT_SUPPORT1_RENDER_TARGET) == 0) {
-			logger::warn("[DX12SwapChain] R10G10B10A2_UNORM not supported as render target, falling back to R8G8B8A8_UNORM");
-			negotiatedFormat = DXGI_FORMAT_R8G8B8A8_UNORM;
-			fallbackUsed = true;
-		}
-	} else {
-		logger::warn("[DX12SwapChain] CheckFeatureSupport failed for R10G10B10A2_UNORM, falling back to R8G8B8A8_UNORM");
-		negotiatedFormat = DXGI_FORMAT_R8G8B8A8_UNORM;
-		fallbackUsed = true;
-	}
-
-	logger::info("[DX12SwapChain] Direct swap chain format negotiation: attempted={}, negotiated={}, fallback={}",
-		static_cast<uint32_t>(attemptedFormat),
-		static_cast<uint32_t>(negotiatedFormat),
-		fallbackUsed ? "true" : "false");
-
-	swapChainDesc = {};
-	swapChainDesc.Width = a_swapChainDesc.BufferDesc.Width;
-	swapChainDesc.Height = a_swapChainDesc.BufferDesc.Height;
-	swapChainDesc.Format = negotiatedFormat;
-	swapChainDesc.SampleDesc.Count = 1;
-	swapChainDesc.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
-	// The SL pacer holds one backbuffer for composition while flipping generated frames; a
-	// two-buffer chain leaves it no slack. Sized from the hardware multiplier, not the live
-	// setting, because this runs before user settings are loaded.
-	backBufferCount = std::clamp<UINT>(streamlineDX12.dlssgMaxFramesToGenerate + 2, 3, kMaxBackBuffers);
-	swapChainDesc.BufferCount = backBufferCount;
-	swapChainDesc.SwapEffect = a_swapChainDesc.SwapEffect;
-	// No FRAME_LATENCY_WAITABLE_OBJECT: waiting on it serializes presents to one in
-	// flight, which makes the SL pacer drop every interpolated frame.
-	swapChainDesc.Flags = a_swapChainDesc.Flags & ~DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT;
-	if (tearingSupported)
-		swapChainDesc.Flags |= DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING;
-
-	winrt::com_ptr<IDXGISwapChain1> swapChain1;
-	DX::ThrowIfFailed(dxgiFactory->CreateSwapChainForHwnd(
-		commandQueue.get(),
-		a_swapChainDesc.OutputWindow,
-		&swapChainDesc,
-		nullptr,
-		nullptr,
-		swapChain1.put()));
-
-	DX::ThrowIfFailed(swapChain1->QueryInterface(IID_PPV_ARGS(&swapChain)));
-
-	for (UINT i = 0; i < backBufferCount; i++) {
-		DX::ThrowIfFailed(swapChain->GetBuffer(i, IID_PPV_ARGS(&swapChainBuffers[i])));
-		const std::wstring bufferName = L"DX12SwapChain::DirectBackBuffer[" + std::to_wstring(i) + L"]";
-		swapChainBuffers[i]->SetName(bufferName.c_str());
-	}
-
-	frameIndex = swapChain->GetCurrentBackBufferIndex();
-
-	auto* hdr = globals::features::hdrDisplay.loaded ? &globals::features::hdrDisplay : nullptr;
-	bool enableHDR = hdr && hdr->settings.enableHDR;
-	SetColorSpace(enableHDR && !fallbackUsed);
-
-	useDLSSG = true;
-	logger::info("[DX12SwapChain] Created direct swap chain for DLSS-G ({}x{})", swapChainDesc.Width, swapChainDesc.Height);
-	logger::info("[DX12SwapChain] Direct swap chain: {} buffers, flags {:#x}, tearing {}, game sync flags {:#x}", backBufferCount, swapChainDesc.Flags, tearingSupported ? "supported" : "unsupported", a_swapChainDesc.Flags);
 }
 
 void DX12SwapChain::CreateInterop()
@@ -225,19 +134,10 @@ void DX12SwapChain::RecreateWrappedResources(const DXGI_SWAP_CHAIN_DESC1& desc)
 	texDesc11.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
 	auto newUiBuffer = std::make_unique<WrappedResource>(texDesc11, d3d11Device.get(), d3d12Device.get(), "DX12SwapChain::UIBuffer");
 
-	std::unique_ptr<WrappedResource> newHudLessBuffer;
-	if (useDLSSG) {
-		texDesc11.Format = desc.Format;
-		newHudLessBuffer = std::make_unique<WrappedResource>(texDesc11, d3d11Device.get(), d3d12Device.get(), "DX12SwapChain::HudLessBuffer");
-	}
-
 	delete swapChainBufferWrapped;
 	delete uiBufferWrapped;
-	delete hudLessBufferWrapped;
 	swapChainBufferWrapped = newSwapChainBuffer.release();
 	uiBufferWrapped = newUiBuffer.release();
-	hudLessBufferWrapped = newHudLessBuffer.release();
-	hudLessCaptured = false;
 
 	globals::features::upscaling.frameGenerationPrepared = false;
 
@@ -300,8 +200,6 @@ HRESULT DX12SwapChain::ResizeBuffers(UINT bufferCount, UINT width, UINT height, 
 	for (UINT i = 0; i < backBufferCount; i++) {
 		swapChainBuffers[i] = nullptr;
 	}
-	if (useDLSSG)
-		flags = (flags & ~(DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING | DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT)) | (swapChainDesc.Flags & DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING);
 	const HRESULT result = swapChain->ResizeBuffers(effectiveBufferCount, width, height, format, flags);
 	if (FAILED(result)) {
 		// The resize didn't take effect, so the pre-resize buffers should still be
@@ -350,12 +248,21 @@ HRESULT DX12SwapChain::Present(UINT SyncInterval, UINT Flags)
 	if (hdr)
 		hdr->ScaleUIBrightnessForFG();
 
+	globals::features::screenshotFeature.ProcessCaptureRequest();
+
 	bool isHDR = hdr && hdr->settings.enableHDR;
 
 	// Wait for D3D11 to finish (includes ApplyHDR scene encoding AND UIBrightnessCS)
 	const uint64_t d3d11SignalValue = interopFence.Next();
 	DX::ThrowIfFailed(d3d11Context->Signal(interopFence.fence11.get(), d3d11SignalValue));
+	d3d11Context->Flush();
 	DX::ThrowIfFailed(commandQueue->Wait(interopFence.fence12.get(), d3d11SignalValue));
+
+	// Null only after a resize failure severe enough that even the pre-resize
+	// buffers couldn't be re-fetched (e.g. device removed) -- skip this frame's
+	// copy/present rather than pass a null resource to D3D12.
+	if (!swapChainBuffers[frameIndex])
+		return DXGI_ERROR_DEVICE_REMOVED;
 
 	// New frame, reset
 	if (frameFenceValues[frameIndex])
@@ -367,11 +274,6 @@ HRESULT DX12SwapChain::Present(UINT SyncInterval, UINT Flags)
 	{
 		auto fakeSwapChain = swapChainBufferWrapped->resource.get();
 		auto realSwapChain = swapChainBuffers[frameIndex].get();
-		// Null only after a resize failure severe enough that even the pre-resize
-		// buffers couldn't be re-fetched (e.g. device removed) -- skip this frame's
-		// copy/present rather than pass a null resource to D3D12.
-		if (!realSwapChain)
-			return DXGI_ERROR_DEVICE_REMOVED;
 		{
 			std::vector<D3D12_RESOURCE_BARRIER> barriers;
 			barriers.push_back(CD3DX12_RESOURCE_BARRIER::Transition(fakeSwapChain, D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_COPY_SOURCE));
@@ -389,87 +291,15 @@ HRESULT DX12SwapChain::Present(UINT SyncInterval, UINT Flags)
 		}
 	}
 
-	if (useDLSSG) {
-		auto& streamlineDX12 = upscaling.streamlineDX12;
-		streamlineDX12.EnsureFrameToken();
-		// The full per-frame PCL marker sequence is structural for interpolation
-		// (eSimulationStart is emitted at the Reflex sleep site).
-		streamlineDX12.EmitPCLMarker(sl::PCLMarker::eSimulationEnd);
-		streamlineDX12.EmitPCLMarker(sl::PCLMarker::eRenderSubmitStart);
-		// Skip tagging/interpolation without valid per-frame constants -- otherwise
-		// DLSS-G interpolates against stale or default camera data.
-		if (streamlineDX12.CheckFrameConstants(streamlineDX12.viewport)) {
-			const bool hudLess = hudLessCaptured && hudLessBufferWrapped;
-			streamlineDX12.TagDX12Resources(commandLists[frameIndex].get(),
-				depthBufferShared12 ? depthBufferShared12->resource.get() : nullptr,
-				motionVectorBufferShared12 ? motionVectorBufferShared12->resource.get() : nullptr,
-				hudLess ? hudLessBufferWrapped->resource.get() : (swapChainBufferWrapped ? swapChainBufferWrapped->resource.get() : nullptr),
-				hudLess ? nullptr : (uiBufferWrapped ? uiBufferWrapped->resource.get() : nullptr),
-				swapChainDesc.Width, swapChainDesc.Height);
-			if (dlssgHoldoffFrames)
-				--dlssgHoldoffFrames;
-			streamlineDX12.ConfigureDLSSG(upscaling.ShouldUseFrameGenerationThisFrame() && dlssgHoldoffFrames == 0);
-		} else {
-			streamlineDX12.ConfigureDLSSG(false);
-		}
-	} else {
-		upscaling.fidelityFX.Present(upscaling.ShouldUseFrameGenerationThisFrame(), isHDR);
-	}
+	upscaling.fidelityFX.Present(upscaling.ShouldUseFrameGenerationThisFrame(), isHDR);
 
 	DX::ThrowIfFailed(commandLists[frameIndex]->Close());
 
 	ID3D12CommandList* commandListsToExecute[] = { commandLists[frameIndex].get() };
 	commandQueue->ExecuteCommandLists(1, commandListsToExecute);
 
-	if (useDLSSG) {
-		upscaling.streamlineDX12.EmitPCLMarker(sl::PCLMarker::eRenderSubmitEnd);
-		upscaling.streamlineDX12.EmitPCLMarker(sl::PCLMarker::ePresentStart);
-	}
-
-	UINT presentSyncInterval = SyncInterval;
-	UINT presentFlags = Flags;
-	if (useDLSSG && upscaling.settings.dlssgDisableVSync) {
-		presentSyncInterval = 0;
-		if (tearingSupported && (swapChainDesc.Flags & DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING))
-			presentFlags |= DXGI_PRESENT_ALLOW_TEARING;
-	}
-
 	// Present the frame
-	const auto presentStart = std::chrono::steady_clock::now();
-	HRESULT presentResult = swapChain->Present(presentSyncInterval, presentFlags);
-	if (presentResult == DXGI_ERROR_INVALID_CALL && (presentFlags & DXGI_PRESENT_ALLOW_TEARING)) {
-		logger::warn("[DX12SwapChain] Present rejected the tearing flag; presenting without it");
-		tearingSupported = false;
-		presentFlags &= ~DXGI_PRESENT_ALLOW_TEARING;
-		presentResult = swapChain->Present(presentSyncInterval, presentFlags);
-	}
-	if (useDLSSG && presentResult == DXGI_ERROR_INVALID_CALL && SUCCEEDED(d3d12Device->GetDeviceRemovedReason())) {
-		// The presenter refused this frame (alt-tabbed away, or a state change it is still
-		// digesting). Turn generation off, hold it off for a while, and retry once with the game's
-		// own interval. A refusal is a dropped frame, not a reason to take the game down.
-		++dlssgRejectedPresents;
-		dlssgGoodPresents = 0;
-		dlssgHoldoffFrames = std::min<uint32_t>(600u, 30u << std::min<uint32_t>(dlssgRejectedPresents, 4u));
-		upscaling.streamlineDX12.ConfigureDLSSG(false);
-		if (dlssgRejectedPresents <= 5 || (dlssgRejectedPresents % 300) == 0)
-			logger::warn("[DX12SwapChain] DLSS-G present rejected (sync {}, flags {:#x}, window {}); frame generation held off for {} frames (rejection {})",
-				presentSyncInterval, presentFlags, upscaling.windowActive.load(std::memory_order_relaxed) ? "active" : "in the background", dlssgHoldoffFrames, dlssgRejectedPresents);
-		presentResult = swapChain->Present(SyncInterval, Flags & ~DXGI_PRESENT_ALLOW_TEARING);
-		if (presentResult == DXGI_ERROR_INVALID_CALL && SUCCEEDED(d3d12Device->GetDeviceRemovedReason()))
-			presentResult = S_OK;
-	} else if (useDLSSG && SUCCEEDED(presentResult) && dlssgRejectedPresents && ++dlssgGoodPresents >= 300) {
-		logger::info("[DX12SwapChain] DLSS-G presents recovered after {} rejections", dlssgRejectedPresents);
-		dlssgRejectedPresents = 0;
-		dlssgGoodPresents = 0;
-	}
-	DX::ThrowIfFailed(presentResult);
-	const double presentMs = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - presentStart).count();
-
-	if (useDLSSG) {
-		upscaling.streamlineDX12.EmitPCLMarker(sl::PCLMarker::ePresentEnd);
-		upscaling.RecordFrameGenPresent(presentMs, presentSyncInterval, (presentFlags & DXGI_PRESENT_ALLOW_TEARING) != 0, hudLessCaptured && hudLessBufferWrapped);
-	}
-	hudLessCaptured = false;
+	DX::ThrowIfFailed(swapChain->Present(SyncInterval, Flags));
 	upscaling.worldCameraFrameValid = false;
 
 	// Wait for D3D12 to finish
@@ -499,6 +329,7 @@ HRESULT DX12SwapChain::Present(UINT SyncInterval, UINT Flags)
 HRESULT DX12SwapChain::GetDevice(REFIID uuid, void** ppDevice)
 {
 	if (uuid == __uuidof(ID3D11Device) || uuid == __uuidof(ID3D11Device1) || uuid == __uuidof(ID3D11Device2) || uuid == __uuidof(ID3D11Device3) || uuid == __uuidof(ID3D11Device4) || uuid == __uuidof(ID3D11Device5)) {
+		// COM out-pointers carry a reference the caller releases
 		d3d11Device->AddRef();
 		*ppDevice = d3d11Device.get();
 		return S_OK;
@@ -510,29 +341,6 @@ HRESULT DX12SwapChain::GetDevice(REFIID uuid, void** ppDevice)
 HANDLE DX12SwapChain::GetFrameLatencyWaitableObject()
 {
 	return swapChain->GetFrameLatencyWaitableObject();
-}
-
-float DX12SwapChain::GetFrameTime() const
-{
-	// Calculate frame time based on swap chain presentation
-	static float lastPresentTime = 0.0f;
-	static float frameTime = 1.0f / 60.0f;  // Default to 60 fps
-	static LARGE_INTEGER frequency = {};
-	static LARGE_INTEGER currentTime = {};
-
-	if (frequency.QuadPart == 0) {
-		QueryPerformanceFrequency(&frequency);
-	}
-
-	QueryPerformanceCounter(&currentTime);
-	float time = static_cast<float>(currentTime.QuadPart) / static_cast<float>(frequency.QuadPart);
-
-	if (lastPresentTime > 0.0f) {
-		frameTime = time - lastPresentTime;
-	}
-	lastPresentTime = time;
-
-	return frameTime;
 }
 
 WrappedResource::WrappedResource(D3D11_TEXTURE2D_DESC a_texDesc, ID3D11Device5* a_d3d11Device, ID3D12Device* a_d3d12Device, const std::string& a_name)
@@ -707,6 +515,7 @@ HRESULT STDMETHODCALLTYPE DXGISwapChainProxy::QueryInterface(REFIID riid, void**
 	if (!ppvObj)
 		return E_POINTER;
 
+	// The proxy only implements IDXGISwapChain; handing it out for IDXGISwapChain1+ would expose a short vtable
 	*ppvObj = nullptr;
 	if (riid != __uuidof(IUnknown) && riid != __uuidof(IDXGIObject) && riid != __uuidof(IDXGIDeviceSubObject) && riid != __uuidof(IDXGISwapChain))
 		return E_NOINTERFACE;

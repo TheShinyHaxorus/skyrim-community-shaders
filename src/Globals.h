@@ -9,7 +9,6 @@ struct VolumetricShadows;
 struct ExtendedMaterials;
 struct GrassCollision;
 struct GrassLighting;
-struct FoliageLighting;
 struct GrassOptimizations;
 struct HairSpecular;
 struct HiZOcclusion;
@@ -19,7 +18,7 @@ struct LightLimitFix;
 struct LinearLighting;
 struct LODBlending;
 struct InteriorSun;
-struct InverseSquareLighting;
+struct RainRefraction;
 struct ScreenSpaceGI;
 struct ScreenSpaceShadows;
 struct Skylighting;
@@ -49,8 +48,11 @@ struct Skin;
 struct SnowCover;
 struct FootstepParticles;
 struct HairBacklighting;
+struct NightEye;
 struct FurShells;
 struct LandscapeSeams;
+struct SnowDeformation;
+struct SceneManager;
 
 class State;
 class Deferred;
@@ -58,7 +60,6 @@ struct TruePBR;
 class RenderDoc;
 class RemoteControl;
 class Menu;
-class WeatherManager;
 class SceneSettingsManager;
 
 namespace SIE
@@ -110,7 +111,6 @@ namespace globals
 		extern ExtendedMaterials extendedMaterials;
 		extern GrassCollision grassCollision;
 		extern GrassLighting grassLighting;
-		extern FoliageLighting foliageLighting;
 		extern GrassOptimizations grassOptimizations;
 		extern HairSpecular hairSpecular;
 		extern HiZOcclusion hiZOcclusion;
@@ -120,7 +120,7 @@ namespace globals
 		extern LinearLighting linearLighting;
 		extern LODBlending lodBlending;
 		extern InteriorSun interiorSun;
-		extern InverseSquareLighting inverseSquareLighting;
+		extern RainRefraction rainRefraction;
 		extern ScreenSpaceGI screenSpaceGI;
 		extern ScreenSpaceShadows screenSpaceShadows;
 		extern Skylighting skylighting;
@@ -152,8 +152,11 @@ namespace globals
 		extern SnowCover snowCover;
 		extern FootstepParticles footstepParticles;
 		extern HairBacklighting hairBacklighting;
+		extern NightEye nightEye;
 		extern FurShells furShells;
 		extern LandscapeSeams landscapeSeams;
+		extern SnowDeformation snowDeformation;
+		extern SceneManager sceneManager;
 
 	}
 
@@ -270,7 +273,6 @@ namespace globals
 	extern Menu* menu;
 	extern SIE::ShaderCache* shaderCache;
 	extern Profiler* profiler;
-	extern WeatherManager* weatherManager;
 	extern SceneSettingsManager* sceneSettingsManager;
 
 	/** @brief Initializes core singletons (ShaderCache, State, Menu, Deferred). Called once at plugin load. */

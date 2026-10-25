@@ -1,4 +1,7 @@
-#include "Common/Color.hlsli"
+// SPDX-License-Identifier: MIT AND (LicenseRef-GPL-3.0-with-Modding-Exception WITH GPL-3.0-linking-source-exception)
+// Original code Copyright (c) 2022 Ilya Perapechka (MIT), modifications GPL-3.0 with Modding Exception (see EXCEPTIONS.md)
+
+#include "Common/ColorManagement.hlsli"
 #include "Common/FlareOcclusion.hlsli"
 #include "Common/FrameBuffer.hlsli"
 #include "Common/Math.hlsli"
@@ -6,16 +9,18 @@
 #include "Common/Random.hlsli"
 #include "Common/SharedData.hlsli"
 
+#if defined(VSHADER)
 struct VS_INPUT
 {
 	float4 Position: POSITION0;
 
-#if defined(TEX) || defined(HORIZFADE)
+#	if defined(TEX) || defined(HORIZFADE)
 	float2 TexCoord: TEXCOORD0;
-#endif
+#	endif
 
 	float4 Color: COLOR0;
 };
+#endif
 
 struct VS_OUTPUT
 {
@@ -114,7 +119,7 @@ VS_OUTPUT main(VS_INPUT input)
 
 	vsout.TexCoord0.xy = input.TexCoord;
 	vsout.TexCoord2.x = saturate((1.0 / 17.0) * eyeHeightDelta);
-	vsout.Color.xyz = BlendColor[0].xyz * VParams;
+	vsout.Color.xyz = ColorManagement::SRGBToWorking(BlendColor[0].xyz) * VParams;
 	vsout.Color.w = BlendColor[0].w;
 
 #	else  // MOONMASK HORIZFADE
@@ -144,14 +149,14 @@ VS_OUTPUT main(VS_INPUT input)
 	float3 skyColor = BlendColor[0].xyz * input.Color.xxx + BlendColor[1].xyz * input.Color.yyy +
 	                  BlendColor[2].xyz * input.Color.zzz;
 
-	vsout.Color.xyz = VParams * skyColor;
+	vsout.Color.xyz = VParams * ColorManagement::SRGBToWorking(skyColor);
 	vsout.Color.w = BlendColor[0].w * input.Color.w;
 	vsout.SkyBlendColor0 = float4(BlendColor[0].xyz * VParams, 0);
 	vsout.SkyBlendColor2 = float4(BlendColor[2].xyz * VParams, 0);
 #		if defined(DITHER) && defined(TEX)
 	vsout.Color.w *= GetSunGlareVisibility();
 #		endif
-#	endif      // OCCLUSION MOONMASK HORIZFADE
+#	endif  // OCCLUSION MOONMASK HORIZFADE
 
 #	ifdef REVERSE_Z
 	float4 skyPosition = mul(WorldViewProj, inputPosition);
@@ -232,7 +237,7 @@ cbuffer AlphaTestRefCB : register(b11)
 
 Texture2D<float> TexDepthSampler : register(t17);
 
-#	if defined(EFFECTS11) && (defined(HORIZFADE) || defined(MOONMASK))
+#	if defined(EFFECTS11) && defined(HORIZFADE)
 float3 ShadeStars(float4 starTexel, float2 uv)
 {
 	float3 color = starTexel.xyz;
@@ -257,33 +262,38 @@ float3 ShadeStars(float4 starTexel, float2 uv)
 PS_OUTPUT main(PS_INPUT input)
 {
 	PS_OUTPUT psout;
-	// Color::Sky is float3->float3 (per-channel sky gamma). PParams.yyy broadcasts the packed
-	// scalar in PParams.y to RGB; float3 matches output .xyz where skyScale is added.
-	float3 skyScale = Color::Sky(PParams.yyy);
+#	if defined(EFFECTS11)
+	float3 skyScale = ColorManagement::SRGBToWorking(PParams.yyy * SharedData::enbSettings.SkyScaleMultiplier);
+#	else
+	float3 skyScale = ColorManagement::SRGBToWorking(PParams.yyy);
+#	endif
+	float alphaTransmittance = 1.0;
 
 #	ifndef OCCLUSION
 #		ifndef TEXLERP
 	float4 baseColor = TexBaseSampler.Sample(SampBaseSampler, input.TexCoord0.xy);
-#			if defined(EFFECTS11) && (defined(HORIZFADE) || defined(MOONMASK))
+#			if defined(EFFECTS11) && defined(HORIZFADE)
 	[branch] if (SharedData::enbSettings.Enable)
 		baseColor.xyz = ShadeStars(baseColor, input.TexCoord0.xy);
-#			elif defined(EFFECTS11) && defined(TEX) && !defined(DITHER) && !defined(CLOUDS)
+#			elif defined(EFFECTS11) && defined(TEX) && !defined(DITHER) && !defined(CLOUDS) && !defined(MOONMASK)
 	[branch] if (SharedData::enbSettings.Enable && (Permutation::ExtraShaderDescriptor & Permutation::ExtraFlags::IsMoon)) {
 		float2 edge = abs(input.TexCoord0.xy * 2.0 - 1.0);
 		baseColor.xyz = pow(max(baseColor.xyz, 0.0), SharedData::enbSettings.MoonCurve);
 		if (max(edge.x, edge.y) > 0.985)
-			baseColor.xyz = 0.0;
+			baseColor = 0.0;
 	}
 #			endif
-	baseColor.xyz = Color::Sky(baseColor.xyz);
+#			ifndef MOONMASK
+	baseColor.xyz = ColorManagement::TextureToWorking(baseColor.xyz);
+#			endif
 #			ifdef TEXFADE
 	baseColor.w *= PParams.x;
 #			endif
 #		else
 	float4 blendColor = TexBlendSampler.Sample(SampBlendSampler, input.TexCoord1.xy);
 	float4 baseColor = TexBaseSampler.Sample(SampBaseSampler, input.TexCoord0.xy);
-	blendColor.xyz = Color::Sky(blendColor.xyz);
-	baseColor.xyz = Color::Sky(baseColor.xyz);
+	blendColor.xyz = ColorManagement::TextureToWorking(blendColor.xyz);
+	baseColor.xyz = ColorManagement::TextureToWorking(baseColor.xyz);
 	baseColor = PParams.xxxx * (-baseColor + blendColor) + baseColor;
 #		endif
 
@@ -342,7 +352,7 @@ PS_OUTPUT main(PS_INPUT input)
 		}
 
 		baseColor.xyz = proceduralSunColor;
-		baseColor.w = sunCoverage;
+		baseColor.w = sunCoverage * saturate(TexBaseSampler.SampleLevel(SampBaseSampler, 0.5, 0).w);
 
 		skyScale = 0.0;
 	}
@@ -359,7 +369,7 @@ PS_OUTPUT main(PS_INPUT input)
 	noiseGrad *= 10.0;
 
 #			ifdef TEX
-	psout.Color.xyz = Color::Sky(input.Color.xyz) * baseColor.xyz + skyScale;
+	psout.Color.xyz = input.Color.xyz * baseColor.xyz + skyScale;
 	psout.Color.xyz *= 1.0 + noiseGrad;
 	psout.Color.w = baseColor.w * input.Color.w;
 
@@ -372,7 +382,7 @@ PS_OUTPUT main(PS_INPUT input)
 #			else
 	float3 skyGradientColor = input.Color.xyz;
 
-#if defined(EFFECTS11)
+#				if defined(EFFECTS11)
 	float3 viewDirection = normalize(input.WorldPosition.xyz);
 	if (SharedData::enbSettings.UseProceduralGradientWeights) {
 		float gradientPosition = pow(1.0 - saturate(viewDirection.z), SharedData::enbSettings.ProceduralGradientWeightCurve);
@@ -380,12 +390,12 @@ PS_OUTPUT main(PS_INPUT input)
 	}
 	[branch] if (SharedData::enbSettings.EnableCloudsScattering)
 		skyGradientColor = SkyScattering::ApplySkyScattering(skyGradientColor, input.SkyBlendColor2.xyz, viewDirection) + SkyScattering::GetMoonGlow(viewDirection);
-#endif
-	psout.Color.xyz = Color::Sky(skyGradientColor) + skyScale;
+#				endif
+	psout.Color.xyz = skyGradientColor + skyScale;
 
 #				if defined(EFFECTS11)
-	[branch] if (SharedData::enbSettings.Enable && !SharedData::enbSettings.FixBlackCrush) {
-		float3 additiveDither = psout.Color.xyz + noiseGrad * 0.1;
+	[branch] if (SharedData::enbSettings.Enable && SharedData::enbSettings.FixBlackCrush) {
+		float3 additiveDither = max(psout.Color.xyz + noiseGrad * 0.1, 0.0);
 		psout.Color.xyz = lerp(additiveDither, psout.Color.xyz * (1.0 + noiseGrad), saturate(dot(psout.Color.xyz, 8.0)));
 	} else {
 		psout.Color.xyz *= 1.0 + noiseGrad;
@@ -408,12 +418,12 @@ PS_OUTPUT main(PS_INPUT input)
 	if (SharedData::enbSettings.Enable)
 		skyScale = 0.0;
 #			endif
-	psout.Color.xyz = float3(1.5, 1.5, 1.5) * (Color::Sky(input.Color.xyz) * baseColor.xyz + skyScale);
+	psout.Color.xyz = float3(1.5, 1.5, 1.5) * (input.Color.xyz * baseColor.xyz + skyScale);
 	psout.Color.w = input.TexCoord2.x * (baseColor.w * input.Color.w);
 #		else
 
 	psout.Color.w = input.Color.w * baseColor.w;
-	psout.Color.xyz = Color::Sky(input.Color.xyz) * baseColor.xyz + skyScale;
+	psout.Color.xyz = input.Color.xyz * baseColor.xyz + skyScale;
 
 #			if defined(PROCEDURAL_SUN) && defined(TEX) && defined(DEFERRED) && !defined(DITHER) && !defined(CLOUDS) && !defined(MOONMASK)
 	[branch] if (proceduralSunActive)
@@ -427,7 +437,7 @@ PS_OUTPUT main(PS_INPUT input)
 		float cloudTextureAlpha = saturate(baseColor.w);
 		float cloudTextureGray = pow(max(dot(baseColor.xyz, 1.0 / 3.0), 0.0), SharedData::enbSettings.CloudsCurve);
 
-		float3 cloudColor = pow(max(Color::Sky(input.Color.xyz) * baseColor.xyz, 0.0), SharedData::enbSettings.CloudsCurve);
+		float3 cloudColor = pow(max(input.Color.xyz * baseColor.xyz, 0.0), SharedData::enbSettings.CloudsCurve);
 		cloudColor = lerp(cloudColor, dot(cloudColor, 1.0 / 3.0), SharedData::enbSettings.CloudsDesaturation) * SharedData::enbSettings.CloudsIntensity * SharedData::enbSettings.CloudsColorFilter;
 
 		bool cloudScattering = SharedData::enbSettings.EnableCloudsScattering && !(Permutation::ExtraShaderDescriptor & Permutation::ExtraFlags::NoSkyScattering);
@@ -446,8 +456,9 @@ PS_OUTPUT main(PS_INPUT input)
 	psout.Color = float4(0, 0, 0, 1.0);
 #	endif  // OCCLUSION
 
-#	if defined(EXP_HEIGHT_FOG)
 	const bool inReflection = (Permutation::ExtraShaderDescriptor & Permutation::ExtraFlags::InReflection) != 0;
+
+#	if defined(EXP_HEIGHT_FOG)
 	if (inReflection && SharedData::exponentialHeightFogSettings.enabled) {
 		float skyFogDistance = SharedData::CameraData.x;
 #		if defined(HORIZON_FIX)
@@ -462,12 +473,12 @@ PS_OUTPUT main(PS_INPUT input)
 
 	float2 screenMotionVector = MotionBlur::GetSSMotionVector(input.WorldPosition, input.PreviousWorldPosition);
 
-	psout.MotionVectors = float4(screenMotionVector, 0, psout.Color.w);
-	psout.Normal = float4(0.5, 0.5, 0, psout.Color.w);
+	psout.MotionVectors = float4(screenMotionVector, 0, psout.Color.w * alphaTransmittance);
+	psout.Normal = float4(0.5, 0.5, 0, psout.Color.w * alphaTransmittance);
 
 #	if defined(CLOUD_SHADOWS) && defined(CLOUDS) && !defined(DEFERRED)
 	// A broadcast alpha would square coverage under SRC_ALPHA blending.
-	psout.CloudShadows = float4(1, 1, 1, psout.Color.w);
+	psout.CloudShadows = float4(1, 1, 1, psout.Color.w * alphaTransmittance);
 
 	// Keep sun behind scene depth to prevent halo leaks through geometry.
 	float depth = TexDepthSampler.Load(int3(input.Position.xy, 0));
@@ -482,7 +493,7 @@ PS_OUTPUT main(PS_INPUT input)
 	// Even without cloud shadows enabled, sun disc should be occluded by scene depth (clouds, terrain, etc.)
 	// The sun glare pass (DITHER + TEX) is skipped: it fades by depth coverage in the VS instead,
 	// and the per-pixel reject made the glare disappear.
-	[branch] if ((Permutation::ExtraShaderDescriptor & Permutation::ExtraFlags::IsSun) && psout.Color.w > 0.0) {
+	[branch] if ((Permutation::ExtraShaderDescriptor & Permutation::ExtraFlags::IsSun) && !(Permutation::ExtraShaderDescriptor & Permutation::ExtraFlags::InReflection) && psout.Color.w > 0.0) {
 		float depth = TexDepthSampler.Load(int3(input.Position.xy, 0));
 #		ifdef REVERSE_Z
 		if (depth > 0.0 && depth < 1.0 && SharedData::GetScreenDepth(depth) < SharedData::GetScreenDepth(input.Position.z) * 0.99)
@@ -493,6 +504,20 @@ PS_OUTPUT main(PS_INPUT input)
 	}
 #	endif
 
+#	if defined(ENABLE_LL)
+#		if (defined(TEX) || defined(HORIZFADE)) && !defined(MOONMASK) && !defined(CLOUDS)
+	bool linearizeAlpha = !Permutation::RenderToUI || inReflection;
+#			if defined(PROCEDURAL_SUN) && defined(TEX) && defined(DEFERRED) && !defined(DITHER) && !defined(OCCLUSION)
+	linearizeAlpha = linearizeAlpha && !proceduralSunActive;
+#			endif
+	if (linearizeAlpha) {
+		psout.Color.w = pow(saturate(psout.Color.w), TransferFunctions::GAME_GAMMA);
+	}
+#		endif
+	if (Permutation::RenderToUI && !inReflection)
+		psout.Color.rgb = ColorManagement::WorkingToUI(psout.Color.rgb);
+#	endif
+	psout.Color.w *= alphaTransmittance;
 	return psout;
 }
 #endif

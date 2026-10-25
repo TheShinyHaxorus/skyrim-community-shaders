@@ -1,9 +1,10 @@
 #pragma once
 
 #include "Buffer.h"
+#include "Effects11/SceneHandoff.h"
 
+#include <array>
 #include <memory>
-#include <unordered_set>
 #include <winrt/base.h>
 
 // C4324: the aligned PerFrame cache member pads the struct
@@ -18,16 +19,16 @@ public:
 	virtual inline std::string GetDisplayName() override { return "Effects 11"; }
 	virtual std::string_view GetCategory() const override { return FeatureCategories::kPostProcessing; }
 	virtual inline std::string_view GetShaderDefineName() override { return "EFFECTS11"; }
-	virtual inline bool HasShaderDefine(RE::BSShader::Type) override { return true; }
+	bool HasShaderDefine(RE::BSShader::Type) override;
 
 	virtual std::pair<std::string, std::vector<std::string>> GetFeatureSummary() override
 	{
 		return {
-			T("feature.effects11.description", "Effects 11 provides a framework for loading and executing ENBSeries-compatible FX effect files.\nThis allows for advanced post-processing effects and visual enhancements using DirectX 11 Effect (.fx) files."),
+			T("feature.effects11.description", "Effects 11 loads ENBSeries-compatible FX post-processing. Install multiple presets under Data/SKSE/Plugins/CommunityShaders/Effects11/Presets/<Name>/ (each with enbseries.ini + enbseries/), use a classic root/Data enbseries install as Legacy, or ship effects11/ inside a unified Presets pack. Hotswap does not modify root files."),
 			{ T("feature.effects11.key_feature_1", "ENBSeries-compatible FX support"),
-				T("feature.effects11.key_feature_2", "DirectX 11 Effect file loading"),
-				T("feature.effects11.key_feature_3", "Advanced post-processing pipeline"),
-				T("feature.effects11.key_feature_4", "Custom technique execution"),
+				T("feature.effects11.key_feature_2", "Multi-preset library with in-game hotswap"),
+				T("feature.effects11.key_feature_3", "Legacy root/Data enbseries support"),
+				T("feature.effects11.key_feature_4", "Advanced post-processing pipeline"),
 				T("feature.effects11.key_feature_5", "Dynamic UI variable system") }
 		};
 	}
@@ -40,9 +41,7 @@ public:
 		float FireIntensity;
 
 		float FireCurve;
-		uint EnableRain;
-		float RainMotionStretch;
-		float RainMotionTransparency;
+		float pad0[3];
 
 		float CloudsCurve;
 		float CloudsDesaturation;
@@ -126,7 +125,7 @@ public:
 
 		float MasserBillboardTan;
 		float SecundaBillboardTan;
-		float SkyScatteringPad0;
+		float SkyScaleMultiplier = 1.0f;
 		float SkyScatteringPad1;
 
 		float3 VolumetricFogColorFilter;
@@ -138,7 +137,7 @@ public:
 		uint VolumetricFogEnableLighting;
 
 		float3 VolumetricRaysSkyColor;
-		float VolumetricRaysPad0;
+		uint VolumetricFogEnableShadows;
 
 		float StarsCurve;
 		float StarsIntensity;
@@ -148,17 +147,25 @@ public:
 		float StarsAnimationTime;
 		float StarsAnimationDensity;
 		float StarsAnimationIntensity;
-		float AuroraIntensity;
-
-		float AuroraCurve;
 		uint FixBlackCrush;
-		float NightSkyPad0;
-		float NightSkyPad1;
+
+		uint VolumetricRaysSampleCount;
+		uint GameVolumetricRaysDisableDithering;
+		float2 GameVolumetricRaysPad0;
+
+		float3 GameVolumetricRaysSunColor;
+		float GameVolumetricRaysCustomContribution;
+
+		float3 GameVolumetricRaysCustomColor;
+		float GameVolumetricRaysPad1;
 	};
 	static_assert(sizeof(PerFrame) % 16 == 0);
 	static_assert(offsetof(PerFrame, StarsCurve) % 16 == 0);
 	static_assert(offsetof(PerFrame, VolumetricFogColorFilter) % 16 == 0);
 	static_assert(offsetof(PerFrame, VolumetricRaysSkyColor) % 16 == 0);
+	static_assert(offsetof(PerFrame, VolumetricRaysSampleCount) % 16 == 0);
+	static_assert(offsetof(PerFrame, GameVolumetricRaysSunColor) % 16 == 0);
+	static_assert(offsetof(PerFrame, GameVolumetricRaysCustomColor) % 16 == 0);
 	static_assert(offsetof(PerFrame, EnableCloudsScattering) % 16 == 0);
 	static_assert(offsetof(PerFrame, SkyScatteringColor) % 16 == 0);
 	static_assert(offsetof(PerFrame, SkyScatteringDustTint) % 16 == 0);
@@ -169,17 +176,23 @@ public:
 
 	struct Settings
 	{
-		bool IgnorePresetParticles = false;
+		bool IgnorePresetParticles = true;
 	} settings;
 
 	bool enableEffect = false;
+
+	/** @brief Whether the active preset hands this feature back to CS through its manifest sceneControl. */
+	bool IsHandedOff(E11Handoff::Feature feature) const { return handedOff[static_cast<size_t>(feature)]; }
+	/** @brief Sets the runtime handoff flag; UnifiedPresetCatalog owns persisting it to the manifest. */
+	void SetHandedOff(E11Handoff::Feature feature, bool value) { handedOff[static_cast<size_t>(feature)] = value; }
+	/** @brief Whether Effects 11 drives a feature it can hand to CS. */
+	bool OwnsFeature(E11Handoff::Feature feature) const { return loaded && enableEffect && !IsHandedOff(feature); }
 
 	ID3D11PixelShader* raymarchVolumetricRaysPS = nullptr;
 	ID3D11PixelShader* applyVolumetricRaysPS = nullptr;
 	ID3D11ComputeShader* blurHCS = nullptr;
 	ID3D11ComputeShader* blurVCS = nullptr;
 	winrt::com_ptr<ID3D11BlendState> scatteringBlendState;
-	winrt::com_ptr<ID3D11BlendState> alphaBlendState;
 
 	std::unique_ptr<Texture2D> vlTexA;
 	std::unique_ptr<Texture2D> vlTexB;
@@ -195,11 +208,14 @@ public:
 
 	float3 scatteringSunColor = { 1.0f, 1.0f, 1.0f };
 	float3 scatteringSunDirection = { 0.0f, 0.0f, 1.0f };
+	float3 ungradedSunlight = { 0.0f, 0.0f, 0.0f };
+	float3 gradedSunlight = { 0.0f, 0.0f, 0.0f };
+	bool sunlightGraded = false;
+	float3 volumetricSunColor = { 0.0f, 0.0f, 0.0f };
 
-	winrt::com_ptr<ID3D11Texture2D> raindropTexture;
-	winrt::com_ptr<ID3D11ShaderResourceView> raindropSRV;
-	std::string raindropStatus;
-	void LoadRaindropTexture();
+	bool gameVolumetricRaysIntensityApplied = false;
+	float gameVolumetricRaysIntensityLast = 1.0f;
+	float gameVolumetricRaysIntensityCurrent = 1.0f;
 
 	PerFrame GetCommonBufferData();
 	void UpdateSkyScattering(PerFrame& a_data);
@@ -209,22 +225,33 @@ public:
 	virtual void SaveSettings(json& o_json) override;
 	virtual void RestoreDefaultSettings() override;
 	virtual void SetupResources() override;
-	virtual void Prepass() override;
+	virtual void PostSetupResources() override;
+	virtual void Reset() override;
 	virtual void ClearShaderCache() override;
 
-	/** @brief Flips the "UseEffect" GLOBAL setting; bound to the Effects 11 toggle hotkey. */
+	/** @brief Switches between Effects 11 and the pipeline that ran before it; bound to the Effects 11 toggle hotkey. */
 	void ToggleEnabled();
+	/** @brief Writes the "UseEffect" GLOBAL setting; go through PostProcessingMode::Set to keep the pipelines exclusive. */
+	void SetUseEffect(bool enabled);
+	/** @brief UseEffect is on in enbseries.ini; does not require a compiled preset. */
+	bool IsUseEffectEnabled() const;
+	/** @brief UseEffect on and a compiled preset is ready (Effects 11 actually drives the frame). */
+	bool IsPresetEnabled() const;
+	bool IsActive() const { return presetActive; }
 
 	void DrawVolumetricRays();
 
-	/** @brief Draws the ENB [RAYS] screen-space sun (or Masser) shafts additively onto the main target. */
+	/** @brief Draws the ENB [RAYS] screen-space shafts from the sun, or from a moon at night, additively onto the main target. */
 	void DrawSunRays();
 
 	void OnSkyUpdateColors(RE::Sky* a_sky);
-	virtual void DataLoaded() override;
-	void UpdateNightEye();
-	bool IsNightEyeActive() const { return nightEye.active; }
-	float GetNightEyeFactor() const { return nightEye.factor; }
+	/** @brief Records the sunlight the game volumetric lighting should use: ungraded, but with the dims applied after grading. Runs after Sky Sync's dim. */
+	void FinishSkyUpdateColors(RE::Sky* a_sky);
+	/**
+	 * @brief The [GAMEVOLUMETRICRAYS] Intensity of the last and current weather, if this tick multiplied it into the game volumetric lighting.
+	 * @return False when Effects 11 left the intensity alone this tick.
+	 */
+	bool GetGameVolumetricRaysIntensityEndpoints(float& a_last, float& a_current) const;
 	void OverrideWeather(RE::Sky* a_sky);
 	void CheckCommonData();
 	void OverridePointLightColor(float3& a_color);
@@ -234,11 +261,6 @@ public:
 		RE::NiColor directionalAmbientColors[3][2];
 	};
 	void OverrideAmbientLighting(DirectionalAmbientColors& DirectionalAmbientColors);
-
-	__declspec(noinline) void ModifyParticle(RE::BSRenderPass* Pass);
-	void ParticleShaderHacks();
-	/** @brief True when the effect is on, the raindrop texture loaded, and RAIN "Enable" is set. */
-	bool IsRainEnabled();
 
 	/**
 	 * @brief Whether Effects11 wants to replace the vanilla tonemap this frame.
@@ -262,9 +284,13 @@ public:
 
 private:
 	bool EnsureScatteringBlendState();
+	bool presetActive = false;
+	bool resourcesReady = false;
+	/** @brief Compiles the sun ray shaders and (re)creates their half-res targets; false if anything failed. */
 	bool EnsureSunRaysResources(uint32_t a_width, uint32_t a_height);
 
-	uint tonemapReplacedFrame = UINT32_MAX;  ///< frameCount at which the effect chain's last tonemap output gets presented
+	uint tonemapReplacedFrame = UINT32_MAX;  ///< frameCount when the effect chain last wrote the tonemap output
+	std::array<bool, static_cast<size_t>(E11Handoff::Feature::Count)> handedOff{};
 
 	/** @brief Point light settings, resolved once per frame in CheckCommonData since OverridePointLightColor runs per light. */
 	struct PointLightingParams
@@ -273,16 +299,6 @@ private:
 		float desaturation = 0.0f;
 		float intensity = 1.0f;
 	} pointLighting;
-
-	struct NightEyeState
-	{
-		bool active = false;
-		float factor = 0.0f;
-	} nightEye;
-	std::unordered_set<RE::TESImageSpaceModifier*> nightEyeImods;
-	RE::BGSKeyword* nightEyeKeyword = nullptr;
-	bool IsNightEyeSetting(const RE::EffectSetting* a_setting) const;
-	bool HasNightEyeEffect() const;
 
 	// The feature buffer is rebuilt several times per frame, so GetCommonBufferData's lookups are replayed from here
 	PerFrame perFrameCache{};

@@ -4,6 +4,7 @@
 #include "Editor/Effects11Editor.h"
 #include "Features/Effects11.h"
 #include "Features/ProceduralSun.h"
+#include "Features/RainRefraction.h"
 #include "Features/ReverseZ.h"
 #include "Features/SkySync.h"
 #include "Globals.h"
@@ -93,7 +94,6 @@ void EffectManager::Initialize()
 	} else {
 		initialized = true;
 	}
-
 }
 
 void EffectManager::LogPresetStatus() const
@@ -119,7 +119,8 @@ void EffectManager::LogPresetStatus() const
 
 void EffectManager::Apply()
 {
-	globals::features::effects11.LoadRaindropTexture();
+	if (auto& rainRefraction = globals::features::rainRefraction; rainRefraction.loaded)
+		rainRefraction.LoadPresetRaindrops(PresetManager::GetSingleton().GetENBSeriesPath());
 
 	enbDepthOfField.Apply();
 	enbBloom.Apply();
@@ -242,7 +243,7 @@ void EffectManager::RegisterSettings()
 	settingManager.RegisterTimeOfDaySetting("ColorPow", "ENVIRONMENT", 1.0f, 1.0f, 2.2f, 0.01f, true);
 
 	settingManager.RegisterBoolSetting("DisableWrongSkyMath", "SKY", false, false);
-	settingManager.RegisterBoolSetting("FixBlackCrush", "SKY", false, false);
+	settingManager.RegisterBoolSetting("FixBlackCrush", "SKY", true, false);
 	settingManager.RegisterTimeOfDaySetting("GradientIntensity", "SKY", 1.0f, 0.0f, 30000.0f, 0.01f, true);
 	settingManager.RegisterTimeOfDaySetting("GradientDesaturation", "SKY", 0.0f, -1.0f, 1.0f, 0.01f, true);
 	settingManager.RegisterTimeOfDaySetting("GradientTopIntensity", "SKY", 1.0f, 0.0f, 30000.0f, 0.01f, true);
@@ -272,8 +273,6 @@ void EffectManager::RegisterSettings()
 	settingManager.RegisterFloatSetting("StarsAnimationTime", "SKY", 0.3f, 0.0f, 1.0f, 0.01f, false);
 	settingManager.RegisterFloatSetting("StarsAnimationDensity", "SKY", 10.0f, 0.0f, 10.0f, 0.01f, false);
 	settingManager.RegisterFloatSetting("StarsAnimationIntensity", "SKY", 10.0f, 0.0f, 10.0f, 0.01f, false);
-	settingManager.RegisterTimeOfDaySetting("AuroraBorealisIntensity", "SKY", 1.0f, 0.0f, 30000.0f, 0.01f, true);
-	settingManager.RegisterTimeOfDaySetting("AuroraBorealisCurve", "SKY", 1.0f, 0.1f, 8.0f, 0.01f, true);
 	settingManager.RegisterTimeOfDaySetting("CloudsVertexAlphaBoost", "SKY", 0.0f, 0.0f, 2.0f, 0.01f, true);
 	settingManager.RegisterFloatSetting("CloudsEdgeClamp", "SKY", 0.5f, 0.05f, 8.0f, 0.01f, false);
 	settingManager.RegisterFloatSetting("CloudsEdgeIntensity", "SKY", 2.0f, 0.0f, 30000.0f, 0.01f, false);
@@ -284,6 +283,7 @@ void EffectManager::RegisterSettings()
 
 	settingManager.RegisterBoolSetting("EnableCloudsLightingFromMoon", "SKYSCATTERING", true, false);
 	settingManager.RegisterBoolSetting("CalculateCloudsEdgeFromScattering", "SKYSCATTERING", false, false);
+	settingManager.RegisterBoolSetting("EnableCloudsEdge", "SKYSCATTERING", true, false);
 	settingManager.RegisterTimeOfDaySetting("AtmosphereThickness", "SKYSCATTERING", 1.0f, 0.05f, 100.0f, 0.01f, true);
 	settingManager.RegisterTimeOfDaySetting("HorizonRange", "SKYSCATTERING", 0.5f, 0.0f, 1.0f, 0.01f, true);
 	settingManager.RegisterTimeOfDaySetting("Intensity", "SKYSCATTERING", 1.0f, 0.0f, 30000.0f, 0.01f, true);
@@ -308,6 +308,7 @@ void EffectManager::RegisterSettings()
 	settingManager.RegisterTimeOfDaySetting("CloudsLightingForwardScattering", "SKYSCATTERING", 0.0f, 0.0f, 5.0f, 0.01f, true);
 
 	settingManager.RegisterBoolSetting("EnableLighting", "VOLUMETRICFOG", false, false);
+	settingManager.RegisterBoolSetting("EnableShadows", "VOLUMETRICFOG", true, false);
 	settingManager.RegisterTimeOfDaySetting("Intensity", "VOLUMETRICFOG", 1.0f, 0.0f, 30000.0f, 0.01f, true);
 	settingManager.RegisterTimeOfDaySetting("Curve", "VOLUMETRICFOG", 1.0f, 1.0f, 2.5f, 0.01f, true);
 	settingManager.RegisterTimeOfDaySetting("ShadowAmount", "VOLUMETRICFOG", 0.5f, 0.0f, 0.8f, 0.01f, true);
@@ -329,24 +330,19 @@ void EffectManager::RegisterSettings()
 	settingManager.RegisterBoolSetting("Enable", "RAIN", true, false);
 	settingManager.RegisterTimeOfDaySetting("MotionStretch", "RAIN", 0.28f, 0.0f, 1.0f, 0.01f, true);
 	settingManager.RegisterTimeOfDaySetting("MotionTransparency", "RAIN", 0.1f, 0.0f, 1.0f, 0.01f, true);
+	settingManager.RegisterFloatSetting("RefractionFactor", "RAIN", 1.0f, 0.0f, 2.0f, 0.01f, false);
+	settingManager.RegisterTimeOfDaySetting("MotionBluriness", "RAIN", 0.0f, 0.0f, 1.0f, 0.01f, true);
+	settingManager.RegisterTimeOfDaySetting("Brightness", "RAIN", 1.0f, 0.0f, 10.0f, 0.01f, true);
 
-	settingManager.RegisterBoolSetting("Enable", "NIGHTEYE", true, false);
-	settingManager.RegisterTimeOfDaySetting("Intensity", "NIGHTEYE", 1.0f, 0.0f, 1.0f, 0.01f, true);
-	settingManager.RegisterColorTimeOfDaySetting("ColorBalance", "NIGHTEYE", { 0.537f, 0.647f, 1.0f }, true);
-	settingManager.RegisterTimeOfDaySetting("Exposure", "NIGHTEYE", 1.0f, 0.0f, 8.0f, 0.01f, true);
-	settingManager.RegisterTimeOfDaySetting("Saturation", "NIGHTEYE", 1.0f, 0.0f, 10.0f, 0.01f, true);
-	settingManager.RegisterTimeOfDaySetting("Brightness", "NIGHTEYE", 1.0f, -5.0f, 5.0f, 0.01f, true);
-	settingManager.RegisterTimeOfDaySetting("Contrast", "NIGHTEYE", 1.1f, 0.0f, 5.0f, 0.01f, true);
-	settingManager.RegisterTimeOfDaySetting("LowClip", "NIGHTEYE", 0.0f, 0.0f, 1.0f, 0.01f, true);
-	settingManager.RegisterFloatSetting("FadeTime", "NIGHTEYE", 0.5f, 0.0f, 5.0f, 0.01f, false);
-
-	settingManager.RegisterTimeOfDaySetting("Amount", "CLOUDSHADOWS", 0.8f, 0.0f, 4.0f, 0.01f, true);
+	settingManager.RegisterTimeOfDaySetting("Amount", "CLOUDSHADOWS", 0.5f, 0.0f, 4.0f, 0.01f, true);
 
 	settingManager.RegisterTimeOfDaySetting("Intensity", "GAMEVOLUMETRICRAYS", 1.0f, 0.0f, 1000.0f, 0.01f, true);
 	settingManager.RegisterTimeOfDaySetting("RangeFactor", "GAMEVOLUMETRICRAYS", 1.0f, 0.0f, 100.0f, 0.01f, true);
 	settingManager.RegisterTimeOfDaySetting("Desaturation", "GAMEVOLUMETRICRAYS", 0.0f, -1.0f, 1.0f, 0.01f, true);
 	settingManager.RegisterColorTimeOfDaySetting("ColorFilter", "GAMEVOLUMETRICRAYS", { 1.0f, 1.0f, 1.0f }, true);
+	settingManager.RegisterBoolSetting("DisableGameDithering", "GAMEVOLUMETRICRAYS", false, false);
 
+	settingManager.RegisterFloatSetting("Quality", "VOLUMETRICRAYS", 0.0f, -1.0f, 2.0f, 1.0f, false);
 	settingManager.RegisterTimeOfDaySetting("Intensity", "VOLUMETRICRAYS", 0.2f, 0.0f, 30000.0f, 0.01f, true);
 	settingManager.RegisterTimeOfDaySetting("Density", "VOLUMETRICRAYS", 1.0f, 0.1f, 10.0f, 0.01f, true);
 	settingManager.RegisterTimeOfDaySetting("SkyColorAmount", "VOLUMETRICRAYS", 0.5f, 0.0f, 100.0f, 0.01f, true);
@@ -354,6 +350,7 @@ void EffectManager::RegisterSettings()
 	settingManager.RegisterBoolSetting("UseLinearMath", "RAYS", false, false);
 	settingManager.RegisterFloatSetting("Quality", "RAYS", 2.0f, -2.0f, 2.0f, 1.0f, false);
 	settingManager.RegisterFloatSetting("Type", "RAYS", 0.0f, 0.0f, 4.0f, 1.0f, false);
+	settingManager.RegisterFloatSetting("MoonType", "RAYS", 0.0f, 0.0f, 4.0f, 1.0f, false);
 	settingManager.RegisterTimeOfDaySetting("SunRaysMultiplier", "RAYS", 1.0f, 0.0f, 30000.0f, 0.01f, true);
 	settingManager.RegisterTimeOfDaySetting("MoonRaysMultiplier", "RAYS", 1.0f, 0.0f, 30000.0f, 0.01f, true);
 	settingManager.RegisterTimeOfDaySetting("SkyColorAmount", "RAYS", 0.0f, 0.0f, 100.0f, 0.01f, true);
@@ -365,7 +362,6 @@ void EffectManager::RegisterSettings()
 	settingManager.SetCategoryDependency("SKYSCATTERING", "EnableCloudsScattering", "EFFECT");
 	settingManager.SetCategoryDependency("IMAGEBASEDLIGHTING", "EnableImageBasedLighting", "EFFECT");
 	settingManager.SetCategoryDependency("VOLUMETRICRAYS", "EnableVolumetricRays", "EFFECT");
-	settingManager.SetCategoryDependency("NIGHTEYE", "Enable", "NIGHTEYE");
 
 	settingManager.SetSettingDependency("ProceduralGradientWeightCurve", "SKY", "UseProceduralGradientWeights", "SKY");
 	settingManager.SetSettingDependency("StarsAnimationTime", "SKY", "EnableAnimatedStars", "SKY");
@@ -373,7 +369,6 @@ void EffectManager::RegisterSettings()
 	settingManager.SetSettingDependency("StarsAnimationIntensity", "SKY", "EnableAnimatedStars", "SKY");
 	settingManager.SetSettingDependency("AdaptationMin", "ADAPTATION", "ForceMinMaxValues", "ADAPTATION");
 	settingManager.SetSettingDependency("AdaptationMax", "ADAPTATION", "ForceMinMaxValues", "ADAPTATION");
-
 
 	settingManager.SetCategoryExteriorOnly("RAIN", true);
 	settingManager.SetCategoryExteriorOnly("SKYLIGHTING", true);
@@ -405,9 +400,7 @@ void EffectManager::RegisterSettings()
 	ids.gammaCurve = settingManager.GetSettingID("GammaCurve", "COLORCORRECTION");
 
 	ids.enableRain = settingManager.GetSettingID("Enable", "RAIN");
-
-	ids.nightEyeEnable = settingManager.GetSettingID("Enable", "NIGHTEYE");
-	ids.nightEyeFadeTime = settingManager.GetSettingID("FadeTime", "NIGHTEYE");
+	ids.rainRefractionFactor = settingManager.GetSettingID("RefractionFactor", "RAIN");
 }
 
 void EffectManager::ExecuteEffect(EffectBase& a_effect, uint32_t enableSettingID)
@@ -496,7 +489,6 @@ bool EffectManager::ExecuteEffects(RE::BSGraphics::RenderTargetData& a_input, RE
 	ExecuteEffect(enbLens, ids.useLens);
 	ExecuteEffect(enbAdaptation, ids.useAdaptation);
 	ExecuteEffect(enbEffect);
-	ApplyNightEye();
 	ExecuteEffect(enbEffectPostPass, ids.usePostPass);
 
 	textureManager.IncrementTextureSwap();
@@ -531,7 +523,6 @@ void EffectManager::CreateCommonResources()
 	CreateRenderStates();
 	CreateCopyShaders();
 	CreateColorCorrectionShader();
-	CreateNightEyeShader();
 	CreateStandardDepthShader();
 }
 
@@ -801,44 +792,6 @@ void EffectManager::CreateColorCorrectionShader()
 	logger::info("[EFFECTS11] Created color correction compute shader successfully");
 }
 
-void EffectManager::CreateNightEyeShader()
-{
-	auto pixelShaderSource = LoadShaderFile("Data\\Shaders\\Effects11\\NightEyePS.hlsl");
-	if (pixelShaderSource.empty())
-		return;
-
-	winrt::com_ptr<ID3DBlob> psBlob, errorBlob;
-	HRESULT hr = D3DCompile(pixelShaderSource.data(), pixelShaderSource.size(), "NightEyePS.hlsl", nullptr, nullptr,
-		"main", "ps_5_0", 0, 0, psBlob.put(), errorBlob.put());
-
-	if (FAILED(hr)) {
-		if (errorBlob) {
-			logger::error("[EFFECTS11] Failed to compile night eye pixel shader: {}", static_cast<char*>(errorBlob->GetBufferPointer()));
-		}
-		return;
-	}
-
-	hr = globals::d3d::device->CreatePixelShader(psBlob->GetBufferPointer(), psBlob->GetBufferSize(), nullptr, nightEyePixelShader.put());
-	if (FAILED(hr)) {
-		logger::error("[EFFECTS11] Failed to create night eye pixel shader");
-		return;
-	}
-
-	D3D11_BUFFER_DESC cbDesc{};
-	cbDesc.ByteWidth = sizeof(float) * 12;
-	cbDesc.Usage = D3D11_USAGE_DYNAMIC;
-	cbDesc.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
-	cbDesc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
-
-	hr = globals::d3d::device->CreateBuffer(&cbDesc, nullptr, nightEyeConstantBuffer.put());
-	if (FAILED(hr)) {
-		logger::error("[EFFECTS11] Failed to create night eye constant buffer");
-		return;
-	}
-
-	logger::info("[EFFECTS11] Created night eye pixel shader successfully");
-}
-
 void EffectManager::UpdateCommonData()
 {
 	commonData = {};
@@ -870,19 +823,15 @@ void EffectManager::UpdateCommonData()
 
 	// Update weather
 	{
-		// Strip plugin index (2 leftmost digits) from form IDs
-		auto stripPluginIndex = [](uint32_t formID) -> uint32_t {
-			return formID & 0x00FFFFFF;  // Keep only the lower 6 hex digits
-		};
-
 		if (sky) {
 			if (sky->lastWeather)
 				cachedLastWeather = sky->lastWeather;
 			auto* lastWeather = sky->lastWeather ? sky->lastWeather : cachedLastWeather;
 
 			auto& weatherManager = WeatherManager::GetSingleton();
-			uint32_t currentID = sky->currentWeather ? stripPluginIndex(sky->currentWeather->formID) : 0;
-			uint32_t lastID = lastWeather ? stripPluginIndex(lastWeather->formID) : 0;
+			constexpr auto localMask = WeatherManager::LocalFormIDMask;
+			uint32_t currentID = sky->currentWeather ? sky->currentWeather->formID & localMask : 0;
+			uint32_t lastID = lastWeather ? lastWeather->formID & localMask : 0;
 
 			currentWeatherID = weatherManager.GetEffectiveWeatherID(currentID);
 			previousWeatherID = weatherManager.GetEffectiveWeatherID(lastID);
@@ -1124,8 +1073,6 @@ void EffectManager::UpdateCommonVariablesForEffect(Effect& effect)
 	effect.SetVectorVariable("TimeOfDay2", commonData.timeOfDay2, sizeof(commonData.timeOfDay2));
 	effect.SetVectorVariable("ENightDayFactor", &commonData.eNightDayFactor, sizeof(commonData.eNightDayFactor));
 	effect.SetVectorVariable("EInteriorFactor", &commonData.eInteriorFactor, sizeof(commonData.eInteriorFactor));
-	const float nightEyeFactor = globals::features::effects11.GetNightEyeFactor();
-	effect.SetVectorVariable("ENightEyeFactor", &nightEyeFactor, sizeof(nightEyeFactor));
 	effect.SetVectorVariable("FieldOfView", &commonData.fieldOfView, sizeof(commonData.fieldOfView));
 	effect.SetVectorVariable("tempInfo1", commonData.tempInfo1, sizeof(commonData.tempInfo1));
 	effect.SetVectorVariable("tempInfo2", commonData.tempInfo2, sizeof(commonData.tempInfo2));
@@ -1294,97 +1241,6 @@ void EffectManager::ApplyColorCorrection(ID3D11UnorderedAccessView* textureUAV)
 	context->CSSetUnorderedAccessViews(0, 1, &nullUAV, nullptr);
 }
 
-void EffectManager::ApplyNightEye()
-{
-	const float factor = globals::features::effects11.GetNightEyeFactor();
-	if (factor <= 0.0f || !nightEyePixelShader || !nightEyeConstantBuffer || !copyVertexShader)
-		return;
-
-	auto& settingManager = SettingManager::GetSingleton();
-	if (!settingManager.GetValue<bool>(ids.nightEyeEnable) || enbEffect.PresetHandlesNightEye())
-		return;
-
-	auto& textureManager = TextureManager::GetSingleton();
-	auto* source = textureManager.GetCommonTexture("TextureSDRTemp");
-	auto* destination = textureManager.GetCommonTexture("TextureSDRTemp2");
-	if (!source || !destination || !source->srv || !destination->rtv || !destination->texture)
-		return;
-
-	struct NightEyeCB
-	{
-		float3 colorBalance;
-		float amount;
-		float exposure;
-		float saturation;
-		float contrast;
-		float brightness;
-		float lowClip;
-		float pad[3];
-	};
-	static_assert(sizeof(NightEyeCB) == sizeof(float) * 12);
-
-	NightEyeCB cb{};
-	cb.colorBalance = settingManager.GetInterpolatedColorTimeOfDayValue("ColorBalance", "NIGHTEYE");
-	cb.amount = std::clamp(factor * settingManager.GetInterpolatedTimeOfDayValue("Intensity", "NIGHTEYE"), 0.0f, 1.0f);
-	cb.exposure = settingManager.GetInterpolatedTimeOfDayValue("Exposure", "NIGHTEYE");
-	cb.saturation = settingManager.GetInterpolatedTimeOfDayValue("Saturation", "NIGHTEYE");
-	cb.contrast = settingManager.GetInterpolatedTimeOfDayValue("Contrast", "NIGHTEYE");
-	cb.brightness = settingManager.GetInterpolatedTimeOfDayValue("Brightness", "NIGHTEYE");
-	cb.lowClip = settingManager.GetInterpolatedTimeOfDayValue("LowClip", "NIGHTEYE");
-	if (cb.amount <= 0.0f)
-		return;
-
-	auto context = globals::d3d::context;
-
-	D3D11_MAPPED_SUBRESOURCE mapped;
-	if (FAILED(context->Map(nightEyeConstantBuffer.get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped)))
-		return;
-	*static_cast<NightEyeCB*>(mapped.pData) = cb;
-	context->Unmap(nightEyeConstantBuffer.get(), 0);
-
-	globals::profiler->BeginPass("Effects11::NightEye");
-
-	D3D11_TEXTURE2D_DESC texDesc;
-	destination->texture->GetDesc(&texDesc);
-
-	D3D11_VIEWPORT viewport = {};
-	viewport.Width = static_cast<float>(texDesc.Width);
-	viewport.Height = static_cast<float>(texDesc.Height);
-	viewport.MaxDepth = 1.0f;
-	context->RSSetViewports(1, &viewport);
-
-	ID3D11RenderTargetView* rtv = destination->rtv.get();
-	context->OMSetRenderTargets(1, &rtv, nullptr);
-	context->OMSetDepthStencilState(nullptr, 0);
-	context->RSSetState(rasterizerState.get());
-	context->OMSetBlendState(blendState.get(), nullptr, 0xFFFFFFFF);
-
-	UINT stride = 20;
-	UINT offset = 0;
-	ID3D11Buffer* vbs[] = { quadVertexBuffer.get() };
-	context->IASetVertexBuffers(0, 1, vbs, &stride, &offset);
-	context->IASetInputLayout(inputLayout.get());
-	context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP);
-
-	context->VSSetShader(copyVertexShader.get(), nullptr, 0);
-	context->PSSetShader(nightEyePixelShader.get(), nullptr, 0);
-	ID3D11Buffer* cbs[] = { nightEyeConstantBuffer.get() };
-	context->PSSetConstantBuffers(0, 1, cbs);
-	ID3D11ShaderResourceView* srv = source->srv.get();
-	context->PSSetShaderResources(0, 1, &srv);
-
-	context->Draw(4, 0);
-
-	ID3D11ShaderResourceView* nullSRV = nullptr;
-	context->PSSetShaderResources(0, 1, &nullSRV);
-	ID3D11RenderTargetView* nullRTV = nullptr;
-	context->OMSetRenderTargets(1, &nullRTV, nullptr);
-
-	globals::profiler->EndPass();
-
-	textureManager.SwapTextures("TextureSDRTemp", "TextureSDRTemp2");
-}
-
 void EffectManager::ReloadShaders()
 {
 	// The Create* helpers also (re)create these buffers through com_ptr::put(), which requires them to be empty
@@ -1393,11 +1249,8 @@ void EffectManager::ReloadShaders()
 	ditherConstantBuffer = nullptr;
 	colorCorrectionComputeShader = nullptr;
 	colorCorrectionConstantBuffer = nullptr;
-	nightEyePixelShader = nullptr;
-	nightEyeConstantBuffer = nullptr;
 	standardDepthComputeShader = nullptr;
 	CreateCopyShaders();
 	CreateColorCorrectionShader();
-	CreateNightEyeShader();
 	CreateStandardDepthShader();
 }

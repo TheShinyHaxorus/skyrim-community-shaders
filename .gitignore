@@ -6,12 +6,13 @@ dist/
 CMakeUserPresets.json
 shadertoolsconfig.json
 .vscode
+/imgui.ini
 
 # Folder view configuration files
 **/.DS_Store
 .claude/settings.local.json
 
-tools/__pycache__/
+**/__pycache__/
 
-# NVIDIA driver file for DLSS 5 neural rendering (165 MB); extracted from tools/dlssnr_model at configure time, never committed
+# NVIDIA driver file for DLSS 5 neural rendering (276 MB); extracted from tools/dlssnr_model at configure time, never committed
 features/Upscaling/Shaders/Upscaling/Streamline/nvngx_dlssnr.dll
