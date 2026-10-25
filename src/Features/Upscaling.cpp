@@ -9,6 +9,7 @@
 #include "State.h"
 #include "Upscaling/DX12SwapChain.h"
 #include "Upscaling/FidelityFX.h"
+#include "Upscaling/FidelityFX/DriverFsr4.h"
 #include "Upscaling/Streamline.h"
 #include "Utils/Game.h"
 #include "Utils/UI.h"
@@ -49,6 +50,7 @@ NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(
 	reflexUseFPSLimit,
 	reflexFPSLimit,
 	fsr4RuntimeEnable,
+	fsr4DriverModel,
 	fsr4RuntimeSelectionSchemaVersion);
 
 decltype(&D3D11CreateDeviceAndSwapChain) ptrD3D11CreateDeviceAndSwapChainUpscaling;
@@ -304,8 +306,30 @@ void Upscaling::DrawSettings()
 		if (upscaleMethod == UpscaleMethod::kFSR) {
 			ImGui::SliderFloat(T(TKEY("sharpness"), "Sharpness"), &settings.sharpnessFSR, 0.0f, 1.0f, "%.1f");
 			// Hidden entirely on ineligible GPUs so it can't be toggled somewhere it silently no-ops.
-			if (fidelityFX.IsRuntimeFsr4AutoEligible()) {
+			const bool driverFsr4 = fidelityFX.IsDriverFsr4Candidate();
+			if (fidelityFX.IsRuntimeFsr4AutoEligible() || driverFsr4) {
 				ImGui::Checkbox(T(TKEY("fsr4_runtime_enable"), "Use Runtime FSR4"), &settings.fsr4RuntimeEnable);
+				if (driverFsr4) {
+					if (auto _tt = Util::HoverTooltipWrapper()) {
+						ImGui::TextUnformatted(T(TKEY("fsr4_driver_tooltip_1"), "This GPU's driver has no FSR 4, so it comes from AMD's driver library (amdxcffx64.dll, FSR 4.1.2) in the FidelityFX folder."));
+						ImGui::TextUnformatted(T(TKEY("fsr4_driver_tooltip_2"), "Runs an INT8 model. Falls back to FSR 3.1 if the library will not load."));
+					}
+					const char* driverModels[] = {
+						T(TKEY("fsr4_driver_model_int8"), "INT8"),
+						T(TKEY("fsr4_driver_model_int8_lite"), "INT8 Lite")
+					};
+					int driverModel = static_cast<int>(std::min(settings.fsr4DriverModel, 1u));
+					if (ImGui::Combo(T(TKEY("fsr4_driver_model"), "FSR4 Model"), &driverModel, driverModels, IM_ARRAYSIZE(driverModels)))
+						settings.fsr4DriverModel = static_cast<uint>(driverModel);
+					if (auto _tt = Util::HoverTooltipWrapper())
+						ImGui::TextUnformatted(T(TKEY("fsr4_driver_model_tooltip"), "INT8 is the full RDNA 3 network. INT8 Lite is the smaller network for integrated GPUs: faster, softer. Takes effect after a restart."));
+					if (DriverFsr4::IsAvailable()) {
+						const char* active = DriverFsr4::ActiveModelName();
+						ImGui::TextDisabled("%s: %s%s%s", T(TKEY("fsr4_driver_provider"), "Driver library"), DriverFsr4::VersionName().c_str(), active ? ", " : "", active ? active : "");
+					} else if (!DriverFsr4::FailureReason().empty()) {
+						Util::Text::Warning("%s: %s", T(TKEY("fsr4_driver_failed"), "Driver FSR4 unavailable"), DriverFsr4::FailureReason().c_str());
+					}
+				}
 				if (settings.fsr4RuntimeEnable != fsr4RuntimeEnableBoot)
 					Util::Text::Warning("%s", T(TKEY("fsr4_restart_required"), "Restart the game to apply this change."));
 				if (settings.fsr4RuntimeEnable) {

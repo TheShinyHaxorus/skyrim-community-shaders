@@ -84,6 +84,8 @@ public:
 		// Opt in to AMD's runtime FSR4 upscaler DLL on eligible AMD hardware instead of the
 		// host-linked FSR3 SDK; falls back to FSR3 on any failure.
 		bool fsr4RuntimeEnable = false;
+		// FSR 4 model on non-AMD GPUs through the driver library: 0 INT8, 1 INT8 Lite. Restart to apply.
+		uint fsr4DriverModel = 0;
 
 		// Tracks whether fsr4RuntimeEnable has been auto-migrated for the detected adapter.
 		// Defaults to current so a fresh config needs no migration; LoadSettings resets it to

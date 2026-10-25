@@ -8,6 +8,7 @@
 #include "../HDRDisplay.h"
 #include "../Upscaling.h"
 #include "DX12SwapChain.h"
+#include "FidelityFX/DriverFsr4.h"
 
 ffxFunctions ffxModule;
 
@@ -159,6 +160,40 @@ void FidelityFX::LoadFFX()
 
 	featureFSR3FG = loadDll("Frame generation DLL", frameGenerationPath, frameGenerationModule);
 	featureRuntimeUpscaler = loadDll("Runtime upscaler DLL", runtimeUpscalerPath, runtimeUpscalerModule);
+
+	// FSR 4 on GPUs whose driver has none (NVIDIA, Intel): AMD's driver library from this folder.
+	// Loaded after the SDK libraries, whose signatures it checks.
+	auto& upscalingSettings = globals::features::upscaling.settings;
+	if (featureRuntimeUpscaler && upscalingSettings.fsr4RuntimeEnable && !IsPrimaryAdapterAmd()) {
+		const auto model = static_cast<DriverFsr4::Model>(std::min(upscalingSettings.fsr4DriverModel, 1u));
+		if (DriverFsr4::Load(pluginDir / DriverFsr4DllName, model))
+			DriverFsr4::InstallShims(ffxModule);
+		else
+			logger::warn("[FidelityFX] Driver FSR 4 unavailable: {}", DriverFsr4::FailureReason());
+	}
+}
+
+bool FidelityFX::IsPrimaryAdapterAmd()
+{
+	winrt::com_ptr<IDXGIFactory1> factory;
+	if (FAILED(CreateDXGIFactory1(IID_PPV_ARGS(factory.put()))))
+		return false;
+	winrt::com_ptr<IDXGIAdapter1> adapter;
+	if (FAILED(factory->EnumAdapters1(0, adapter.put())))
+		return false;
+	DXGI_ADAPTER_DESC1 desc{};
+	return SUCCEEDED(adapter->GetDesc1(&desc)) && desc.VendorId == 0x1002;
+}
+
+bool FidelityFX::IsDriverFsr4Candidate() const
+{
+	if (DriverFsr4::IsAvailable())
+		return true;
+	if (IsAmdAdapterDetected())
+		return false;
+	std::error_code ec;
+	const auto path = Util::PathHelpers::GetDataPath() / "Shaders" / "Upscaling" / "FidelityFX" / DriverFsr4DllName;
+	return std::filesystem::is_regular_file(path, ec);
 }
 
 void FidelityFX::SetupFrameGeneration()

@@ -34,6 +34,8 @@ public:
 	static constexpr uint32_t Fsr3Version = FFX_UPSCALER_MAKE_VERSION(FFX_FSR3_VERSION_MAJOR, FFX_FSR3_VERSION_MINOR, FFX_FSR3_VERSION_PATCH);
 	// Optional AMD-distributed DLL providing a runtime-substitutable upscaler.
 	static constexpr std::wstring_view RuntimeUpscalerDllName = L"amd_fidelityfx_upscaler_dx12.dll";
+	/// AMD's driver FidelityFX library; carries FSR 4 for GPUs whose driver has none (see FidelityFX/DriverFsr4.h).
+	static constexpr std::wstring_view DriverFsr4DllName = L"amdxcffx64.dll";
 	static constexpr std::string_view RuntimeUpscalerDllNameUtf8 = "amd_fidelityfx_upscaler_dx12.dll";
 	~FidelityFX();
 
@@ -105,6 +107,10 @@ public:
 	// dispatches via the runtime DLL instead of the host FSR3 SDK. See RuntimeUpscaler.cpp.
 	/** @brief True if the active adapter is an AMD GPU. */
 	bool IsAmdAdapterDetected() const;
+	/** @brief True if the first DXGI adapter is AMD; used before the game's device exists. */
+	static bool IsPrimaryAdapterAmd();
+	/** @brief True on a non-AMD GPU with the driver FSR 4 library present (loaded or loadable after a restart). */
+	bool IsDriverFsr4Candidate() const;
 	/** @brief True if the active adapter is an NVIDIA GPU. */
 	bool IsNvidiaAdapterDetected() const;
 	/** @brief True if the runtime upscaler DLL was found and loaded. */

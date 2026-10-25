@@ -19,6 +19,7 @@
 #include "../../../Utils/Game.h"
 #include "../../Upscaling.h"
 #include "../DX12SwapChain.h"
+#include "DriverFsr4.h"
 
 extern ffxFunctions ffxModule;
 
@@ -274,14 +275,26 @@ namespace
 		return label;
 	}
 
+	// The driver library's FSR 4 provider (4.1.2 in the 2.4.0 build) serves an FSR 4 request even
+	// though its version is newer than the SDK's.
+	bool IsDriverFsr4Provider(uint64_t a_providerId, const std::string& a_providerName, uint32_t a_version)
+	{
+		return a_version == FFX_UPSCALER_VERSION && DriverFsr4::IsAvailable() &&
+		       ((a_providerId != 0 && a_providerId == DriverFsr4::VersionId()) || (!a_providerName.empty() && a_providerName == DriverFsr4::VersionName()));
+	}
+
 	bool RuntimeProviderNameMatchesVersion(const std::string& a_providerName, uint32_t a_version)
 	{
+		if (IsDriverFsr4Provider(0, a_providerName, a_version))
+			return true;
 		return !a_providerName.empty() &&
 		       a_providerName.find(UpscalerVersionToString(a_version)) != std::string::npos;
 	}
 
 	bool RuntimeProviderIdMatchesVersion(uint64_t a_providerId, uint32_t a_version)
 	{
+		if (IsDriverFsr4Provider(a_providerId, {}, a_version))
+			return true;
 		return a_providerId != 0 &&
 		       static_cast<uint32_t>(a_providerId & 0xFFFFFFFFull) == a_version;
 	}
@@ -771,7 +784,8 @@ FidelityFX::Fsr4AdapterSupport FidelityFX::GetFsr4AdapterSupport() const
 
 bool FidelityFX::IsRuntimeFsr4AutoEligible() const
 {
-	return GetFsr4AdapterSupport() != Fsr4AdapterSupport::Unsupported;
+	return GetFsr4AdapterSupport() != Fsr4AdapterSupport::Unsupported ||
+	       (DriverFsr4::IsAvailable() && !IsAmdAdapterDetected());
 }
 
 bool FidelityFX::IsRuntimeFsr4Available() const
@@ -784,7 +798,8 @@ bool FidelityFX::IsRuntimeFsr4Available() const
 
 bool FidelityFX::ShouldUseRuntimeUpscalerForFSR() const
 {
-	return globals::features::upscaling.fsr4RuntimeEnableBoot && IsRuntimeUpscalerPresent() && IsAmdAdapterDetected();
+	return globals::features::upscaling.fsr4RuntimeEnableBoot && IsRuntimeUpscalerPresent() &&
+	       (IsAmdAdapterDetected() || DriverFsr4::IsAvailable());
 }
 
 bool FidelityFX::CanUseRuntimeUpscalerPath()
